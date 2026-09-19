@@ -1,0 +1,233 @@
+[
+  {
+    "packageName": "com.pubg.imobile",
+    "name": "PUBG Mobile",
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "display",
+      "dnd",
+      "power"
+    ],
+    "resolutionScale": 0.85,
+    "dpi": 0,
+    "refreshRate": 0,
+    "aggressiveRamClean": true,
+    "dnd": true,
+    "killAnimations": true,
+    "extraProtected": [],
+    "gameModeDownscale": 0.85,
+    "fpsCap": 0,
+    "gameMode": 4,
+    "useAngle": false,
+    "preferGameModeApi": true
+  },
+  {
+    "packageName": "com.tencent.ig",
+    "name": "PUBG Mobile (Global)",
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "display",
+      "dnd",
+      "power"
+    ],
+    "resolutionScale": 0.85,
+    "dpi": 0,
+    "refreshRate": 0,
+    "aggressiveRamClean": true,
+    "dnd": true,
+    "killAnimations": true,
+    "gameModeDownscale": 0.85,
+    "fpsCap": 0,
+    "gameMode": 4,
+    "useAngle": false,
+    "preferGameModeApi": true
+  },
+  {
+    "packageName": "com.mobile.legends",
+    "name": "Mobile Legends: Bang Bang",
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "display",
+      "dnd",
+      "power",
+      "network"
+    ],
+    "resolutionScale": 1.0,
+    "dpi": 0,
+    "refreshRate": 0,
+    "aggressiveRamClean": true,
+    "dnd": true,
+    "killAnimations": true,
+    "gameModeDownscale": 1.0,
+    "fpsCap": 0,
+    "gameMode": 4,
+    "useAngle": false,
+    "preferGameModeApi": true
+  },
+  {
+    "packageName": "com.garena.game.codm",
+    "name": "Call of Duty Mobile",
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "display",
+      "dnd",
+      "power"
+    ],
+    "resolutionScale": 0.9,
+    "dpi": 0,
+    "refreshRate": 0,
+    "aggressiveRamClean": true,
+    "dnd": true,
+    "killAnimations": true,
+    "gameModeDownscale": 0.9,
+    "fpsCap": 0,
+    "gameMode": 4,
+    "useAngle": false,
+    "preferGameModeApi": true
+  },
+  {
+    "packageName": "com.mihoyo.genshinimpact",
+    "name": "Genshin Impact",
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "dnd",
+      "power"
+    ],
+    "resolutionScale": 1.0,
+    "dpi": 0,
+    "refreshRate": 60,
+    "aggressiveRamClean": true,
+    "dnd": true,
+    "killAnimations": true,
+    "gameModeDownscale": 1.0,
+    "fpsCap": 0,
+    "gameMode": 4,
+    "useAngle": false,
+    "preferGameModeApi": true
+  },
+  {
+    "packageName": "com.miHoYo.GenshinImpact",
+    "name": "Genshin Impact (alt)",
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "dnd",
+      "power"
+    ],
+    "resolutionScale": 1.0,
+    "refreshRate": 60,
+    "aggressiveRamClean": true,
+    "dnd": true,
+    "killAnimations": true,
+    "gameModeDownscale": 1.0,
+    "fpsCap": 0,
+    "gameMode": 4,
+    "useAngle": false,
+    "preferGameModeApi": true
+  },
+  {
+    "packageName": "com.supercell.clashofclans",
+    "name": "Clash of Clans",
+    "enabledModules": [
+      "ram",
+      "dnd"
+    ],
+    "resolutionScale": 1.0,
+    "aggressiveRamClean": true,
+    "dnd": true,
+    "killAnimations": true,
+    "gameModeDownscale": 1.0,
+    "fpsCap": 0,
+    "gameMode": 4,
+    "useAngle": false,
+    "preferGameModeApi": true
+  },
+  {
+    "packageName": "com.tencent.tmgp.sgame",
+    "name": "Honor of Kings",
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "display",
+      "dnd",
+      "power",
+      "network"
+    ],
+    "resolutionScale": 0.9,
+    "refreshRate": 120,
+    "aggressiveRamClean": true,
+    "dnd": true,
+    "killAnimations": true,
+    "gameModeDownscale": 0.9,
+    "fpsCap": 0,
+    "gameMode": 4,
+    "useAngle": false,
+    "preferGameModeApi": true
+  },
+  {
+    "packageName": "com.dts.freefireth",
+    "name": "Free Fire",
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "display",
+      "dnd",
+      "power"
+    ],
+    "resolutionScale": 0.75,
+    "dpi": 0,
+    "refreshRate": 0,
+    "aggressiveRamClean": true,
+    "dnd": true,
+    "killAnimations": true,
+    "gameModeDownscale": 0.75,
+    "fpsCap": 0,
+    "gameMode": 4,
+    "useAngle": false,
+    "preferGameModeApi": true
+  },
+  {
+    "packageName": "com.ea.gp.fifamobile",
+    "name": "EA SPORTS FC Mobile",
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "display",
+      "dnd"
+    ],
+    "resolutionScale": 0.9,
+    "aggressiveRamClean": true,
+    "dnd": true,
+    "killAnimations": true,
+    "gameModeDownscale": 0.9,
+    "fpsCap": 0,
+    "gameMode": 4,
+    "useAngle": false,
+    "preferGameModeApi": true
+  },
+  {
+    "packageName": "com.epicgames.fortnite",
+    "name": "Fortnite",
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "dnd",
+      "power",
+      "thermal"
+    ],
+    "resolutionScale": 1.0,
+    "aggressiveRamClean": true,
+    "dnd": true,
+    "killAnimations": true,
+    "gameModeDownscale": 1.0,
+    "fpsCap": 0,
+    "gameMode": 4,
+    "useAngle": false,
+    "preferGameModeApi": true
+  }
+]
