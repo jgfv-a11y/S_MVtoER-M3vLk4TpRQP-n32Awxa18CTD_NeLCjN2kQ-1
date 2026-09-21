@@ -7,6 +7,10 @@ on:
       - 'arena/**'
   workflow_dispatch:
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   build-apk:
     runs-on: ubuntu-latest
@@ -43,19 +47,36 @@ jobs:
         run: |
           ./gradlew assembleDebug --no-daemon --stacktrace > nitroboost-build.log 2>&1
           rc=$?
-          tail -120 nitroboost-build.log
+          tail -150 nitroboost-build.log
           exit $rc
 
       - name: Capture build log on failure
         if: failure()
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.com"
+          set +e
+          LOG=NitroBoost/nitroboost-build.log
+          # 1) keep the full log on a dedicated branch
+          git config user.name "nitroboost-ci"
+          git config user.email "ci@nitroboost.local"
           mkdir -p .build-logs
-          cp NitroBoost/nitroboost-build.log ".build-logs/fail-$GITHUB_RUN_ID.log"
-          git add .build-logs/fail-$GITHUB_RUN_ID.log
+          cp "$LOG" ".build-logs/fail-$GITHUB_RUN_ID.log"
+          git add ".build-logs/fail-$GITHUB_RUN_ID.log"
           git commit -m "chore: capture failed build log (run $GITHUB_RUN_ID)"
-          git push origin HEAD:build-logs || true
+          git push origin HEAD:build-logs
+          # 2) comment the error tail on the open PR so it is readable anywhere
+          PR=$(gh pr list --head "$GITHUB_HEAD_REF" --state open --json number --jq '.[0].number' 2>/dev/null)
+          if [ -n "$PR" ] && [ "$PR" != "null" ]; then
+            {
+              echo "## :x: Build failed (run $GITHUB_RUN_ID)"
+              echo '```'
+              grep -E "^e: |error:|FAILURE|What went wrong|Execution failed for|Caused by|> Task.*FAILED" "$LOG" | head -60
+              echo '--- tail ---'
+              tail -80 "$LOG"
+              echo '```'
+            } > /tmp/pr-comment.md
+            gh pr comment "$PR" --body-file /tmp/pr-comment.md
+          fi
+          exit 0
 
       - name: Upload build log artifact on failure
         if: failure()
