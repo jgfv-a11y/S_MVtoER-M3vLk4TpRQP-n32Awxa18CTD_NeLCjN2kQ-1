@@ -15,7 +15,7 @@ class FakeExecutor : SystemExecutor {
 
     var dndFilter = DndFilters.ALL
     var failDnd = false
-    var privileged = true
+    override var privileged: Boolean = true
 
     override fun shell(cmd: String): ShellResult {
         shellLog.add(cmd)
