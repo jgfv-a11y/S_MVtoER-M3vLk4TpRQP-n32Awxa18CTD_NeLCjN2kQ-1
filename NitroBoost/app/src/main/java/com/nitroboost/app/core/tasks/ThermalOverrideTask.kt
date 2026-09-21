@@ -37,7 +37,7 @@ class ThermalOverrideTask : BoostTask {
         if (isApplied(ctx)) return TaskResult(id, TaskStatus.NoChange)
         val r = ctx.executor.shell("cmd thermalservice override-status 0")
         if (!r.ok) {
-            return TaskResult(id, TaskStatus.Failed, "thermalservice not controllable on this ROM")
+            return TaskResult(id, TaskStatus.Failed("thermalservice not controllable on this ROM"))
         }
         return TaskResult(
             id,

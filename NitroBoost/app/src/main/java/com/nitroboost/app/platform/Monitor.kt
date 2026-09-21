@@ -110,7 +110,7 @@ class BatterySampler(private val ctx: Context) {
         return try {
             val bm = ctx.getSystemService(Context.BATTERY_SERVICE) as android.os.BatteryManager
             val level = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
-            val charging = when (ctx.registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))?.getIntExtra(android.content.Intent.EXTRA_PLUGGED, 0)) {
+            val charging = when (ctx.registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))?.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0)) {
                 0 -> false
                 else -> true
             }

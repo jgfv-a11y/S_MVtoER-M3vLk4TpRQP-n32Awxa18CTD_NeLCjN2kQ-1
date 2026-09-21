@@ -116,7 +116,7 @@ class ProfilesFragment : Fragment() {
         val profile = p.copyProfile()
         val view = layoutInflater.inflate(R.layout.dialog_profile_edit, null)
 
-        val moduleChecks = Map<Module, CheckBox>(
+        val moduleChecks = mapOf<Module, CheckBox>(
             Module.CPU to view.findViewById(R.id.chk_cpu),
             Module.RAM to view.findViewById(R.id.chk_ram),
             Module.DISPLAY to view.findViewById(R.id.chk_display),

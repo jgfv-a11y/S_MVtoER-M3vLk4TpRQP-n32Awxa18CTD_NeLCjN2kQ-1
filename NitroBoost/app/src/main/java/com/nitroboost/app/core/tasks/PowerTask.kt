@@ -51,7 +51,7 @@ class PowerTask : BoostTask {
                 )
             )
         } else {
-            TaskResult(id, TaskStatus.Failed, "low_power setting not writable")
+            TaskResult(id, TaskStatus.Failed("low_power setting not writable"))
         }
     }
 }

@@ -221,7 +221,7 @@ object AppStore {
             } else 0.0
             val storage = try {
                 val st = StatFs(Environment.getDataDirectory().path)
-                st.availableBlocks.toDouble() / st.blockCountLong()
+                st.availableBlocks.toDouble() / st.blockCountLong
             } catch (e: Exception) {
                 0.0
             }
@@ -264,7 +264,7 @@ object AppStore {
                     }
                 }
                 // refine foreground: what was used in the last 30 seconds
-                val recent = usm.queryUsageStats(UsageStatsManager.INTERVAL_HOUR, now - 30_000, now)
+                val recent = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, now - 30_000, now)
                 var fg30: String? = null
                 var fg30t = -1L
                 for (s in recent) {
@@ -306,7 +306,7 @@ object AppStore {
             val c = ctx()
             val usm = c.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
             val now = System.currentTimeMillis()
-            val recent = usm.queryUsageStats(UsageStatsManager.INTERVAL_HOUR, now - 30_000, now)
+            val recent = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, now - 30_000, now)
             var fg: String? = null
             var best = -1L
             for (s in recent) {
@@ -328,7 +328,7 @@ object AppStore {
             val c = ctx()
             val usm = c.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
             val now = System.currentTimeMillis()
-            val recent = usm.queryUsageStats(UsageStatsManager.INTERVAL_HOUR, now - 60_000, now)
+            val recent = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, now - 60_000, now)
             recent.any { it.packageName == pkg && it.lastTimeUsed > now - 60_000 }
         } catch (e: Exception) {
             false
@@ -346,7 +346,7 @@ object AppStore {
             val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, since, now)
             stats.mapNotNull { s ->
                 val pkg = s.packageName ?: return@mapNotNull null
-                val mem = s.averageRam
+                val mem = s.totalMemory
                 if (mem <= 0) return@mapNotNull null
                 val name = try {
                     pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
@@ -406,7 +406,7 @@ object AppStore {
             val level = bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
             val plugged = c.registerReceiver(
                 null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)
-            )?.getIntExtra(Intent.EXTRA_PLUGGED, 0) ?: 0
+            )?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
             level to (plugged != 0)
         } catch (e: Exception) {
             0 to false

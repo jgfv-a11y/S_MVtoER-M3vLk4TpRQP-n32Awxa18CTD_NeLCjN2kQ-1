@@ -61,7 +61,7 @@ class GameModeTask : BoostTask {
                 )
             )
         } else {
-            TaskResult(id, TaskStatus.Failed, "game_mode setting not writable on this ROM")
+            TaskResult(id, TaskStatus.Failed("game_mode setting not writable on this ROM"))
         }
     }
 }

@@ -16,8 +16,6 @@ import java.io.File
  */
 class NitroUserService : INitroService.Stub() {
 
-    constructor()
-
     @Keep
     constructor(context: Context)
 

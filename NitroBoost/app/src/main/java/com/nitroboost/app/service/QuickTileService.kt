@@ -33,7 +33,7 @@ class QuickTileService : TileService() {
     private fun refresh() {
         val tile = qsTile ?: return
         tile.label = getString(R.string.tile_name)
-        tile.state = if (BoosterService.active) Tile.STATE_ON else Tile.STATE_OFF
+        tile.state = if (BoosterService.active) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
         tile.updateTile()
     }
 }

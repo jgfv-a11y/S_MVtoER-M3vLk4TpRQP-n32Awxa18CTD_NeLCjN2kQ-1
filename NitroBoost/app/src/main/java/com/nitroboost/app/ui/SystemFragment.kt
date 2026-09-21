@@ -72,7 +72,7 @@ class SystemFragment : Fragment() {
         }
         val total = try {
             val st = android.os.StatFs(android.os.Environment.getDataDirectory().path)
-            st.totalBlocks * st.blockSizeLong
+            st.blockCountLong * st.blockSizeLong
         } catch (e: Exception) {
             0L
         }

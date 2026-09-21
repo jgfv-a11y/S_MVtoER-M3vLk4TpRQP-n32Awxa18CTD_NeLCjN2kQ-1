@@ -47,7 +47,7 @@ class DndTask : BoostTask {
                 )
             )
         } else {
-            TaskResult(id, TaskStatus.Failed, "DND permission not granted")
+            TaskResult(id, TaskStatus.Failed("DND permission not granted"))
         }
     }
 }

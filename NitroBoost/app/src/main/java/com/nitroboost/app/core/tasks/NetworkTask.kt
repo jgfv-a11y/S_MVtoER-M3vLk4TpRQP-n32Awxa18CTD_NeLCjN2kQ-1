@@ -52,7 +52,7 @@ class NetworkTask : BoostTask {
                 )
             )
         } else {
-            TaskResult(id, TaskStatus.Failed, "no_background_data not writable")
+            TaskResult(id, TaskStatus.Failed("no_background_data not writable"))
         }
     }
 }

@@ -30,7 +30,7 @@ class RamTrimTask : BoostTask {
         return if (r.ok) {
             TaskResult(id, TaskStatus.Applied, "cache trim requested")
         } else {
-            TaskResult(id, TaskStatus.Failed, "pm trim-caches rejected")
+            TaskResult(id, TaskStatus.Failed("pm trim-caches rejected"))
         }
     }
 }
@@ -103,7 +103,7 @@ class RamKillTask : BoostTask {
         return if (ok > 0) {
             TaskResult(id, TaskStatus.Applied, "$ok app(s) stopped")
         } else {
-            TaskResult(id, TaskStatus.Failed, "force-stop rejected by system")
+            TaskResult(id, TaskStatus.Failed("force-stop rejected by system"))
         }
     }
 }

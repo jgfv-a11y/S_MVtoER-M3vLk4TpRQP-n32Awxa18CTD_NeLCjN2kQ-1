@@ -28,7 +28,7 @@ class GovernorTask : BoostTask {
     private fun listGovernors(ctx: BoostContext): List<GovFile> {
         val r = ctx.executor.shell(
             "for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do " +
-                "[ -f \"$f\" ] && echo \"\$f \$(cat \"$f\" 2>/dev/null)\"; done"
+                "[ -f \"\$f\" ] && echo \"\$f $(cat \"\$f\" 2>/dev/null)\"; done"
         )
         if (!r.ok) return emptyList()
         return r.stdout.lineSequence()
@@ -80,8 +80,7 @@ class GovernorTask : BoostTask {
             } else if (!w.ok) {
                 return TaskResult(
                     id,
-                    TaskStatus.Failed,
-                    "ROM blocks governor writes (shell has no cpufreq access)"
+                    TaskStatus.Failed("ROM blocks governor writes (shell has no cpufreq access)")
                 )
             }
         }

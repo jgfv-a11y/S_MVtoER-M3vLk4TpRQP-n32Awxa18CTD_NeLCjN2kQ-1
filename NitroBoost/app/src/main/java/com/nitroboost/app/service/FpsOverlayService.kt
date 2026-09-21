@@ -110,7 +110,8 @@ class FpsOverlayService : Service() {
         var downX = 0f
         var downY = 0f
         var moved = false
-        v.setOnTouchListener { ev, _ ->
+        // OnTouchListener: first param is the View, second is the MotionEvent.
+        v.setOnTouchListener { _, ev ->
             when (ev.action) {
                 MotionEvent.ACTION_DOWN -> {
                     downX = ev.rawX

@@ -56,7 +56,7 @@ class AnimationsTask : BoostTask {
         }
         return when {
             failed && entries.isEmpty() ->
-                TaskResult(id, TaskStatus.Failed, "needs WRITE_SETTINGS")
+                TaskResult(id, TaskStatus.Failed("needs WRITE_SETTINGS"))
             entries.isNotEmpty() -> TaskResult(id, TaskStatus.Applied, entries = entries)
             changed -> TaskResult(id, TaskStatus.Applied)
             else -> TaskResult(id, TaskStatus.NoChange)

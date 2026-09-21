@@ -1,7 +1,7 @@
 package com.nitroboost.app.platform
 
 import android.content.Context
-import android.media.notification.NotificationManager
+import android.app.NotificationManager
 import android.os.PowerManager
 import android.provider.Settings
 import com.nitroboost.app.core.DndFilters
