@@ -42,10 +42,10 @@ jobs:
             gradle wrapper --gradle-version 8.7 --no-daemon
           fi
 
-      - name: Build debug APK
+      - name: Run unit tests + build debug APK
         working-directory: NitroBoost
         run: |
-          ./gradlew assembleDebug --no-daemon --stacktrace > nitroboost-build.log 2>&1
+          ./gradlew test assembleDebug --no-daemon --stacktrace > nitroboost-build.log 2>&1
           rc=$?
           tail -150 nitroboost-build.log
           exit $rc
