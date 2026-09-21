@@ -55,17 +55,20 @@ jobs:
         run: |
           set +e
           LOG=NitroBoost/nitroboost-build.log
-          # 1) keep the full log on a dedicated branch
+          PR=$(gh pr list --head "$GITHUB_HEAD_REF" --state open --json number 2>&1)
+          echo "PR-QUERY-OUTPUT: $PR" >> "$LOG"
+          PRN=$(echo "$PR" | grep -o '"number":[0-9]*' | head -1 | grep -o '[0-9]*')
+          echo "PR-NUMBER: ${PRN:-none}" >> "$LOG"
           git config user.name "nitroboost-ci"
           git config user.email "ci@nitroboost.local"
           mkdir -p .build-logs
           cp "$LOG" ".build-logs/fail-$GITHUB_RUN_ID.log"
           git add ".build-logs/fail-$GITHUB_RUN_ID.log"
-          git commit -m "chore: capture failed build log (run $GITHUB_RUN_ID)"
-          git push origin HEAD:build-logs
-          # 2) comment the error tail on the open PR so it is readable anywhere
-          PR=$(gh pr list --head "$GITHUB_HEAD_REF" --state open --json number --jq '.[0].number' 2>/dev/null)
-          if [ -n "$PR" ] && [ "$PR" != "null" ]; then
+          git commit -m "chore: capture failed build log (run $GITHUB_RUN_ID)" >> "$LOG" 2>&1
+          git fetch origin build-logs >> "$LOG" 2>&1
+          git push origin HEAD:build-logs --force >> "$LOG" 2>&1
+          echo "PUSH-EXIT: $?" >> "$LOG"
+          if [ -n "$PRN" ]; then
             {
               echo "## :x: Build failed (run $GITHUB_RUN_ID)"
               echo '```'
@@ -74,7 +77,15 @@ jobs:
               tail -80 "$LOG"
               echo '```'
             } > /tmp/pr-comment.md
-            gh pr comment "$PR" --body-file /tmp/pr-comment.md
+            python3 -c 'import json; json.dump({"body": open("/tmp/pr-comment.md").read()}, open("/tmp/pr-comment.json","w"))'
+            curl -s -o /tmp/pr-comment-resp.json -w "COMMENT-HTTP:%{http_code}\n" \
+              -X POST \
+              -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$PRN/comments" \
+              --data @/tmp/pr-comment.json \
+              >> "$LOG" 2>&1
+            head -c 400 /tmp/pr-comment-resp.json >> "$LOG" 2>&1
           fi
           exit 0
 
