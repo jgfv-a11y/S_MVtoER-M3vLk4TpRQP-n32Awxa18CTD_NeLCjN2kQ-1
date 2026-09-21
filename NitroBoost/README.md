@@ -72,6 +72,10 @@ gradle wrapper --gradle-version 8.7   # إذا كان Gradle 8.7 مثبتًا
 
 APK الناتج في `app/build/outputs/apk/debug/`.
 
+> 📲 **APK جاهز للتنزيل**: [nitroboost-debug.apk](../dist/nitroboost-debug.apk)
+> (أو من صفحة [Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) —
+> يُعاد بناؤه تلقائيًا عبر GitHub Actions عند كل تغيير).
+
 > **ملاحظة**: لا يوجد شريط تقدم وهمي — كل عملية تُنفَّذ فعلًا وتُفحص
 > نتيجتها، وما يفشل يُسجَّل فقط ولا يُحتسب في النقاط.
 
