@@ -97,10 +97,13 @@ class BoosterService : Service() {
             endSession()
             return START_NOT_STICKY
         }
-        startForeground(
-            1001,
-            buildNotification(getString(R.string.session_running), getString(R.string.session_notify_body))
-        )
+        // Android 14+ (target 34): the specialUse type must be passed at runtime.
+        val n = buildNotification(getString(R.string.session_running), getString(R.string.session_notify_body))
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            startForeground(1001, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(1001, n)
+        }
         val profilePkg = intent?.getStringExtra(EXTRA_PROFILE)
         scope?.launch {
             startSession(profilePkg)

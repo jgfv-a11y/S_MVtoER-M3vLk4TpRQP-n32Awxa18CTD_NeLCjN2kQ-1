@@ -14,10 +14,10 @@ import java.io.File
  * The app process talks to it through the generated AIDL stub. Every call
  * is wrapped so a bad command can never crash the service process.
  */
-class NitroUserService : INitroService.Stub() {
+class NitroUserService constructor() : INitroService.Stub() {
 
     @Keep
-    constructor(context: Context)
+    constructor(context: Context) : super()
 
     /** Reserved: called by the Shizuku server when the service is destroyed. */
     override fun destroy() {

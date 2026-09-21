@@ -335,8 +335,47 @@ object AppStore {
         }
     }
 
-    /** Top RAM consumers for the System tab (UsageStats based). */
+    /**
+     * Top RAM consumers for the System tab.
+     *  - with a bound Shizuku service: real per-process RSS via
+     *    `ps -A -o PID,RSS,NAME` (non-blocking call);
+     *  - otherwise: recently used apps (Android has no public per-app
+     *    memory API without privilege) — the RAM column stays 0.
+     */
     fun topProcesses(limit: Int = 20): List<ProcessInfo> {
+        try {
+            val c = ctx()
+            val ex = AndroidExecutor(c)
+            val r = ex.shellNonBlocking("ps -A -o PID,RSS,NAME")
+            if (r != null && r.ok) {
+                val pm = c.packageManager
+                val list = r.stdout.lineSequence()
+                    .drop(1)
+                    .mapNotNull { line ->
+                        val p = line.trim().split(Regex("\\s+"))
+                        if (p.size < 3) return@mapNotNull null
+                        val pid = p[0].toIntOrNull() ?: return@mapNotNull null
+                        val rssKb = p[1].toLongOrNull() ?: return@mapNotNull null
+                        val pkg = try {
+                            pm.getPackageForPid(pid)
+                        } catch (e: Exception) {
+                            null
+                        } ?: return@mapNotNull null
+                        val name = try {
+                            pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+                        } catch (e: Exception) {
+                            pkg
+                        }
+                        ProcessInfo(pkg, name, rssKb * 1024L, 0L)
+                    }
+                    .sortedByDescending { it.ramBytes }
+                    .take(limit)
+                    .toList()
+                if (list.size >= 3) return list
+            }
+        } catch (e: Exception) {
+            // fall through to the UsageStats path
+        }
         return try {
             val c = ctx()
             val usm = c.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
@@ -346,16 +385,14 @@ object AppStore {
             val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, since, now)
             stats.mapNotNull { s ->
                 val pkg = s.packageName ?: return@mapNotNull null
-                val mem = s.totalMemory
-                if (mem <= 0) return@mapNotNull null
                 val name = try {
                     pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
                 } catch (e: Exception) {
                     pkg
                 }
-                ProcessInfo(pkg, name, mem, s.lastTimeUsed)
+                ProcessInfo(pkg, name, 0L, s.lastTimeUsed)
             }
-                .sortedByDescending { it.ramBytes }
+                .sortedByDescending { it.lastUsed }
                 .take(limit)
         } catch (e: Exception) {
             emptyList()

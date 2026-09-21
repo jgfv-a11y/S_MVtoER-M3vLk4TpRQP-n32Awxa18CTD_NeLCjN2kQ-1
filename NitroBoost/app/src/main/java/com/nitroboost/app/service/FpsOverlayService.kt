@@ -74,14 +74,17 @@ class FpsOverlayService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(
-            1002,
-            NotificationCompat.Builder(this, CHANNEL_OVERLAY)
-                .setSmallIcon(R.drawable.ic_monitor)
-                .setContentTitle(getString(R.string.overlay_channel_name))
-                .setOngoing(true)
-                .build()
-        )
+        val n = NotificationCompat.Builder(this, CHANNEL_OVERLAY)
+            .setSmallIcon(R.drawable.ic_monitor)
+            .setContentTitle(getString(R.string.overlay_channel_name))
+            .setOngoing(true)
+            .build()
+        // Android 14+ (target 34): the specialUse type must be passed at runtime.
+        if (android.os.Build.VERSION.SDK_INT >= 29) {
+            startForeground(1002, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+        } else {
+            startForeground(1002, n)
+        }
         if (!visible) showOverlay()
         return START_STICKY
     }

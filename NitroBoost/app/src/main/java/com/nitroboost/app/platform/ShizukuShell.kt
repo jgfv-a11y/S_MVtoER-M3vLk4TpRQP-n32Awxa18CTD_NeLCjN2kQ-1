@@ -179,6 +179,14 @@ object ShizukuShell {
         bound = false
     }
 
+    private fun parseRaw(raw: String): ShellResult {
+        val parts = raw.split('\u0000')
+        val code = parts.getOrNull(0)?.toIntOrNull() ?: -1
+        val out = decodeB64(parts.getOrNull(1))
+        val err = decodeB64(parts.getOrNull(2))
+        return ShellResult(code == 0, code, out, err)
+    }
+
     fun run(cmd: String): ShellResult {
         val s = service
         if (s == null) return ShellResult.fail("shizuku_service_not_bound")
@@ -187,17 +195,29 @@ object ShizukuShell {
             return ShellResult.fail("shizuku_not_ready")
         }
         return try {
-            val raw = s.runShell(cmd)
-            val parts = raw.split('\u0000')
-            val code = parts.getOrNull(0)?.toIntOrNull() ?: -1
-            val out = decodeB64(parts.getOrNull(1))
-            val err = decodeB64(parts.getOrNull(2))
-            ShellResult(code == 0, code, out, err)
+            parseRaw(s.runShell(cmd))
         } catch (e: RemoteException) {
             unbind()
             ShellResult.fail(e.message ?: "remote_error")
         } catch (e: Exception) {
             ShellResult.fail(e.message ?: "error")
+        }
+    }
+
+    /**
+     * Non-blocking variant: runs only when the user service is already
+     * bound. Safe to call from the main thread (no binding wait).
+     */
+    fun runIfReady(cmd: String): ShellResult? {
+        val s = service ?: return null
+        if (!isReady()) return null
+        return try {
+            parseRaw(s.runShell(cmd))
+        } catch (e: RemoteException) {
+            unbind()
+            null
+        } catch (e: Exception) {
+            null
         }
     }
 

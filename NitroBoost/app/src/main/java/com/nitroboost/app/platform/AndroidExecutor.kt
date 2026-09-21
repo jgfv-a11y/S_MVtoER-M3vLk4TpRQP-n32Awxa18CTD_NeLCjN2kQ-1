@@ -36,6 +36,12 @@ class AndroidExecutor(private val context: Context) : SystemExecutor {
 
     override fun shell(cmd: String): ShellResult = runPriv(cmd)
 
+    /** Shell command without waiting for a service bind; null when unavailable. */
+    fun shellNonBlocking(cmd: String): ShellResult? {
+        if (!ShizukuShell.isReady()) return null
+        return ShizukuShell.runIfReady(cmd)
+    }
+
     override fun readSys(path: String): String? {
         try {
             val f = File(path)
@@ -134,7 +140,7 @@ class AndroidExecutor(private val context: Context) : SystemExecutor {
 
     override fun dndFilterGet(): Int {
         return try {
-            when (notificationManager.interruptionFilter) {
+            when (notificationManager.currentInterruptionFilter) {
                 NotificationManager.INTERRUPTION_FILTER_PRIORITY -> DndFilters.PRIORITY
                 NotificationManager.INTERRUPTION_FILTER_ALARMS -> DndFilters.ALARMS
                 NotificationManager.INTERRUPTION_FILTER_NONE -> DndFilters.NONE

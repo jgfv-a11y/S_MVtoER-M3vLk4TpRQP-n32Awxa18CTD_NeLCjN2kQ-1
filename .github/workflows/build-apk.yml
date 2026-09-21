@@ -105,6 +105,17 @@ jobs:
           name: nitroboost-debug-apk
           path: NitroBoost/nitroboost-debug.apk
 
+      - name: Commit APK to dist branch
+        run: |
+          set +e
+          git config user.name "nitroboost-ci"
+          git config user.email "ci@nitroboost.local"
+          mkdir -p dist
+          cp NitroBoost/nitroboost-debug.apk dist/nitroboost-debug.apk
+          git add dist/nitroboost-debug.apk
+          git commit -m "dist: NitroBoost debug APK (build $GITHUB_RUN_ID)"
+          git push origin HEAD:dist-apk --force
+
       - name: Publish release with APK
         uses: softprops/action-gh-release@v2
         with:
