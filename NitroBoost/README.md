@@ -1,0 +1,166 @@
+# 🚀 NitroBoost — Game Booster
+
+تطبيق معزّز ألعاب Android احترافي، عربي + إنجليزي، مبني بـ **Kotlin** و**Material 3**
+(بدون Compose) على Shizuku API 13.1.5.
+
+المبدأ الأساسي: **قوة قصوى مع أمان مطلق** — كل تعديل على النظام يُسجَّل (Journal)
+ويمكن استعادته بضغطة واحدة أو تلقائيًا.
+
+---
+
+## ✨ المزايا
+
+- **محرك تعزيز بمهام منفصلة** (DND، Game Mode، Governor، GPU Boost، الشاشة،
+  Battery Saver، RAM Trim/Kill، Data Saver، Thermal Override، الحركات) —
+  كل مهمة مستقلة: فشل واحدة لا يوقف البقية.
+- **سجلّ تعديلات (Journal)**: القيمة السابقة + القيمة الجديدة + أمر الاستعادة
+  لكل تعديل، يُحفظ في `filesDir/journal.json`.
+- **استعادة تلقائية** عند خروج اللعبة + **استعادة يدوية** من أي مكان.
+- **حماية تدرّجية من الحرارة (Thermal De-escalation)**: عند ارتفاع الحرارة
+  يُراجع المحرك التعديلات بالترتيب (أقوى → أضعف) ويحفظ ما يمكن حفظه بدل
+  إيقاف كل شيء.
+- **FpsOverlay**: شريط فوق اللعبة يعرض FPS، CPU، RAM، الحرارة، Ping.
+- **10 ملفات ألعاب جاهزة** (Genshin، PUBG، COD، Fortnite، Call of Duty…) +
+  **ملفات مخصصة** لكل لعبة (DPI، معدل تحديث، سقف FPS، DND، قتل الذاكرة…).
+- **قائمة حماية** للعمليات الحساسة (يوتيوب، واتساب، المتصفح…) لا يلمسها القتل.
+- **لوحة معلومات حية**: CPU، RAM، الحرارة، البطارية، FPS، Ping + نقاط تعزيز.
+- **إحصائيات RAM للعمليات** مع زر قتل فردي آمن.
+- **إشعار خلفية دائم** بحالة الجلسة + استعادة فورية من الإشعار.
+- **تفعيل تلقائي** عند بدء اللعبة (اختياري) عبر مراقبة نشاط النظام.
+- **عربي + إنجليزي** كامل (RTL/LTR).
+
+---
+
+## 📦 المتطلبات
+
+- Android 8.0 (API 26) أو أحدث — target SDK 34.
+- **Android Studio** Koala (2024.1) أو أحدث + JDK 17 (مدمج في Android Studio).
+- **Shizuku** (اختياري لكن ضروري للمزايا الكاملة):
+  بدون Shizuku يعمل التطبيق على ما تسمحه صلاحيات النظام العامة (DND،
+  الحركات، Battery Saver، بيانات الشبكة…) — ومع Shizuku تُفعل التعديلات
+  العميقة (Governor، GPU، DPI، Thermal Override، قتل العمليات…).
+
+### تثبيت Shizuku (خطوة بخطوة)
+
+1. ثبّت [Shizuku](https://shizuku.rikka.app/) من GitHub.
+2. شغّله بإحدى طريقتين:
+   - **ADB**: `adb shell app_process -Djava.class.path=$(pm path rikka.app.enhancedmode | cut -d= -f2) rikka.app.enhancedmode.Init`
+   - **الجذر**: إذا جهازك Magisk — شغّل Shizuku من وضع root مباشرة.
+3. في NitroBoost: **الإعدادات → زر Shizuku** → اسمح بالسماح (Grant).
+   الحالة ستظهر «جاهز ✅».
+
+---
+
+## 🛠️ البناء
+
+### الطريقة الأسهل — Android Studio
+
+1. `File → Open` واختر مجلد `NitroBoost/`.
+2. انتظر اكتمال **Gradle Sync** (ينزّل التبعيات من Maven Central تلقائيًا).
+3. اضغط **Run ▶** على جهاز حقيقي (المحاكاة لا تدعم Shizuku).
+
+### من الطرفية (اختياري)
+
+المشروع لا يحوي `gradle-wrapper.jar` (ملف ثنائي). مرّة واحدة فقط:
+
+```bash
+cd NitroBoost
+gradle wrapper --gradle-version 8.7   # إذا كان Gradle 8.7 مثبتًا
+./gradlew assembleDebug
+./gradlew test                        # اختبارات JVM للنواة (المحرك، السجل، الملفات)
+```
+
+APK الناتج في `app/build/outputs/apk/debug/`.
+
+> **ملاحظة**: لا يوجد شريط تقدم وهمي — كل عملية تُنفَّذ فعلًا وتُفحص
+> نتيجتها، وما يفشل يُسجَّل فقط ولا يُحتسب في النقاط.
+
+---
+
+## 🧭 هيكل الكود
+
+```
+app/src/main/java/com/nitroboost/app/
+├── NitroApp.kt                  # Application — التهيئة
+├── AppStore.kt                  # الحالة العامة (جلسة، ملفات، سجل، منطق)
+├── core/
+│   ├── Model.kt                 # TaskIds، Modules، ShellResult، DndFilters
+│   ├── BoostContext.kt          # لقطة بيانات لنبضة المحرك
+│   ├── BoostEngine.kt           # المحرك: تنفيذ / استعادة / تدرّج حراري
+│   ├── Journal.kt               # سجل التعديلات (JSON)
+│   ├── AppProfile.kt            # موديل ملف اللعبة + تحقق المدخلات
+│   ├── ThermalGuard.kt          # مصفوفة التدرّج الحراري
+│   ├── ScoreEngine.kt           # حساب نقاط التعزيز
+│   ├── CpuMath.kt / SnmpMath.kt # تحليل إحصاءات CPU + ping (SNMP)
+│   ├── SystemExecutor.kt        # واجهة أوامر النظام (عزل الاختبار)
+│   └── tasks/                   # 11 مهمة (DND، Game Mode، Governor، GPU،
+│                                #  Display، RAM×2، Power، Network، Animations،
+│                                #  Thermal Override، All)
+├── data/
+│   ├── Prefs.kt                 # التفضيلات
+│   ├── ProfileStore.kt          # ملفات الألعاب (assets + مخصصة)
+│   └── SessionLog.kt            # سجل الجلسة
+├── platform/
+│   ├── AndroidExecutor.kt       # التنفيذ الفعلي (Settings API + Shizuku)
+│   ├── ShizukuShell.kt          # جسر Shizuku (UserService + AIDL)
+│   ├── Monitor.kt / MonitorHub.kt # الرصد الحي (CPU/RAM/حرارة/بطارية)
+│   └── FpsSampler.kt / NetSampler.kt  # عيّنتا FPS و Ping
+├── service/
+│   ├── BoosterService.kt        # خلفية: حلقة المحرك كل 5 ثوانٍ
+│   ├── FpsOverlayService.kt     # شريط FPS فوق اللعبة
+│   ├── QuickTileService.kt      # زر Quick Settings
+│   ├── WidgetProvider.kt        # ويدجت سطح المكتب
+│   ├── NitroUserService.kt      # خدمة Shizuku (تعمل بهوية shell)
+│   └── BootReceiver.kt          # بدء تلقائي (اختياري)
+├── ui/                          # الشاشات (findViewById، بدون Compose)
+└── shizuku/INitroService.aidl   # واجهة AIDL لخدمة Shizuku
+```
+
+---
+
+## 🛡️ نموذج الأمان (لماذا «بدون أخطاء وتعارضات»)
+
+1. **كل كتابة عبر بوابة واحدة** (`SystemExecutor`) مع تحقق بعد الكتابة
+   (نقرأ القيمة بعد كتابتها للتأكد).
+2. **Journal إلزامي**: لا يُعتبر تعديلًا ناجحًا إلا بعد تسجيل قيمته السابقة.
+3. **استعادة بالتراس العكسي**: آخر ما عُدِّل هو أول ما يُستعاد — لا تعارض
+   بين التعديلات.
+4. **الفشل لا يُمسح**: عنصر يفشل في الاستعادة يبقى في السجل ويُعاد
+   محاولة استعادته في الجلسة التالية.
+5. **De-escalation حراري**: لا «إطفاء كل شيء» — تراجع تدريجي بمصفوفة
+   محددة مسبقًا لكل حالة حرارية (0..6).
+6. **كل شيء مغلّف**: أي استثناء في مهمة لا يسقط المحرك ولا التطبيق.
+7. **قائمة حماية**: العمليات في القائمة لا تُقضي أبدًا.
+
+---
+
+## 🧪 الاختبارات
+
+```bash
+./gradlew test
+```
+
+اختبارات JVM تغطي: المحرك (تنفيذ/استعادة/تدرّج)، السجل (JSON، قيم null،
+تراس الاستعادة)، الملفات (تحميل assets، تحقق المدخلات)، والتسجيل (Scoring).
+
+---
+
+## ⚖️ مقارنة سريعة مع Game Speed X
+
+| | Game Speed X | NitroBoost |
+|---|---|---|
+| الاستعادة | يدوية جزئية | تلقائية + يدوية كاملة + سجل |
+| الحرارة | إيقاف شامل | تراجع تدرّجي ذكي |
+| ملفات الألعاب | عامة | 10 ملفات + مخصصة (DPI/FPS/تحديث) |
+| الرصد فوق اللعبة | ❌ | ✅ FPS/CPU/RAM/حرارة/Ping |
+| حماية عمليات | ❌ | ✅ قائمة قابلة للتعديل |
+| ويدجت + Quick Tile | ❌ | ✅ |
+| عربي | ❌ | ✅ |
+
+---
+
+## 📄 الترخيص
+
+مشروع تعليمي/بحثي. استخدام Shizuku يخضع لشروطه. لا نتحمل مسؤولية تعديلات
+النظام على الأجهزة غير المدعومة — استخدم على مسؤوليتك، والأمان هنا
+(السجل + الاستعادة) موجودًا لهذا السبب.
