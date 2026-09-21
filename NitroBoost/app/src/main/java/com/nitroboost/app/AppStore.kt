@@ -354,13 +354,12 @@ object AppStore {
                     .mapNotNull { line ->
                         val p = line.trim().split(Regex("\\s+"))
                         if (p.size < 3) return@mapNotNull null
-                        val pid = p[0].toIntOrNull() ?: return@mapNotNull null
                         val rssKb = p[1].toLongOrNull() ?: return@mapNotNull null
-                        val pkg = try {
-                            pm.getPackageForPid(pid)
-                        } catch (e: Exception) {
-                            null
-                        } ?: return@mapNotNull null
+                        // On Android the ps process name is the package
+                        // (possibly with a ":suffix" for child processes).
+                        val procName = p.drop(2).joinToString(" ")
+                        val pkg = procName.substringBefore(":")
+                        if (!pkg.contains(".")) return@mapNotNull null // kernel/system thread
                         val name = try {
                             pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
                         } catch (e: Exception) {

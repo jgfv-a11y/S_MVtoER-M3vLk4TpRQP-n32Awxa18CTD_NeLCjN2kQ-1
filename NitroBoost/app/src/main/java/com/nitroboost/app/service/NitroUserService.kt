@@ -17,7 +17,7 @@ import java.io.File
 class NitroUserService constructor() : INitroService.Stub() {
 
     @Keep
-    constructor(context: Context) : super()
+    constructor(context: Context) : this()
 
     /** Reserved: called by the Shizuku server when the service is destroyed. */
     override fun destroy() {
