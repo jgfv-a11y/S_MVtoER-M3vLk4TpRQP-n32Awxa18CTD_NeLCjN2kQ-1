@@ -22,11 +22,9 @@ object ScoreEngine {
     }
 
     fun compute(i: Inputs): Int {
-        val base = if (i.applicableTasks <= 0) {
-            0
-        } else {
-            (i.appliedTasks * 60.0 / i.applicableTasks).toInt()
-        }
+        // No applicable work -> nothing boosted -> zero, period.
+        if (i.applicableTasks <= 0) return 0
+        val base = (i.appliedTasks * 60.0 / i.applicableTasks).toInt()
         val thermal = when {
             i.thermalStatus <= 1 -> 15
             i.thermalStatus == 2 -> 8
