@@ -1,5 +1,7 @@
 package com.nitroboost.app.core
 
+import com.nitroboost.app.core.adaptive.Bottleneck
+
 /**
  * Aggregated performance of one boost session.
  * Pure data + pure builder so the math is unit-testable on the JVM.
@@ -20,7 +22,8 @@ data class SessionReport(
     val applied: Int,
     val failed: Int,
     val previousAvgFps: Int?,
-    val deltaFps: Int?
+    val deltaFps: Int?,
+    val endBottleneck: Bottleneck? = null
 )
 
 object SessionReportBuilder {
@@ -34,7 +37,8 @@ object SessionReportBuilder {
         ramMbSamples: List<Int>,
         applied: Int,
         failed: Int,
-        previousAvgFps: Int?
+        previousAvgFps: Int?,
+        endBottleneck: Bottleneck? = null
     ): SessionReport {
         val avgFps = if (fpsSamples.isEmpty()) null else fpsSamples.average().toInt()
         val delta =
@@ -51,7 +55,8 @@ object SessionReportBuilder {
             applied = applied,
             failed = failed,
             previousAvgFps = previousAvgFps,
-            deltaFps = delta
+            deltaFps = delta,
+            endBottleneck = endBottleneck
         )
     }
 }

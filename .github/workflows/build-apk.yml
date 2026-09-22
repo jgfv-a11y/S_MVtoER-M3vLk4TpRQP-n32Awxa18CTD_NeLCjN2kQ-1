@@ -119,14 +119,37 @@ jobs:
       - name: Publish release with APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: nitroboost-v1.3.0
-          name: NitroBoost v1.3.0
+          tag_name: nitroboost-v1.3.2
+          name: NitroBoost v1.3.2
           body: |
             NitroBoost — journal-based game booster with a full adaptive A/B
             engine. Install on a real device (Shizuku required for the full
             feature set; the app degrades gracefully without it).
             Debug-signed build for direct install; store builds (signed
             release) are prepared — see `NitroBoost/docs/DISTRIBUTION.md`.
+
+            ## v1.3.2 — Faster, more precise, stronger engine
+            - **~2x faster adaptive sessions**: 12s windows, 2s settles,
+              baseline measured ONCE per session and reused for every
+              candidate (re-measured only after 5 min or a thermal change).
+            - **More precise statistics**: outlier trimming (top/bottom 10%)
+              before the 95% CI; FPS + thermal strictly aligned per tick.
+            - **Thermal-aware verdicts**: an FPS win that heats the SoC a
+              full tier is downgraded to NEUTRAL — no wins paid in throttling.
+            - **Governor A/B**: `performance` vs `schedutil` tested against
+              each other; the winning variant is restored automatically.
+            - 1Hz sampling, self-healing monitor hub, live ETA in the UI.
+            - **First-run permissions popup** (real POST_NOTIFICATIONS
+              request) and **fully automatic Shizuku** (open -> grant ->
+              bind, on launch and after every resume).
+            - **Settings journal fixed**: live entry list with old->new
+              values, auto-refresh on every visit.
+            - **Enriched session report**: min FPS, peak RAM, main
+              bottleneck at session end.
+            - **Overlay fixed**: stats wrap instead of clipping; `--` for a
+              missing temperature sensor.
+            - **Honest task statuses**: ROM-blocked writes are now
+              "Skipped — this device blocks it", not "Failed".
 
             ## v1.3.0 — Dynamic resolution sweep
             - **Downscale sweep (0.9 / 0.8 / 0.7)**: the adaptive engine

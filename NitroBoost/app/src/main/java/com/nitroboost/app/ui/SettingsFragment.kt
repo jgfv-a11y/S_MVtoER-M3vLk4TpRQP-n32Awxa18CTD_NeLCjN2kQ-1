@@ -96,10 +96,50 @@ class SettingsFragment : Fragment() {
             root.findViewById<Button>(R.id.btn_clear_log).setOnClickListener {
                 SessionLog.clear(c)
                 AppStore.loadLogs()
+                updateJournal()
             }
-            updateJournalCount()
+            updateJournal()
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        // The journal changes when sessions run/restore — refresh on every
+        // tab visit so the numbers and the entry list are always live.
+        updateJournal()
+        refreshShizuku()
+    }
+
+    private fun updateJournal() {
+        val tv = view?.findViewById<TextView>(R.id.journal_count) ?: return
+        val list = view?.findViewById<TextView>(R.id.journal_list) ?: return
+        val entries = AppStore.journal().entries
+        tv.text = getString(R.string.journal_entries, entries.size)
+        if (entries.isEmpty()) {
+            list.visibility = View.GONE
+            return
+        }
+        val sb = StringBuilder()
+        entries.takeLast(14).asReversed().forEach { e ->
+            sb.append("\u2022 ")
+            sb.append(e.taskId)
+            sb.append("  ")
+            val key = e.key.substringAfterLast('/').substringAfterLast(':')
+            sb.append(if (key.length > 26) e.key.substringAfterLast('/') else key)
+            if (!e.oldValue.isNullOrEmpty() && e.oldValue != "none" && e.oldValue != "absent") {
+                sb.append(": ")
+                sb.append(shorten(e.oldValue))
+                sb.append(" \u2192 ")
+                sb.append(shorten(e.newValue ?: ""))
+            }
+            sb.append('\n')
+        }
+        list.text = sb.toString()
+        list.visibility = View.VISIBLE
+    }
+
+    private fun shorten(v: String): String =
+        if (v.length > 18) v.take(15) + "\u2026" else v
 
     private fun bindSwitch(
         root: View,
@@ -130,11 +170,6 @@ class SettingsFragment : Fragment() {
         } else {
             getString(R.string.shizuku_missing)
         }
-    }
-
-    private fun updateJournalCount() {
-        val tv = view?.findViewById<TextView>(R.id.journal_count) ?: return
-        tv.text = getString(R.string.journal_entries, AppStore.journal().entries.size)
     }
 
     private fun applyLocale(lang: String) {

@@ -65,4 +65,33 @@ class AdaptivePolicyTest {
         val d = AdaptivePolicy.deltasOf(listOf(1, 2, 3), listOf(5, 5))
         assertEquals(listOf(4.0, 3.0), d)
     }
+
+    @Test fun `small samples are not trimmed`() {
+        val d = listOf(-1.0, 0.0, 0.5, 1.0, 99.0)
+        assertEquals(d, AdaptivePolicy.trimmedDeltas(d))
+        assertEquals(emptyList(), AdaptivePolicy.trimmedDeltas(emptyList()))
+    }
+
+    @Test fun `outlier spikes are trimmed before the statistics`() {
+        // 20 pairs: one huge hitch spike, one huge dip, the rest ~+2.
+        // The naive mean would be 1.8; after trimming the engine sees a clean
+        // +2.0 and the confidence interval is not dragged wide open.
+        val d = (0 until 18).map { 2.0 } + listOf(90.0, -90.0)
+        val trimmed = AdaptivePolicy.trimmedDeltas(d)
+        assertEquals(18, trimmed.size)
+        assertTrue(!trimmed.contains(-90.0))
+        assertTrue(trimmed.none { it > 10.0 })
+
+        val outcome = AdaptivePolicy.assess(d, TrialConfig(minPairs = 10, minEffectFps = 0.5))
+        assertEquals(Decision.KEEP, outcome.decision)
+        assertEquals(2.0, outcome.meanDelta!!, 0.001)
+        assertEquals(18, outcome.pairs)
+    }
+
+    @Test fun `trimmedDeltas is order independent`() {
+        val a = (0 until 20).map { (it * 7) % 13 - 6 }.map { it.toDouble() }
+        val trimmedA = AdaptivePolicy.trimmedDeltas(a).sorted()
+        val trimmedB = AdaptivePolicy.trimmedDeltas(a.reversed()).sorted()
+        assertEquals(trimmedA, trimmedB)
+    }
 }

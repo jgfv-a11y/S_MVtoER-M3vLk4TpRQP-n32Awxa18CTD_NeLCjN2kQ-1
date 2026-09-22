@@ -64,9 +64,11 @@ class CpuFloorTask : BoostTask {
             return TaskResult(id, TaskStatus.Skipped, "no cpufreq policies visible to shell")
         }
         val entries = mutableListOf<JournalEntry>()
+        var attempted = 0
         for (p in ps) {
             val target = targetFloor(p)
             if (p.minFreq >= target) continue
+            attempted++
             val w = ctx.executor.shell("echo $target > ${p.dir}/scaling_min_freq 2>/dev/null")
             val now = ctx.executor.readSys("${p.dir}/scaling_min_freq")?.toLongOrNull()
             if (now != null && now >= target) {
@@ -79,17 +81,16 @@ class CpuFloorTask : BoostTask {
                         newValue = target.toString()
                     )
                 )
-            } else if (!w.ok) {
-                return TaskResult(
-                    id,
-                    TaskStatus.Failed("ROM blocks scaling_min_freq writes on ${p.dir}")
-                )
             }
         }
-        return if (entries.isEmpty()) {
-            TaskResult(id, TaskStatus.NoChange, "floor already set")
-        } else {
-            TaskResult(id, TaskStatus.Applied, "${entries.size} policy(ies)", entries = entries)
+        return when {
+            entries.isNotEmpty() -> TaskResult(id, TaskStatus.Applied, "${entries.size} policy(ies)", entries = entries)
+            attempted > 0 -> TaskResult(
+                id,
+                TaskStatus.Skipped,
+                "ROM blocks scaling_min_freq writes on this device"
+            )
+            else -> TaskResult(id, TaskStatus.NoChange, "floor already set")
         }
     }
 }

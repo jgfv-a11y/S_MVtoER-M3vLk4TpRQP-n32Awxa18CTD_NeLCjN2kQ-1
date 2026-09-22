@@ -93,6 +93,9 @@ class FpsOverlayService : Service() {
         if (view != null) return
         val v = LayoutInflater.from(this).inflate(R.layout.view_overlay, null)
         val t = v.findViewById<TextView>(R.id.overlay_text)
+        // Wrap instead of running off the screen edge — on narrow devices
+        // the full line (FPS CPU RAM temp ping) must stay readable.
+        t.maxWidth = (300 * resources.displayMetrics.density).toInt()
         view = v
         text = t
 
@@ -187,8 +190,9 @@ class FpsOverlayService : Service() {
                 if (isNotEmpty()) append("  ")
                 append(c.getString(R.string.overlay_temp))
                 append(" ")
-                append(s.tempC?.let { Math.round(it) } ?: 0)
-                append("\u00B0")
+                append(
+                    s.tempC?.let { "${Math.round(it)}\u00B0" } ?: "--"
+                )
             }
             if (Prefs.getBool(c, Prefs.KEY_OV_PING, true)) {
                 if (isNotEmpty()) append("  ")

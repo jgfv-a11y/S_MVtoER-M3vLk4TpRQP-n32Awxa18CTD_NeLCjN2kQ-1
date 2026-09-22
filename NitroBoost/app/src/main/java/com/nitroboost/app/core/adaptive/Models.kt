@@ -37,13 +37,17 @@ data class FrameMetrics(
     val tempC: Double?
 )
 
-/** Tunables for the trial statistics. Defaults chosen for a phone, not a lab. */
+/**
+ * Tunables for the trial statistics.
+ * v2 speed: 12s windows + 2s settles + session-wide baseline reuse make a
+ * full 9-candidate sweep ~5 minutes instead of ~10.
+ */
 data class TrialConfig(
     val minPairs: Int = 8,
     val maxPairs: Int = 40,
     val minEffectFps: Double = 0.5,
-    val windowMs: Long = 20_000L,
-    val settleMs: Long = 3_000L
+    val windowMs: Long = 12_000L,
+    val settleMs: Long = 2_000L
 )
 
 /** Result of assessing the accumulated delta pairs of one task. */

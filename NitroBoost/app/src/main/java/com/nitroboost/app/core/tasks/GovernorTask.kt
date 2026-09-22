@@ -8,18 +8,23 @@ import com.nitroboost.app.core.TaskResult
 import com.nitroboost.app.core.TaskStatus
 
 /**
- * Push every CPU core governor to "performance".
+ * Push every CPU core to the requested governor (default "performance").
  * Requires a privileged shell (Shizuku). On ROMs where the cpufreq sysfs is
- * not exposed to shell the task reports Failed with a clear reason — it never
- * pretends to work.
+ * not writable by shell the task reports Skipped ("not writable on this
+ * ROM") — it never pretends to work, and a blocked ROM is not an error.
+ *
+ * [governor] is injectable: the adaptive engine A/B tests "performance"
+ * against "schedutil" on the real device and keeps the winner.
  */
-class GovernorTask : BoostTask {
+class GovernorTask(private val governor: String = "performance") : BoostTask {
 
     override val id = "cpu_governor"
     override val titleAr = "وضع الأداء للمعالج"
     override val titleEn = "CPU performance governor"
-    override val descAr = "تحويل جميع أنوية المعالج إلى وضع الأداء الأقصى"
-    override val descEn = "Switch all CPU cores to the performance governor"
+    override val descAr: String
+        get() = "تحويل جميع أنوية المعالج إلى وضع $governor"
+    override val descEn: String
+        get() = "Switch all CPU cores to the $governor governor"
     override val module = Module.CPU
     override val requiresPrivilege = true
 
@@ -47,7 +52,7 @@ class GovernorTask : BoostTask {
 
     override fun isApplied(ctx: BoostContext): Boolean {
         val files = listGovernors(ctx)
-        return files.isNotEmpty() && files.all { it.current == "performance" }
+        return files.isNotEmpty() && files.all { it.current == governor }
     }
 
     override fun apply(ctx: BoostContext): TaskResult {
@@ -61,33 +66,34 @@ class GovernorTask : BoostTask {
         }
         val entries = mutableListOf<JournalEntry>()
         var touched = 0
+        var attempted = 0
         for (f in files) {
-            if (f.current == "performance") continue
-            val w = ctx.executor.shell("echo performance > \"${f.path}\" 2>/dev/null")
+            if (f.current == governor) continue
+            attempted++
+            val w = ctx.executor.shell("echo $governor > \"${f.path}\" 2>/dev/null")
             val now = ctx.executor.readSys(f.path)
-            if (now == "performance") {
+            if (now == governor) {
                 entries.add(
                     JournalEntry(
                         taskId = id,
                         kind = JournalEntry.Kind.SYSFS,
                         key = f.path,
                         oldValue = f.current,
-                        newValue = "performance",
+                        newValue = governor,
                         revertCmd = "echo ${f.current} > \"${f.path}\" 2>/dev/null"
                     )
                 )
                 touched++
-            } else if (!w.ok) {
-                return TaskResult(
-                    id,
-                    TaskStatus.Failed("ROM blocks governor writes (shell has no cpufreq access)")
-                )
             }
         }
-        return if (touched == 0) {
-            TaskResult(id, TaskStatus.NoChange, "all cores already at performance")
-        } else {
-            TaskResult(id, TaskStatus.Applied, "${touched} cores", entries = entries)
+        return when {
+            touched > 0 -> TaskResult(id, TaskStatus.Applied, "$touched cores", entries = entries)
+            attempted > 0 -> TaskResult(
+                id,
+                TaskStatus.Skipped,
+                "ROM blocks governor writes on this device"
+            )
+            else -> TaskResult(id, TaskStatus.NoChange, "all cores already at $governor")
         }
     }
 }

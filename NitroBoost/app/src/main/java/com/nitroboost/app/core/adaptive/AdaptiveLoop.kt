@@ -9,6 +9,7 @@ import com.nitroboost.app.core.ThermalGuard
 import com.nitroboost.app.core.TaskResult
 import com.nitroboost.app.core.TaskStatus
 import com.nitroboost.app.core.tasks.GameApiTask
+import com.nitroboost.app.core.tasks.GovernorTask
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -18,7 +19,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.concurrent.Volatile
 
-/** One measured arm of the downscale sweep. */
+/** One aligned observation (FPS + thermal tier) of the running game. */
+data class AdaptiveSample(val fps: Int?, val thermal: Int)
+
+/** One measured arm of a variant sweep. */
 data class SweepArm(val level: String, val deltas: List<Double>) {
     val mean: Double
         get() = if (deltas.isEmpty()) Double.NEGATIVE_INFINITY else deltas.average()
@@ -27,13 +31,21 @@ data class SweepArm(val level: String, val deltas: List<Double>) {
 /** Pure: best arm = highest mean delta; null when nothing measured. */
 fun pickBestArm(arms: List<SweepArm>): SweepArm? = arms.maxByOrNull { it.mean }
 
+/** A measurable variant of a candidate task (e.g. downscale 0.8, governor schedutil). */
+data class Variant(val detail: String, val apply: (BoostContext) -> TaskResult)
+
 /**
  * What the loop can observe. Implemented by AppStore over the monitor
  * snapshots; the loop itself never touches Android classes, which is what
  * keeps the decision pipeline unit-testable.
  */
 interface AdaptiveSampler {
-    /** Latest measured FPS of the game, or null (no Shizuku / priming). */
+    /**
+     * Next FRESH aligned sample (null while the monitor has not produced a
+     * new snapshot). One call per loop tick — FPS and thermal stay paired.
+     */
+    fun poll(): AdaptiveSample?
+    /** Latest known FPS (may be stale). */
     fun fps(): Int?
     /** Latest frame metrics, or null before the first sample. */
     fun metrics(): FrameMetrics?
@@ -41,19 +53,30 @@ interface AdaptiveSampler {
 }
 
 /**
- * The adaptive engine.
+ * The adaptive engine (v2 — faster, more precise, stronger).
  *
  * During a boost session it A/B tests every profile-enabled performance
  * tweak on the real device:
  *
- *   1. revert the candidate (journal) -> settle -> measure baseline window
- *   2. apply the candidate (journal)  -> settle -> measure arm window
- *   3. paired deltas  ->  DecisionLedger (accumulates across sessions)
- *   4. verdict:
- *        KEEP       -> stays applied
- *        DROP       -> reverted, and AppStore.boost() will not re-apply it
- *        NEUTRAL    -> reverted (clean system, same FPS)
- *        NEEDS_MORE -> reverted now, measured again next session
+ *   1. revert the candidate -> settle -> baseline window
+ *   2. apply the candidate  -> settle -> arm window
+ *   3. paired, outlier-trimmed deltas -> DecisionLedger
+ *   4. verdict: KEEP / DROP / NEUTRAL / NEEDS_MORE
+ *
+ * Speed:
+ *  - the FIRST candidate of a session measures the baseline; every later
+ *    candidate REUSES it (device unchanged) — saving a full window per task;
+ *  - the baseline is re-measured only after 5 minutes or a thermal change.
+ *
+ * Precision:
+ *  - deltas are outlier-trimmed (top/bottom 10%) before the paired 95% CI;
+ *  - thermal-aware: an FPS "win" that heats the SoC a full tier is
+ *    downgraded to NEUTRAL — a win you pay for with throttling is not a win.
+ *
+ * Strength:
+ *  - variant sweeps: downscale 0.9/0.8/0.7 and governor performance/schedutil
+ *    are tested against each other; the winner (with its exact variant) is
+ *    persisted and restored by AppStore on every later session.
  *
  * Safety (non-negotiable):
  *  - never runs without a privileged shell and a real FPS source;
@@ -79,13 +102,17 @@ class AdaptiveLoop(
             Module.CPU, Module.GPU, Module.TWEAKS, Module.NETWORK
         )
 
-        /**
-         * The downscale sweep: legal AOSP ratios, mildest first. Each level
-         * is measured against the SAME baseline; the engine keeps the level
-         * whose measured delta is best — the real "dynamic resolution"
-         * control point for a userland booster.
-         */
+        /** Legal AOSP downscale ratios, mildest first. */
         val SWEEP_LEVELS = listOf("0.9", "0.8", "0.7")
+
+        /** Governor variants tested against each other. */
+        val GOVERNOR_VARIANTS = listOf("performance", "schedutil")
+
+        /** A session baseline is valid for at most this long. */
+        const val BASELINE_MAX_AGE_MS = 5 * 60_000L
+
+        /** Arm heats one full thermal tier vs baseline -> not a real win. */
+        const val THERMAL_REGRESSION_TIERS = 1
     }
 
     @Volatile var phase: String = "idle"
@@ -100,11 +127,21 @@ class AdaptiveLoop(
     @Volatile
     private var running = false
 
+    // Session-wide baseline (shared by all candidates, see class docs).
+    @Volatile
+    private var sessBaseline: List<Int>? = null
+    @Volatile
+    private var sessBaselineThermal = -1
+    @Volatile
+    private var sessBaselineAt = 0L
+
     val isRunning: Boolean get() = running
 
     fun start() {
         if (running) return
         running = true
+        sessBaseline = null
+        sessBaselineAt = 0L
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         job = scope?.launch { loop() }
         log("adaptive engine started")
@@ -120,6 +157,8 @@ class AdaptiveLoop(
         phase = "idle"
         candidateId = null
         pausedReason = null
+        sessBaseline = null
+        sessBaselineAt = 0L
         log("adaptive engine stopped")
     }
 
@@ -130,7 +169,7 @@ class AdaptiveLoop(
             } catch (e: Exception) {
                 log("adaptive step failed: ${e.message}")
             }
-            delay(2_000)
+            delay(1_500)
         }
     }
 
@@ -170,27 +209,85 @@ class AdaptiveLoop(
                 !ledger.isResolved(t.id)
         }
 
-    private suspend fun runTrial(task: BoostTask, ctx: BoostContext) {
-        if (task.id == "game_api_downscale") {
-            runSweep(task, ctx)
-            return
+    /** Human-friendly estimate of the remaining work, in minutes. */
+    fun estimateRemainingMinutes(ctx: BoostContext): Int {
+        val pending = engine.tasks().count { t ->
+            t.module in TRIAL_MODULES &&
+                t.requiresPrivilege &&
+                ctx.profile.isEnabled(t) &&
+                !ledger.isResolved(t.id)
         }
-        // 1) baseline: candidate must be OFF
-        revertTask(task.id, ctx)
+        var ms = pending.toLong() * (cfg.windowMs + 2 * cfg.settleMs)
+        if (sessBaseline == null) ms += cfg.windowMs
+        return ((ms + 59_999L) / 60_000L).toInt().coerceAtLeast(0)
+    }
+
+    private data class Window(val fps: List<Int>, val thermalMean: Int)
+
+    /**
+     * Acquire the session baseline: reuse the cached one when still valid
+     * (same thermal tier, < 5 minutes old), otherwise measure it fresh with
+     * the candidate reverted.
+     */
+    private suspend fun acquireBaseline(ctx: BoostContext, candidateId: String): Window? {
+        val cached = sessBaseline
+        if (
+            cached != null &&
+            cached.size >= 2 &&
+            System.currentTimeMillis() - sessBaselineAt < BASELINE_MAX_AGE_MS &&
+            effectiveThermal() == sessBaselineThermal
+        ) {
+            return Window(cached, sessBaselineThermal)
+        }
+        revertTask(candidateId, ctx)
         delay(cfg.settleMs)
-        val baseline = collectFps(cfg.windowMs)
-        if (baseline.size < 2) {
-            // FPS source not producing data — record and retry next session
-            ledger.record(
-                task.id, task.titleEn, emptyList(),
-                AdaptivePolicy.assess(emptyList(), cfg),
-                System.currentTimeMillis(), cfg
+        val w = collectWindow(cfg.windowMs)
+        if (w.fps.size < 2) return null
+        sessBaseline = w.fps
+        sessBaselineThermal = w.thermalMean
+        sessBaselineAt = System.currentTimeMillis()
+        return w
+    }
+
+    private suspend fun collectWindow(windowMs: Long): Window {
+        val fps = mutableListOf<Int>()
+        val temps = mutableListOf<Int>()
+        val end = System.currentTimeMillis() + windowMs
+        while (running && System.currentTimeMillis() < end) {
+            sampler.poll()?.let {
+                if (it.fps != null) fps.add(it.fps)
+                temps.add(it.thermal)
+            }
+            delay(1_000)
+        }
+        return Window(fps, if (temps.isEmpty()) 0 else temps.average().toInt())
+    }
+
+    private suspend fun runTrial(task: BoostTask, ctx: BoostContext) {
+        when (task.id) {
+            "game_api_downscale" -> runVariantSweep(
+                task, ctx,
+                SWEEP_LEVELS.map { lvl ->
+                    Variant("level=$lvl") { GameApiTask(level = lvl).apply(it) }
+                }
             )
-            ledger.save()
-            log("adaptive ${task.id}: no FPS data to measure")
+            "cpu_governor" -> runVariantSweep(
+                task, ctx,
+                GOVERNOR_VARIANTS.map { g ->
+                    Variant("governor=$g") { GovernorTask(g).apply(it) }
+                }
+            )
+            else -> runSingle(task, ctx)
+        }
+    }
+
+    /** Plain single-variant trial. */
+    private suspend fun runSingle(task: BoostTask, ctx: BoostContext) {
+        val baseline = acquireBaseline(ctx, task.id)
+        if (baseline == null) {
+            recordNoData(task, ctx)
             return
         }
-        // 2) arm: candidate ON
         val r = try {
             task.apply(ctx)
         } catch (e: Exception) {
@@ -198,15 +295,17 @@ class AdaptiveLoop(
         }
         if (r.entries.isNotEmpty() && r.status.success) ctx.journal.add(r.entries)
         delay(cfg.settleMs)
-        val arm = collectFps(cfg.windowMs)
-        if (arm.size < 2) {
+        val arm = collectWindow(cfg.windowMs)
+        if (arm.fps.size < 2) {
             revertTask(task.id, ctx)
             return
         }
-        // 3) decide over the accumulated pairs (this session + previous)
-        val deltas = AdaptivePolicy.deltasOf(baseline, arm)
+        val deltas = AdaptivePolicy.deltasOf(baseline.fps, arm.fps)
         val baseDeltas = ledger.entries[task.id]?.deltas ?: emptyList()
-        val outcome = AdaptivePolicy.assess(baseDeltas + deltas, cfg)
+        val outcome = withThermalGuard(
+            AdaptivePolicy.assess(baseDeltas + deltas, cfg),
+            baseline.thermalMean, arm.thermalMean
+        )
         val merged = ledger.record(task.id, task.titleEn, deltas,
             outcome, System.currentTimeMillis(), cfg)
         ledger.save()
@@ -215,7 +314,6 @@ class AdaptiveLoop(
                 "mean=${merged.meanDelta?.let { String.format("%.2f", it) }} " +
                 "pairs=${merged.pairs} sessions=${merged.sessions}"
         )
-        // 4) leave the system clean except for KEEP verdicts
         when (merged.decision) {
             Decision.KEEP -> Unit
             else -> revertTask(task.id, ctx)
@@ -223,58 +321,48 @@ class AdaptiveLoop(
     }
 
     /**
-     * Dynamic-resolution sweep: one shared baseline (no override), then each
-     * legal downscale level measured against it. The winning level (best
-     * measured mean delta) is kept and journaled; its verdict and the level
-     * itself persist in the ledger so the normal boost path can restore the
-     * winner on later sessions (see AppStore.honorLedger).
+     * Variant sweep: one shared session baseline, then each variant measured
+     * against it (device reset to default between arms). The best variant —
+     * statistically — wins; its detail string (e.g. "level=0.8") persists in
+     * the ledger and AppStore restores the winner on later sessions.
      */
-    private suspend fun runSweep(task: BoostTask, ctx: BoostContext) {
-        // shared baseline
-        revertTask(task.id, ctx)
-        delay(cfg.settleMs)
-        val baseline = collectFps(cfg.windowMs)
-        if (baseline.size < 2) {
-            ledger.record(
-                task.id, task.titleEn, emptyList(),
-                AdaptivePolicy.assess(emptyList(), cfg),
-                System.currentTimeMillis(), cfg
-            )
-            ledger.save()
-            log("adaptive sweep ${task.id}: no FPS data to measure")
+    private suspend fun runVariantSweep(task: BoostTask, ctx: BoostContext, variants: List<Variant>) {
+        val baseline = acquireBaseline(ctx, task.id)
+        if (baseline == null) {
+            recordNoData(task, ctx)
             return
         }
-        // arms: one per legal level, each starting from device default
         val arms = mutableListOf<SweepArm>()
-        for (level in SWEEP_LEVELS) {
+        val armThermals = mutableMapOf<String, Int>()
+        for (v in variants) {
             if (!running) return
-            val t = GameApiTask(level = level)
-            val r = try {
-                t.apply(ctx)
-            } catch (e: Exception) {
-                TaskResult(task.id, TaskStatus.Failed("sweep $level: ${e.message}"))
-            }
-            if (!(r.entries.isNotEmpty() && r.status.success)) {
-                // level rejected by the platform (or task unsupported)
-                revertTask(task.id, ctx)
-                continue
-            }
-            delay(cfg.settleMs)
-            val arm = collectFps(cfg.windowMs)
-            // reset BEFORE the next arm so every level starts equal
             revertTask(task.id, ctx)
             delay(cfg.settleMs)
-            if (arm.size < 2) {
+            val r = try {
+                v.apply(ctx)
+            } catch (e: Exception) {
+                TaskResult(task.id, TaskStatus.Failed("sweep ${v.detail}: ${e.message}"))
+            }
+            if (!(r.entries.isNotEmpty() && r.status.success)) continue
+            delay(cfg.settleMs)
+            val arm = collectWindow(cfg.windowMs)
+            if (arm.fps.size < 2) {
+                // never leave a variant applied while unmeasured
+                revertTask(task.id, ctx)
                 if (arms.isEmpty()) return
                 break
             }
-            arms += SweepArm(level, AdaptivePolicy.deltasOf(baseline, arm))
+            arms += SweepArm(v.detail, AdaptivePolicy.deltasOf(baseline.fps, arm.fps))
+            armThermals[v.detail] = arm.thermalMean
         }
         val best = pickBestArm(arms) ?: return
-        val outcome = AdaptivePolicy.assess(best.deltas, cfg)
+        val raw = AdaptivePolicy.assess(best.deltas, cfg)
+        val outcome = withThermalGuard(
+            raw, baseline.thermalMean, armThermals[best.detail] ?: baseline.thermalMean
+        )
         val merged = ledger.record(
             task.id, task.titleEn, best.deltas, outcome,
-            System.currentTimeMillis(), cfg, detail = "level=$best.level"
+            System.currentTimeMillis(), cfg, detail = best.level
         )
         ledger.save()
         log(
@@ -284,12 +372,44 @@ class AdaptiveLoop(
         )
         when (merged.decision) {
             Decision.KEEP -> {
-                val t = GameApiTask(level = best.level)
-                val r = t.apply(ctx)
-                if (r.entries.isNotEmpty() && r.status.success) ctx.journal.add(r.entries)
+                val winner = variants.firstOrNull { it.detail == best.level }
+                if (winner != null) {
+                    val r = try {
+                        winner.apply(ctx)
+                    } catch (e: Exception) {
+                        null
+                    }
+                    if (r != null && r.entries.isNotEmpty() && r.status.success) {
+                        ctx.journal.add(r.entries)
+                    }
+                }
             }
             else -> revertTask(task.id, ctx)
         }
+    }
+
+    /** A "win" that costs a full thermal tier is not a win. */
+    private fun withThermalGuard(
+        outcome: TrialOutcome,
+        baselineThermal: Int,
+        armThermal: Int
+    ): TrialOutcome {
+        if (outcome.decision == Decision.KEEP &&
+            armThermal >= baselineThermal + THERMAL_REGRESSION_TIERS
+        ) {
+            return outcome.copy(decision = Decision.NEUTRAL, reason = "fps up but thermal regression")
+        }
+        return outcome
+    }
+
+    private fun recordNoData(task: BoostTask, ctx: BoostContext) {
+        ledger.record(
+            task.id, task.titleEn, emptyList(),
+            AdaptivePolicy.assess(emptyList(), cfg),
+            System.currentTimeMillis(), cfg
+        )
+        ledger.save()
+        log("adaptive ${task.id}: no FPS data to measure")
     }
 
     /** Revert all journal entries belonging to one task. */
@@ -297,15 +417,5 @@ class AdaptiveLoop(
         val entries = ctx.journal.entries.filter { it.taskId == taskId }
         val ok = entries.filter { Journal.restore(it, ctx.executor) }
         if (ok.isNotEmpty()) ctx.journal.remove(ok)
-    }
-
-    private suspend fun collectFps(windowMs: Long): List<Int> {
-        val out = mutableListOf<Int>()
-        val end = System.currentTimeMillis() + windowMs
-        while (running && System.currentTimeMillis() < end) {
-            sampler.fps()?.let { out.add(it) }
-            delay(1_000)
-        }
-        return out
     }
 }

@@ -1,6 +1,7 @@
 package com.nitroboost.app.core
 
 import com.nitroboost.app.core.adaptive.AdaptiveLoop
+import com.nitroboost.app.core.adaptive.AdaptiveSample
 import com.nitroboost.app.core.adaptive.AdaptiveSampler
 import com.nitroboost.app.core.adaptive.AdaptivePolicy
 import com.nitroboost.app.core.adaptive.DecisionLedger
@@ -22,6 +23,7 @@ class AdaptiveLoopTest {
         @Volatile var fpsVal: Int? = null,
         @Volatile var priv: Boolean = true
     ) : AdaptiveSampler {
+        override fun poll(): AdaptiveSample? = AdaptiveSample(fpsVal, 0)
         override fun fps(): Int? = fpsVal
         override fun metrics(): FrameMetrics? =
             FrameMetrics(fpsVal, 60, 50, 50, 30, 0, 0, 35.0)

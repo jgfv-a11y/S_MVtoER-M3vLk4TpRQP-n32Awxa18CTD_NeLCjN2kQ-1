@@ -46,10 +46,12 @@ class TouchBoostTask : BoostTask {
         val a = active(ctx)
         if (a.isEmpty()) return TaskResult(id, TaskStatus.Skipped, "no cpu_boost interface on this kernel")
         val entries = mutableListOf<JournalEntry>()
+        var attempted = 0
         for (n in a) {
             val cur = ctx.executor.readSys(n.path) ?: continue
             val curV = cur.toLongOrNull() ?: continue
             if (curV >= 200L) continue
+            attempted++
             if (ctx.executor.writeSys(n.path, n.target)) {
                 entries.add(
                     JournalEntry(
@@ -62,10 +64,14 @@ class TouchBoostTask : BoostTask {
                 )
             }
         }
-        return if (entries.isEmpty()) {
-            TaskResult(id, TaskStatus.NoChange, "already boosted")
-        } else {
-            TaskResult(id, TaskStatus.Applied, "${entries.size} node(s)", entries = entries)
+        return when {
+            entries.isNotEmpty() -> TaskResult(id, TaskStatus.Applied, "${entries.size} node(s)", entries = entries)
+            attempted > 0 -> TaskResult(
+                id,
+                TaskStatus.Skipped,
+                "cpu_boost nodes are read-only on this kernel"
+            )
+            else -> TaskResult(id, TaskStatus.NoChange, "already boosted")
         }
     }
 }

@@ -47,9 +47,11 @@ class WaltSchedulerTask : BoostTask {
         val a = active(ctx)
         if (a.isEmpty()) return TaskResult(id, TaskStatus.Skipped, "no WALT sysctls on this ROM")
         val entries = mutableListOf<JournalEntry>()
+        var attempted = 0
         for (n in a) {
             val cur = ctx.executor.readSys(n.path) ?: continue
             if (cur == n.target) continue
+            attempted++
             if (ctx.executor.writeSys(n.path, n.target)) {
                 entries.add(
                     JournalEntry(
@@ -62,10 +64,14 @@ class WaltSchedulerTask : BoostTask {
                 )
             }
         }
-        return if (entries.isEmpty()) {
-            TaskResult(id, TaskStatus.NoChange, "already tuned")
-        } else {
-            TaskResult(id, TaskStatus.Applied, "${entries.size} sysctl(s)", entries = entries)
+        return when {
+            entries.isNotEmpty() -> TaskResult(id, TaskStatus.Applied, "${entries.size} sysctl(s)", entries = entries)
+            attempted > 0 -> TaskResult(
+                id,
+                TaskStatus.Skipped,
+                "kernel exposes these sysctls read-only on this ROM"
+            )
+            else -> TaskResult(id, TaskStatus.NoChange, "already tuned")
         }
     }
 }

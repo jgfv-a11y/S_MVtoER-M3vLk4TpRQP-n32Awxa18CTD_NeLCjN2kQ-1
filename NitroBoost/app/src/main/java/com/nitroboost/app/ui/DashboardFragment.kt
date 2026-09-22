@@ -138,6 +138,27 @@ class DashboardFragment : Fragment() {
         )
         rep.peakTempC?.let { lines.add(getString(R.string.report_temp, it)) }
         rep.minPingMs?.let { lines.add(getString(R.string.report_ping, it)) }
+        rep.minFps?.let { lines.add(getString(R.string.report_min_fps, it)) }
+        if (rep.peakRamMb > 0) {
+            lines.add(getString(R.string.report_peak_ram, rep.peakRamMb / 1024))
+        }
+        rep.endBottleneck?.let {
+            if (it != Bottleneck.UNKNOWN && it != Bottleneck.NONE) {
+                lines.add(
+                    getString(
+                        R.string.report_end_bottleneck,
+                        when (it) {
+                            Bottleneck.CPU -> "CPU"
+                            Bottleneck.GPU -> "GPU"
+                            Bottleneck.MEMORY -> getString(R.string.bottleneck_memory)
+                            Bottleneck.NETWORK -> getString(R.string.bottleneck_network)
+                            Bottleneck.THERMAL -> getString(R.string.bottleneck_thermal)
+                            else -> it.name
+                        }
+                    )
+                )
+            }
+        }
         tv.text = lines.joinToString("\n")
         tv.visibility = View.VISIBLE
     }
@@ -180,6 +201,10 @@ class DashboardFragment : Fragment() {
                         else -> getString(R.string.adaptive_idle)
                     }
                 )
+                if (ui.etaMinutes > 0) {
+                    append("  ")
+                    append(getString(R.string.adaptive_eta, ui.etaMinutes))
+                }
             }
         )
         for (d in ui.decisions) {

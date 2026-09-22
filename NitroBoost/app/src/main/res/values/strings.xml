@@ -157,6 +157,12 @@
     <string name="decision_drop">harmful: %1$s fps (%2$d pairs) — reverted</string>
     <string name="decision_neutral">neutral after %1$d pairs — reverted</string>
     <string name="decision_pending">measuring… %1$d/%2$d pairs</string>
+    <string name="adaptive_eta">ETA ~%1$d min</string>
+    <string name="report_min_fps">Min FPS: %1$d</string>
+    <string name="report_peak_ram">Peak RAM: %1$dGB</string>
+    <string name="report_end_bottleneck">Main bottleneck at session end: %1$s</string>
+    <string name="onboarding_title">Quick setup — optional but unlocks the full power</string>
+    <string name="onboarding_msg">Tap an item to grant it (you can also do this later in Settings). Everything is optional; the app works with a reduced feature set without each one.</string>
 
     <!-- Common -->
     <string name="save">Save</string>

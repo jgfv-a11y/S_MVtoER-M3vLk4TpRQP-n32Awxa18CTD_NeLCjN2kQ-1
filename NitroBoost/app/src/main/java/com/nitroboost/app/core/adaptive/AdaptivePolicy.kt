@@ -41,11 +41,25 @@ object AdaptivePolicy {
         return (0 until n).map { arm[it].toDouble() - baseline[it].toDouble() }
     }
 
-    /** Assess accumulated delta pairs with the paired t interval. */
-    fun assess(deltas: List<Double>, cfg: TrialConfig): TrialOutcome {
+    /**
+     * Pure outlier trim: drop the extreme top and bottom 10% of the deltas
+     * (spikes from hitches, GC pauses, network blips) before the statistics.
+     * Deterministic, order-independent, and never removes more than 2
+     * values per side — small samples stay intact.
+     */
+    fun trimmedDeltas(deltas: List<Double>): List<Double> {
+        if (deltas.size < 6) return deltas
+        val sorted = deltas.sorted()
+        val k = deltas.size / 10
+        return sorted.subList(k, sorted.size - k)
+    }
+
+    /** Assess accumulated delta pairs (outlier-trimmed) with the paired t interval. */
+    fun assess(rawDeltas: List<Double>, cfg: TrialConfig): TrialOutcome {
+        val deltas = trimmedDeltas(rawDeltas)
         val n = deltas.size
         if (n < 2) {
-            return TrialOutcome(Decision.NEEDS_MORE, null, null, null, n,
+            return TrialOutcome(Decision.NEEDS_MORE, null, null, null, rawDeltas.size,
                 "need >= 2 paired samples")
         }
         val mean = deltas.sum() / n

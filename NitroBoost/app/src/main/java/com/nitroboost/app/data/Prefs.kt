@@ -24,6 +24,7 @@ object Prefs {
     const val KEY_LAST_REPORT = "last_session_report" // JSON
     const val KEY_PREV_FPS = "prev_session_avg_fps"
     const val KEY_ADAPTIVE_ON = "adaptive_engine_on"
+    const val KEY_ONBOARDING_DONE = "onboarding_shown"
 
     fun sp(ctx: Context): SharedPreferences =
         ctx.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)

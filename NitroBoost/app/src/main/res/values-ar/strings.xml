@@ -157,6 +157,12 @@
     <string name="decision_drop">ضار: %1$s fps (%2$d زوج) — أُعيد</string>
     <string name="decision_neutral">محايد بعد %1$d زوج — أُعيد</string>
     <string name="decision_pending">قيد القياس… %1$d/%2$d زوج</string>
+    <string name="adaptive_eta">المقدّر ~%1$d دقيقة</string>
+    <string name="report_min_fps">أدنى FPS: %1$d</string>
+    <string name="report_peak_ram">ذروة RAM: %1$dGB</string>
+    <string name="report_end_bottleneck">الاختناق الرئيسي نهاية الجلسة: %1$s</string>
+    <string name="onboarding_title">إعداد سريع — اختياري لكنه يفتح كامل القوة</string>
+    <string name="onboarding_msg">اضغط على أي بند للسماح له (يمكنك ذلك لاحقًا من الإعدادات). كل شيء اختياري، والتطبيق يعمل بمجموعة مزايا أقل بدونه.</string>
 
     <!-- Common -->
     <string name="save">حفظ</string>

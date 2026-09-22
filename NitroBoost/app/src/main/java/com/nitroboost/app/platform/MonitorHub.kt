@@ -61,7 +61,7 @@ class MonitorHub(private val ctx: Context) {
                 } catch (e: Exception) {
                     // listener gone — keep sampling
                 }
-                delay(2000)
+                delay(1000)
             }
         }
     }

@@ -50,9 +50,11 @@ class GpuTask : BoostTask {
         }
         val entries = mutableListOf<JournalEntry>()
         var touched = 0
+        var attempted = 0
         for (n in active) {
             val current = ctx.executor.readSys(n.path) ?: continue
             if (current == n.on) continue
+            attempted++
             if (ctx.executor.writeSys(n.path, n.on)) {
                 entries.add(
                     JournalEntry(
@@ -67,10 +69,14 @@ class GpuTask : BoostTask {
                 touched++
             }
         }
-        return if (touched == 0) {
-            TaskResult(id, TaskStatus.NoChange, "GPU already boosted")
-        } else {
-            TaskResult(id, TaskStatus.Applied, "${touched} node(s)", entries = entries)
+        return when {
+            touched > 0 -> TaskResult(id, TaskStatus.Applied, "${touched} node(s)", entries = entries)
+            attempted > 0 -> TaskResult(
+                id,
+                TaskStatus.Skipped,
+                "ROM blocks these GPU nodes on this device"
+            )
+            else -> TaskResult(id, TaskStatus.NoChange, "GPU already boosted")
         }
     }
 }

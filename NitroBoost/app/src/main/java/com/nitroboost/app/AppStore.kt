@@ -41,6 +41,7 @@ import kotlinx.coroutines.CoroutineScope
 import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.concurrent.Volatile
@@ -86,11 +87,12 @@ object AppStore {
         val bottleneck: Bottleneck,
         val effectiveThermal: Int,
         val osThermal: Int,
-        val decisions: List<LedgerEntry>
+        val decisions: List<LedgerEntry>,
+        val etaMinutes: Int
     )
 
     val adaptiveUi = MutableLiveData<AdaptiveUi>(
-        AdaptiveUi(false, false, "idle", null, Bottleneck.UNKNOWN, 0, 0, emptyList())
+        AdaptiveUi(false, false, "idle", null, Bottleneck.UNKNOWN, 0, 0, emptyList(), 0)
     )
 
     private var hub: MonitorHub? = null
@@ -134,14 +136,19 @@ object AppStore {
         return maxOf(s.thermalStatus, trend.effectiveStatus(s.thermalStatus))
     }
 
-    /** Loop-side view of the monitor: fresh FPS samples only (ts-deduped). */
+    /**
+     * Loop-side view of the monitor: [poll] returns one FRESH aligned
+     * (fps, thermal) pair per monitor tick (ts-deduped) so the adaptive
+     * engine's baseline/arm windows stay sample-aligned.
+     */
     private val sampler = object : AdaptiveSampler {
-        override fun fps(): Int? {
+        override fun poll(): com.nitroboost.app.core.adaptive.AdaptiveSample? {
             val s = monitor.value ?: return null
             if (s.ts == lastFpsTs) return null
             lastFpsTs = s.ts
-            return s.fps
+            return com.nitroboost.app.core.adaptive.AdaptiveSample(s.fps, s.thermalStatus)
         }
+        override fun fps(): Int? = monitor.value?.fps
         override fun metrics(): FrameMetrics? = lastFrame
         override fun privileged(): Boolean =
             try {
@@ -197,7 +204,8 @@ object AppStore {
         if (start == 0L) return
         val prev = Prefs.getInt(ctx(), Prefs.KEY_PREV_FPS, -1).takeIf { it > 0 }
         val rep = SessionReportBuilder.summarize(
-            start, end, fps, temp, ping, ram, applied, failed, prev
+            start, end, fps, temp, ping, ram, applied, failed, prev,
+            endBottleneck = lastFrame?.let { BottleneckDetector.detect(it) }
         )
         try {
             val j = org.json.JSONObject()
@@ -213,6 +221,7 @@ object AppStore {
                 .put("failed", rep.failed)
                 .put("previousAvgFps", rep.previousAvgFps ?: JSONObject.NULL)
                 .put("deltaFps", rep.deltaFps ?: JSONObject.NULL)
+                .put("endBottleneck", rep.endBottleneck?.name ?: JSONObject.NULL)
             Prefs.putString(ctx(), Prefs.KEY_LAST_REPORT, j.toString())
             if (rep.avgFps != null) Prefs.putInt(ctx(), Prefs.KEY_PREV_FPS, rep.avgFps)
         } catch (e: Exception) {
@@ -238,7 +247,9 @@ object AppStore {
                 applied = j.optInt("applied"),
                 failed = j.optInt("failed"),
                 previousAvgFps = if (j.isNull("previousAvgFps")) null else j.optInt("previousAvgFps"),
-                deltaFps = if (j.isNull("deltaFps")) null else j.optInt("deltaFps")
+                deltaFps = if (j.isNull("deltaFps")) null else j.optInt("deltaFps"),
+                endBottleneck = if (j.isNull("endBottleneck")) null
+                else runCatching { Bottleneck.valueOf(j.optString("endBottleneck")) }.getOrNull()
             )
         } catch (e: Exception) {
             null
@@ -271,6 +282,31 @@ object AppStore {
             effectiveThermal = { effectiveThermalStatus() },
             log = { line -> appendLog("adaptive: $line") }
         )
+        // Self-healing monitor: if the sampling hub ever dies (process
+        // pressure, ANR recovery), restart it so the UI and the adaptive
+        // engine never go blind.
+        scope.launch {
+            while (isActive) {
+                delay(15_000)
+                try {
+                    val v = monitor.value
+                    if (v == null || v.ts == 0L) {
+                        try {
+                            hub?.stop()
+                        } catch (e: Exception) {
+                        }
+                        val h = MonitorHub(ctx().applicationContext)
+                        h.gamePackage = { gamePackage() }
+                        hub = h
+                        h.start { s ->
+                            monitor.postValue(s)
+                            collectSample(s)
+                        }
+                    }
+                } catch (e: Exception) {
+                }
+            }
+        }
     }
 
     private fun collectSample(s: MonitorSnapshot) {
@@ -302,18 +338,34 @@ object AppStore {
             val s = monitor.value ?: return
             val frame = lastFrame ?: return
             val loop = adaptiveLoop
+            val loop2 = loop
+            var eta = 0
+            if (loop2?.isRunning == true) {
+                try {
+                    val c = ctx()
+                    eta = loop2.estimateRemainingMinutes(
+                        BoostContext(
+                            ProfileStore(c).resolve(Prefs.activeProfile(c)),
+                            AndroidExecutor(c),
+                            journal()
+                        )
+                    )
+                } catch (e: Exception) {
+                }
+            }
             adaptiveUi.postValue(
                 AdaptiveUi(
                     enabled = Prefs.getBool(ctx(), Prefs.KEY_ADAPTIVE_ON, true),
-                    running = loop?.isRunning == true,
-                    phase = loop?.phase ?: "idle",
-                    pausedReason = loop?.pausedReason,
+                    running = loop2?.isRunning == true,
+                    phase = loop2?.phase ?: "idle",
+                    pausedReason = loop2?.pausedReason,
                     bottleneck = BottleneckDetector.detect(frame),
                     effectiveThermal = effectiveThermalStatus(),
                     osThermal = s.thermalStatus,
                     decisions = ledger().entries.values.toList()
                         .sortedByDescending { it.pairs }
-                        .take(5)
+                        .take(5),
+                    etaMinutes = eta
                 )
             )
         } catch (e: Exception) {
@@ -445,20 +497,31 @@ object AppStore {
                 }
                 com.nitroboost.app.core.adaptive.Decision.KEEP -> {
                     val detail = entry.detail ?: continue
-                    if (entry.taskId != "game_api_downscale" || !detail.startsWith("level=")) continue
-                    val level = detail.removePrefix("level=")
-                    if (level == com.nitroboost.app.core.tasks.GameApiTask.DOWNSCALE) continue
+                    val winner = when {
+                        entry.taskId == "game_api_downscale" && detail.startsWith("level=") -> {
+                            val level = detail.removePrefix("level=")
+                            if (level == com.nitroboost.app.core.tasks.GameApiTask.DOWNSCALE) {
+                                continue
+                            }
+                            com.nitroboost.app.core.tasks.GameApiTask(level = level) to "level $level"
+                        }
+                        entry.taskId == "cpu_governor" && detail.startsWith("governor=") -> {
+                            val g = detail.removePrefix("governor=")
+                            if (g == "performance") continue
+                            com.nitroboost.app.core.tasks.GovernorTask(g) to "governor $g"
+                        }
+                        else -> continue
+                    }
                     val ok = entries.filter { com.nitroboost.app.core.Journal.restore(it, ctx.executor) }
                     if (ok.isNotEmpty()) ctx.journal.remove(ok)
-                    val t = com.nitroboost.app.core.tasks.GameApiTask(level = level)
                     val r = try {
-                        t.apply(ctx)
+                        winner.first.apply(ctx)
                     } catch (e: Exception) {
                         null
                     }
                     if (r != null && r.entries.isNotEmpty() && r.status.success) {
                         ctx.journal.add(r.entries)
-                        appendLog("adaptive: restored winning downscale $level")
+                        appendLog("adaptive: restored winning ${winner.second}")
                     }
                 }
                 else -> Unit
