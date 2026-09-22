@@ -14,12 +14,16 @@ object AllTasks {
         AnimationsTask(),
         GameModeTask(),
         GovernorTask(),
+        CpuFloorTask(),
         GpuTask(),
         DisplayTask(),
         PowerTask(),
+        PowerSaveWhitelistTask(),
         RamTrimTask(),
         RamKillTask(),
         NetworkTask(),
+        WaltSchedulerTask(),
+        TouchBoostTask(),
         ThermalOverrideTask()
     )
 
