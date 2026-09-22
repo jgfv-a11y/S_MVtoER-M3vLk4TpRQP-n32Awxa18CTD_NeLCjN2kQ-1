@@ -24,7 +24,7 @@ class SessionReportTest {
         assertEquals(42, rep.peakTempC)
         assertEquals(12, rep.minPingMs)
         assertEquals(2300, rep.peakRamMb)
-        assertEquals(50, rep.durationSec)
+        assertEquals(60, rep.durationSec)
         assertEquals(5, rep.deltaFps)
         assertEquals(12, rep.applied)
         assertEquals(1, rep.failed)

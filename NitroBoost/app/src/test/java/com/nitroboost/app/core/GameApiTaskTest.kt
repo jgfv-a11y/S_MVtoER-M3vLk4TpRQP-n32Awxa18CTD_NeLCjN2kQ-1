@@ -29,6 +29,8 @@ class GameApiTaskTest {
 
         val r = task.apply(ctx)
         assertEquals(TaskStatus.Applied, r.status)
+        // The engine persists task results to the journal; mirror that here.
+        j.add(r.entries)
         val entry = j.entries.first { it.taskId == task.id }
         assertEquals("game_api:com.test.game", entry.key)
         assertEquals("cmd game reset com.test.game 2>/dev/null", entry.revertCmd)
