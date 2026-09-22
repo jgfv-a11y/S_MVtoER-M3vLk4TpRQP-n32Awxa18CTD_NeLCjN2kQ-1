@@ -9,6 +9,7 @@ import com.nitroboost.app.core.adaptive.TrialConfig
 import com.nitroboost.app.core.tasks.AllTasks
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import kotlin.concurrent.Volatile
