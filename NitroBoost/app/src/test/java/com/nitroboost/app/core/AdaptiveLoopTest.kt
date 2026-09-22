@@ -5,7 +5,9 @@ import com.nitroboost.app.core.adaptive.AdaptiveSampler
 import com.nitroboost.app.core.adaptive.AdaptivePolicy
 import com.nitroboost.app.core.adaptive.DecisionLedger
 import com.nitroboost.app.core.adaptive.FrameMetrics
+import com.nitroboost.app.core.adaptive.SweepArm
 import com.nitroboost.app.core.adaptive.TrialConfig
+import com.nitroboost.app.core.adaptive.pickBestArm
 import com.nitroboost.app.core.tasks.AllTasks
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -114,22 +116,22 @@ class AdaptiveLoopTest {
     }
 
     @Test fun `pickBestArm chooses the highest mean delta`() {
-        val best = AdaptiveLoop.pickBestArm(
+        val best = pickBestArm(
             listOf(
-                AdaptiveLoop.SweepArm("0.9", listOf(1.0, 1.0, 1.0)),
-                AdaptiveLoop.SweepArm("0.8", listOf(3.0, 3.0, 3.0)),
-                AdaptiveLoop.SweepArm("0.7", listOf(0.5, 0.5))
+                SweepArm("0.9", listOf(1.0, 1.0, 1.0)),
+                SweepArm("0.8", listOf(3.0, 3.0, 3.0)),
+                SweepArm("0.7", listOf(0.5, 0.5))
             )
         )
         assertEquals("0.8", best!!.level)
     }
 
     @Test fun `pickBestArm handles empty and negative arms`() {
-        assertEquals(null, AdaptiveLoop.pickBestArm(emptyList()))
-        val best = AdaptiveLoop.pickBestArm(
+        assertEquals(null, pickBestArm(emptyList()))
+        val best = pickBestArm(
             listOf(
-                AdaptiveLoop.SweepArm("0.9", emptyList()),
-                AdaptiveLoop.SweepArm("0.8", listOf(-1.0, -0.5))
+                SweepArm("0.9", emptyList()),
+                SweepArm("0.8", listOf(-1.0, -0.5))
             )
         )
         assertEquals("0.8", best!!.level) // -0.75 beats NEGATIVE_INFINITY

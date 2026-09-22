@@ -18,6 +18,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.concurrent.Volatile
 
+/** One measured arm of the downscale sweep. */
+data class SweepArm(val level: String, val deltas: List<Double>) {
+    val mean: Double
+        get() = if (deltas.isEmpty()) Double.NEGATIVE_INFINITY else deltas.average()
+}
+
+/** Pure: best arm = highest mean delta; null when nothing measured. */
+fun pickBestArm(arms: List<SweepArm>): SweepArm? = arms.maxByOrNull { it.mean }
+
 /**
  * What the loop can observe. Implemented by AppStore over the monitor
  * snapshots; the loop itself never touches Android classes, which is what
@@ -77,15 +86,6 @@ class AdaptiveLoop(
          * control point for a userland booster.
          */
         val SWEEP_LEVELS = listOf("0.9", "0.8", "0.7")
-
-        /** One measured arm of the downscale sweep. */
-        data class SweepArm(val level: String, val deltas: List<Double>) {
-            val mean: Double
-                get() = if (deltas.isEmpty()) Double.NEGATIVE_INFINITY else deltas.average()
-        }
-
-        /** Pure: best arm = highest mean delta; null when nothing measured. */
-        fun pickBestArm(arms: List<SweepArm>): SweepArm? = arms.maxByOrNull { it.mean }
     }
 
     @Volatile var phase: String = "idle"
