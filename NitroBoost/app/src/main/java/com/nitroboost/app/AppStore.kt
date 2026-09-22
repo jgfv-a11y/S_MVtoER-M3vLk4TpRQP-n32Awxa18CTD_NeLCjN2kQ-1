@@ -13,6 +13,8 @@ import com.nitroboost.app.core.BoostContext
 import com.nitroboost.app.core.BoostEngine
 import com.nitroboost.app.core.Journal
 import com.nitroboost.app.core.ScoreEngine
+import com.nitroboost.app.core.SessionReport
+import com.nitroboost.app.core.SessionReportBuilder
 import com.nitroboost.app.core.TaskState
 import com.nitroboost.app.core.AppProfile
 import com.nitroboost.app.core.tasks.AllTasks
@@ -27,6 +29,7 @@ import com.nitroboost.app.platform.MonitorSnapshot
 import com.nitroboost.app.service.BoosterService
 import com.nitroboost.app.service.WidgetProvider
 import kotlinx.coroutines.CoroutineScope
+import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
@@ -63,17 +66,139 @@ object AppStore {
     val tasks = MutableLiveData<List<TaskState>>(emptyList())
     val score = MutableLiveData(0)
     val logLines = MutableLiveData<List<String>>(emptyList())
+    val report = MutableLiveData<SessionReport?>(null)
 
     private var hub: MonitorHub? = null
     private var theJournal: Journal? = null
+
+    // ---------------- Session measurement ----------------
+    // While a boost session is active every monitor sample is kept; at the
+    // end of the session they are summarized into a SessionReport and the
+    // average FPS becomes the baseline for the next session's delta.
+
+    @Volatile
+    private var sessStart = 0L
+
+    @Volatile
+    private var sessApplied = 0
+
+    @Volatile
+    private var sessFailed = 0
+
+    private val measLock = Any()
+    private val sessFps = mutableListOf<Int>()
+    private val sessTemp = mutableListOf<Int>()
+    private val sessPing = mutableListOf<Int>()
+    private val sessRam = mutableListOf<Int>()
+
+    private fun beginSessionMeasurement() {
+        synchronized(measLock) {
+            sessFps.clear()
+            sessTemp.clear()
+            sessPing.clear()
+            sessRam.clear()
+            sessApplied = 0
+            sessFailed = 0
+            sessStart = System.currentTimeMillis()
+        }
+    }
+
+    private fun finishSessionMeasurement() {
+        val end = System.currentTimeMillis()
+        val fps = mutableListOf<Int>()
+        val temp = mutableListOf<Int>()
+        val ping = mutableListOf<Int>()
+        val ram = mutableListOf<Int>()
+        val applied = 0
+        val failed = 0
+        val start = synchronized(measLock) {
+            fps += sessFps
+            temp += sessTemp
+            ping += sessPing
+            ram += sessRam
+            applied = sessApplied
+            failed = sessFailed
+            sessFps.clear()
+            sessTemp.clear()
+            sessPing.clear()
+            sessRam.clear()
+            sessApplied = 0
+            sessFailed = 0
+            val s = sessStart
+            sessStart = 0L
+            s
+        }
+        if (start == 0L) return
+        val prev = Prefs.getInt(ctx(), Prefs.KEY_PREV_FPS, -1).takeIf { it > 0 }
+        val rep = SessionReportBuilder.summarize(
+            start, end, fps, temp, ping, ram, applied, failed, prev
+        )
+        try {
+            val j = org.json.JSONObject()
+                .put("startedAt", rep.startedAt)
+                .put("endedAt", rep.endedAt)
+                .put("durationSec", rep.durationSec)
+                .put("avgFps", rep.avgFps ?: JSONObject.NULL)
+                .put("minFps", rep.minFps ?: JSONObject.NULL)
+                .put("peakTempC", rep.peakTempC ?: JSONObject.NULL)
+                .put("minPingMs", rep.minPingMs ?: JSONObject.NULL)
+                .put("peakRamMb", rep.peakRamMb)
+                .put("applied", rep.applied)
+                .put("failed", rep.failed)
+                .put("previousAvgFps", rep.previousAvgFps ?: JSONObject.NULL)
+                .put("deltaFps", rep.deltaFps ?: JSONObject.NULL)
+            Prefs.putString(ctx(), Prefs.KEY_LAST_REPORT, j.toString())
+            if (rep.avgFps != null) Prefs.putInt(ctx(), Prefs.KEY_PREV_FPS, rep.avgFps)
+        } catch (e: Exception) {
+            // persistence is best-effort — still surface the report
+        }
+        report.postValue(rep)
+    }
+
+    /** Read the last persisted session report (survives app restarts). */
+    fun loadLastReport(): SessionReport? {
+        val raw = Prefs.sp(ctx()).getString(Prefs.KEY_LAST_REPORT, null) ?: return null
+        return try {
+            val j = org.json.JSONObject(raw)
+            SessionReport(
+                startedAt = j.optLong("startedAt"),
+                endedAt = j.optLong("endedAt"),
+                durationSec = j.optInt("durationSec"),
+                avgFps = if (j.isNull("avgFps")) null else j.optInt("avgFps"),
+                minFps = if (j.isNull("minFps")) null else j.optInt("minFps"),
+                peakTempC = if (j.isNull("peakTempC")) null else j.optInt("peakTempC"),
+                minPingMs = if (j.isNull("minPingMs")) null else j.optInt("minPingMs"),
+                peakRamMb = j.optInt("peakRamMb"),
+                applied = j.optInt("applied"),
+                failed = j.optInt("failed"),
+                previousAvgFps = if (j.isNull("previousAvgFps")) null else j.optInt("previousAvgFps"),
+                deltaFps = if (j.isNull("deltaFps")) null else j.optInt("deltaFps")
+            )
+        } catch (e: Exception) {
+            null
+        }
+    }
 
     fun init(ctx: Context) {
         app = ctx.applicationContext
         val h = MonitorHub(ctx.applicationContext)
         h.gamePackage = { gamePackage() }
         hub = h
-        h.start { s -> monitor.postValue(s) }
+        h.start { s ->
+            monitor.postValue(s)
+            collectSample(s)
+        }
         loadLogs()
+    }
+
+    private fun collectSample(s: MonitorSnapshot) {
+        if (sessStart == 0L) return
+        synchronized(measLock) {
+            s.fps?.let { sessFps.add(it) }
+            s.tempC?.let { sessTemp.add(it.toInt()) }
+            s.pingMs?.let { sessPing.add(it) }
+            if (s.ramUsedMb > 0) sessRam.add(s.ramUsedMb.toInt())
+        }
     }
 
     fun ctx(): Context {
@@ -136,6 +261,7 @@ object AppStore {
         val c = ctx()
         val profile = ProfileStore(c).resolve(profilePkg ?: Prefs.activeProfile(c))
         session.postValue(SessionState.Boosting(profile.name))
+        beginSessionMeasurement()
         scope.launch(Dispatchers.IO) {
             try {
                 val journal = journal()
@@ -143,6 +269,8 @@ object AppStore {
                 wireRamKill(profile, executor)
                 val bctx = BoostContext(profile, executor, journal) { line -> appendLog(line) }
                 val report = engine.boost(bctx)
+                sessApplied = report.appliedCount + report.noChangeCount
+                sessFailed = report.failedCount
                 setGamePackage(profile.packageName)
                 if (BoosterService.active) BoosterService.pushScore(c, computeScore(profile))
                 refreshTaskStates()
@@ -177,6 +305,7 @@ object AppStore {
                 ) { line -> appendLog(line) }
                 engine.restoreAll(bctx)
                 setGamePackage(null)
+                finishSessionMeasurement()
                 refreshTaskStates()
                 score.postValue(computeScore(
                     ProfileStore(ctx()).resolve(Prefs.activeProfile(ctx()))

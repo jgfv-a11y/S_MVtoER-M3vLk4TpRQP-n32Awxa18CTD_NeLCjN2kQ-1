@@ -16,6 +16,7 @@ object AllTasks {
         GovernorTask(),
         CpuFloorTask(),
         GpuTask(),
+        GameApiTask(),
         DisplayTask(),
         PowerTask(),
         PowerSaveWhitelistTask(),

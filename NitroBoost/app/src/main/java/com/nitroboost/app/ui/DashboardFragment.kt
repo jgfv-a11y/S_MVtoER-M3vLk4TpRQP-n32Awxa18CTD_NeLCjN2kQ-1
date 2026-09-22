@@ -13,6 +13,8 @@ import com.google.android.material.button.MaterialButton
 import com.nitroboost.app.AppStore
 import com.nitroboost.app.R
 import com.nitroboost.app.SessionState
+import com.nitroboost.app.core.GameSpaceDetector
+import com.nitroboost.app.core.SessionReport
 import com.nitroboost.app.data.Prefs
 import com.nitroboost.app.platform.MonitorSnapshot
 import com.nitroboost.app.service.BoosterService
@@ -55,6 +57,8 @@ class DashboardFragment : Fragment() {
         statFps = view.findViewById(R.id.stat_fps_value)
         statPing = view.findViewById(R.id.stat_ping_value)
         btnBoost = view.findViewById(R.id.btn_boost)
+        reportText = view.findViewById(R.id.report_text)
+        gameSpaceHint = view.findViewById(R.id.game_space_hint)
 
         view.findViewById<MaterialButton>(R.id.btn_boost).setOnClickListener {
             if (BoosterService.active) {
@@ -84,7 +88,52 @@ class DashboardFragment : Fragment() {
             PermissionGuide.show(requireActivity())
         }
 
+        renderReport(AppStore.loadLastReport())
+        detectGameSpace()
         observeAll(viewLifecycleOwner)
+    }
+
+    /** OEM game-space apps (detection only — the user decides what to enable). */
+    private fun detectGameSpace() {
+        val c = requireContext()
+        Thread {
+            val found = GameSpaceDetector.detect(c)
+            val tv = gameSpaceHint ?: return@Thread
+            if (found.isEmpty()) {
+                tv.post { tv.visibility = View.GONE }
+            } else {
+                val names = found.joinToString(", ") { it.second }
+                tv.post {
+                    tv.text = getString(R.string.game_space_hint, names)
+                    tv.visibility = View.VISIBLE
+                }
+            }
+        }.start()
+    }
+
+    private fun renderReport(rep: SessionReport?) {
+        val tv = reportText ?: return
+        if (rep == null) {
+            tv.visibility = View.GONE
+            return
+        }
+        val lines = mutableListOf(
+            getString(R.string.report_title),
+            if (rep.avgFps != null) {
+                buildString {
+                    append(getString(R.string.report_fps, rep.avgFps.toString()))
+                    rep.deltaFps?.let { append(" ").append(getString(R.string.report_fps_delta, it)) }
+                }
+            } else {
+                getString(R.string.report_fps_none)
+            },
+            getString(R.string.report_tasks, rep.applied, rep.failed),
+            getString(R.string.report_duration, rep.durationSec)
+        )
+        rep.peakTempC?.let { lines.add(getString(R.string.report_temp, it)) }
+        rep.minPingMs?.let { lines.add(getString(R.string.report_ping, it)) }
+        tv.text = lines.joinToString("\n")
+        tv.visibility = View.VISIBLE
     }
 
     private fun observeAll(owner: LifecycleOwner) {
@@ -123,6 +172,9 @@ class DashboardFragment : Fragment() {
                 }
             }
             btnBoost?.isEnabled = st !is SessionState.Boosting
+        })
+        AppStore.report.observe(owner, Observer { rep ->
+            renderReport(rep)
         })
     }
 }

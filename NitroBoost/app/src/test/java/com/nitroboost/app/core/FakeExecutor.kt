@@ -35,6 +35,22 @@ class FakeExecutor : SystemExecutor {
             return ShellResult(true, 0, "", "")
         }
 
+        // Simulate the Android 12+ Game Manager shell API
+        if (cmd.startsWith("cmd game help")) {
+            return ShellResult(
+                true, 0,
+                "Game manager (game) commands:\n help\n set --mode [2|3] [configs]\n reset", ""
+            )
+        }
+        if (cmd.startsWith("cmd game set --downscale")) {
+            written.add("game-api:$cmd")
+            return ShellResult(true, 0, "", "")
+        }
+        if (cmd.startsWith("cmd game reset")) {
+            written.add("game-api-reset:$cmd")
+            return ShellResult(true, 0, "", "")
+        }
+
         // Simulate "settings get" commands reading from the maps
         val getPattern = Regex("settings get (system|secure|global) (\\S+)")
         getPattern.find(cmd)?.let { m ->

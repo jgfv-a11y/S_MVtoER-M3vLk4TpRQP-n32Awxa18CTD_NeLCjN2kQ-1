@@ -122,7 +122,20 @@
     <string name="restore">استعادة</string>
     <string name="clear_log">مسح السجل</string>
     <string name="about_title">عن نيترو بوست</string>
-    <string name="about_text">الإصدار 1.0.0 — مسرّع ألعاب نظيف يعتمد على الدفتر. كل تغيير يُسجّل ويمكن إرجاعه بضغطة واحدة. الأمان الحراري فوق الأداء.</string>
+    <string name="about_text">الإصدار 1.1.0 — مسرّع ألعاب نظيف يعتمد على الدفتر. كل تغيير يُسجّل ويمكن إرجاعه بضغطة واحدة. الأمان الحراري فوق الأداء. الإصدار 1.1 يضيف تخفيف دقة الرسوميات (Game API)، كشف تطبيقات Game Space، وتقرير أداء مقاس بعد كل جلسة.</string>
+
+    <!-- Session report -->
+    <string name="report_title">تقرير آخر جلسة</string>
+    <string name="report_fps">متوسط FPS: %1$s</string>
+    <string name="report_fps_delta">(%1$d مقارنة بآخر جلسة)</string>
+    <string name="report_fps_none">متوسط FPS: -- (يتطلب شيزوكو + gfxinfo)</string>
+    <string name="report_temp">ذروة الحرارة: %1$d°م</string>
+    <string name="report_ping">أقل Ping: %1$dms</string>
+    <string name="report_tasks">المهام المنفّذة: %1$d، الفاشلة: %2$d</string>
+    <string name="report_duration">المدة: %1$d ث</string>
+
+    <!-- Game space detection -->
+    <string name="game_space_hint">تم كشف Game Space خاص بالصانع: %1$s — يُنصح بتفعيل وضع لعبته أيضًا لأفضل نتيجة.</string>
 
     <!-- Common -->
     <string name="save">حفظ</string>

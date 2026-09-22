@@ -122,7 +122,20 @@
     <string name="restore">Restore</string>
     <string name="clear_log">Clear log</string>
     <string name="about_title">About NitroBoost</string>
-    <string name="about_text">Version 1.0.0 — a clean, journal-based game booster. Every change is recorded and can be reverted in one tap. Thermal safety outranks performance.</string>
+    <string name="about_text">Version 1.1.0 — a clean, journal-based game booster. Every change is recorded and can be reverted in one tap. Thermal safety outranks performance. v1.1 adds the Android 12+ Game API downscale, OEM game-space detection and a measured session report.</string>
+
+    <!-- Session report -->
+    <string name="report_title">Last session report</string>
+    <string name="report_fps">Avg FPS: %1$s</string>
+    <string name="report_fps_delta">(%1$d vs previous session)</string>
+    <string name="report_fps_none">Avg FPS: -- (needs Shizuku + gfxinfo)</string>
+    <string name="report_temp">Peak temp: %1$d°C</string>
+    <string name="report_ping">Min ping: %1$dms</string>
+    <string name="report_tasks">Tasks applied: %1$d, failed: %2$d</string>
+    <string name="report_duration">Duration: %1$d s</string>
+
+    <!-- Game space detection -->
+    <string name="game_space_hint">OEM game space detected: %1$s — consider enabling its game mode too for the best result.</string>
 
     <!-- Common -->
     <string name="save">Save</string>

@@ -21,6 +21,8 @@ object Prefs {
     const val KEY_LANG = "lang" // "ar" | "en"
     const val KEY_PROTECTED = "protected_list" // comma separated
     const val KEY_TASK_PREFIX = "task_enabled_"
+    const val KEY_LAST_REPORT = "last_session_report" // JSON
+    const val KEY_PREV_FPS = "prev_session_avg_fps"
 
     fun sp(ctx: Context): SharedPreferences =
         ctx.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -37,6 +39,16 @@ object Prefs {
 
     fun setBool(ctx: Context, key: String, value: Boolean) {
         sp(ctx).edit().putBoolean(key, value).apply()
+    }
+
+    fun getInt(ctx: Context, key: String, def: Int): Int = sp(ctx).getInt(key, def)
+
+    fun putInt(ctx: Context, key: String, value: Int) {
+        sp(ctx).edit().putInt(key, value).apply()
+    }
+
+    fun putString(ctx: Context, key: String, value: String) {
+        sp(ctx).edit().putString(key, value).apply()
     }
 
     fun taskEnabled(ctx: Context, taskId: String, def: Boolean): Boolean =

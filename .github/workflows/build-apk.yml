@@ -119,11 +119,23 @@ jobs:
       - name: Publish release with APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: nitroboost-v1.0.0
-          name: NitroBoost v1.0.0 (debug build)
+          tag_name: nitroboost-v1.1.0
+          name: NitroBoost v1.1.0 (debug build)
           body: |
             Debug build of NitroBoost — install on a real device (Shizuku required
             for the full feature set; the app degrades gracefully without it).
+
+            ## v1.1.0
+            - **Game API (Android 12+)**: official `cmd game` render downscale
+              (80%) via the platform Game Manager — cooler, steadier frames;
+              fully journaled, reverted with `cmd game reset`.
+            - **OEM game-space detection**: OPlus / ColorOS / MI Game Turbo /
+              Samsung / HONOR / vivo / HeyTap are detected and the user is
+              advised to enable their game mode too.
+            - **Session report**: after every session the app reports measured
+              avg/min FPS (gfxinfo), peak temperature, min ping, RAM peak and
+              the FPS delta vs the previous session.
+            - 16 boost tasks (was 15): +game_api_downscale.
           files: NitroBoost/nitroboost-debug.apk
           prerelease: true
         env:
