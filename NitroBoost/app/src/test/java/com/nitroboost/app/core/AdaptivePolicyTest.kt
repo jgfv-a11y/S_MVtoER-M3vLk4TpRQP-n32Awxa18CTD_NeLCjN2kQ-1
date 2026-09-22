@@ -69,7 +69,7 @@ class AdaptivePolicyTest {
     @Test fun `small samples are not trimmed`() {
         val d = listOf(-1.0, 0.0, 0.5, 1.0, 99.0)
         assertEquals(d, AdaptivePolicy.trimmedDeltas(d))
-        assertEquals(emptyList(), AdaptivePolicy.trimmedDeltas(emptyList()))
+        assertEquals(emptyList<Double>(), AdaptivePolicy.trimmedDeltas(emptyList()))
     }
 
     @Test fun `outlier spikes are trimmed before the statistics`() {
@@ -78,14 +78,16 @@ class AdaptivePolicyTest {
         // +2.0 and the confidence interval is not dragged wide open.
         val d = (0 until 18).map { 2.0 } + listOf(90.0, -90.0)
         val trimmed = AdaptivePolicy.trimmedDeltas(d)
-        assertEquals(18, trimmed.size)
+        // top 2 and bottom 2 of the 20 are dropped
+        assertEquals(16, trimmed.size)
         assertTrue(!trimmed.contains(-90.0))
         assertTrue(trimmed.none { it > 10.0 })
 
         val outcome = AdaptivePolicy.assess(d, TrialConfig(minPairs = 10, minEffectFps = 0.5))
         assertEquals(Decision.KEEP, outcome.decision)
         assertEquals(2.0, outcome.meanDelta!!, 0.001)
-        assertEquals(18, outcome.pairs)
+        // evidence counters count the RAW pairs (20), statistics use the 16 trimmed
+        assertEquals(20, outcome.pairs)
     }
 
     @Test fun `trimmedDeltas is order independent`() {

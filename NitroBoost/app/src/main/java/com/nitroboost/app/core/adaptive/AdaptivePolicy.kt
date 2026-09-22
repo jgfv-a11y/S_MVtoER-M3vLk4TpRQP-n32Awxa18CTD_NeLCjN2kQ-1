@@ -54,12 +54,18 @@ object AdaptivePolicy {
         return sorted.subList(k, sorted.size - k)
     }
 
-    /** Assess accumulated delta pairs (outlier-trimmed) with the paired t interval. */
+    /**
+     * Assess accumulated delta pairs with the paired t interval.
+     * Statistics run on the outlier-trimmed data; the evidence counters
+     * (min/max pairs) count the RAW pairs, so trimming can never stall the
+     * decision process.
+     */
     fun assess(rawDeltas: List<Double>, cfg: TrialConfig): TrialOutcome {
         val deltas = trimmedDeltas(rawDeltas)
         val n = deltas.size
+        val rawN = rawDeltas.size
         if (n < 2) {
-            return TrialOutcome(Decision.NEEDS_MORE, null, null, null, rawDeltas.size,
+            return TrialOutcome(Decision.NEEDS_MORE, null, null, null, rawN,
                 "need >= 2 paired samples")
         }
         val mean = deltas.sum() / n
@@ -70,29 +76,29 @@ object AdaptivePolicy {
         val hi = mean + half
         val e = cfg.minEffectFps
         return when {
-            n < cfg.minPairs ->
-                TrialOutcome(Decision.NEEDS_MORE, mean, lo, hi, n,
-                    "collecting pairs (${n}/${cfg.minPairs})")
+            rawN < cfg.minPairs ->
+                TrialOutcome(Decision.NEEDS_MORE, mean, lo, hi, rawN,
+                    "collecting pairs (${rawN}/${cfg.minPairs})")
 
-            n >= cfg.maxPairs && lo <= e && hi >= -e ->
-                TrialOutcome(Decision.NEUTRAL, mean, lo, hi, n,
-                    "no measurable effect after ${n} pairs")
+            rawN >= cfg.maxPairs && lo <= e && hi >= -e ->
+                TrialOutcome(Decision.NEUTRAL, mean, lo, hi, rawN,
+                    "no measurable effect after ${rawN} pairs")
 
             lo > e ->
-                TrialOutcome(Decision.KEEP, mean, lo, hi, n,
+                TrialOutcome(Decision.KEEP, mean, lo, hi, rawN,
                     "benefit outside confidence interval")
 
             hi < -e ->
-                TrialOutcome(Decision.DROP, mean, lo, hi, n,
+                TrialOutcome(Decision.DROP, mean, lo, hi, rawN,
                     "measured harmful")
 
-            n >= cfg.maxPairs ->
-                TrialOutcome(Decision.NEUTRAL, mean, lo, hi, n,
-                    "no measurable effect after ${n} pairs")
+            rawN >= cfg.maxPairs ->
+                TrialOutcome(Decision.NEUTRAL, mean, lo, hi, rawN,
+                    "no measurable effect after ${rawN} pairs")
 
             else ->
-                TrialOutcome(Decision.NEEDS_MORE, mean, lo, hi, n,
-                    "collecting pairs (${n}/${cfg.minPairs})")
+                TrialOutcome(Decision.NEEDS_MORE, mean, lo, hi, rawN,
+                    "collecting pairs (${rawN}/${cfg.minPairs})")
         }
     }
 }

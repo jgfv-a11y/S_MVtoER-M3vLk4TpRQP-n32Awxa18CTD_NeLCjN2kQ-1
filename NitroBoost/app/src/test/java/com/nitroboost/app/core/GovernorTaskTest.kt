@@ -33,7 +33,7 @@ class GovernorTaskTest {
         val r = task.apply(ctx)
         assertEquals(TaskStatus.Applied, r.status)
         j.add(r.entries)
-        assertTrue(ex.written.any { "sysfs:$govPath" == it })
+        assertTrue(ex.written.any { it == "shell-echo:$govPath" })
         assertEquals("performance", ex.sysfs[govPath])
         assertTrue(task.isApplied(ctx))
         assertTrue(task.titleEn.contains("performance"))

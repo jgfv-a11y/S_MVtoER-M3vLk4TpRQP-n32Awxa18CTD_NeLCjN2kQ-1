@@ -19,8 +19,10 @@ import com.nitroboost.app.core.TaskStatus
 class GovernorTask(private val governor: String = "performance") : BoostTask {
 
     override val id = "cpu_governor"
-    override val titleAr = "وضع الأداء للمعالج"
-    override val titleEn = "CPU performance governor"
+    override val titleAr: String
+        get() = "وضع المعالج: $governor"
+    override val titleEn: String
+        get() = "CPU $governor governor"
     override val descAr: String
         get() = "تحويل جميع أنوية المعالج إلى وضع $governor"
     override val descEn: String
