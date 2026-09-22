@@ -50,7 +50,8 @@ class MonitorHub(private val ctx: Context) {
                         fps = if (!gamePkg.isNullOrBlank()) fps.poll(gamePkg, ex) else null,
                         pingMs = net.pingMs(),
                         retransPerSec = net.retransPerSec(),
-                        thermalStatus = thermal.status()
+                        thermalStatus = thermal.status(),
+                        ts = android.os.SystemClock.elapsedRealtime()
                     )
                 } catch (e: Exception) {
                     MonitorSnapshot.EMPTY

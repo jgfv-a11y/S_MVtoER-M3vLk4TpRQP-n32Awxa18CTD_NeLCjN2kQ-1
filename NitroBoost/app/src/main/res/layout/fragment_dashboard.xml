@@ -132,6 +132,16 @@
             android:textSize="13sp"
             android:visibility="gone" />
 
+        <TextView
+            android:id="@+id/adaptive_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:lineSpacingExtra="3dp"
+            android:textColor="@color/nb_subtext"
+            android:textSize="13sp"
+            android:visibility="gone" />
+
         <!-- Live stats grid -->
         <LinearLayout
             android:layout_width="match_parent"

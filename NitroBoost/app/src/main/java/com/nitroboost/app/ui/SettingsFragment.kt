@@ -45,6 +45,7 @@ class SettingsFragment : Fragment() {
             bindSwitch(root, R.id.sw_auto_boost, Prefs.KEY_AUTO_BOOST, false)
             bindSwitch(root, R.id.sw_auto_restore, Prefs.KEY_AUTO_RESTORE, true)
             bindSwitch(root, R.id.sw_boot, Prefs.KEY_START_ON_BOOT, false)
+            bindSwitch(root, R.id.sw_adaptive, Prefs.KEY_ADAPTIVE_ON, true)
 
             // Overlay
             bindSwitch(root, R.id.sw_overlay, Prefs.KEY_OVERLAY_ON, false) { v ->

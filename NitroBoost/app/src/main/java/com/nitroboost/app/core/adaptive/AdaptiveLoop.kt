@@ -1,0 +1,218 @@
+package com.nitroboost.app.core.adaptive
+
+import com.nitroboost.app.core.BoostContext
+import com.nitroboost.app.core.BoostEngine
+import com.nitroboost.app.core.BoostTask
+import com.nitroboost.app.core.Journal
+import com.nitroboost.app.core.Module
+import com.nitroboost.app.core.ThermalGuard
+import com.nitroboost.app.core.TaskResult
+import com.nitroboost.app.core.TaskStatus
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlin.concurrent.Volatile
+
+/**
+ * What the loop can observe. Implemented by AppStore over the monitor
+ * snapshots; the loop itself never touches Android classes, which is what
+ * keeps the decision pipeline unit-testable.
+ */
+interface AdaptiveSampler {
+    /** Latest measured FPS of the game, or null (no Shizuku / priming). */
+    fun fps(): Int?
+    /** Latest frame metrics, or null before the first sample. */
+    fun metrics(): FrameMetrics?
+    fun privileged(): Boolean
+}
+
+/**
+ * The adaptive engine.
+ *
+ * During a boost session it A/B tests every profile-enabled performance
+ * tweak on the real device:
+ *
+ *   1. revert the candidate (journal) -> settle -> measure baseline window
+ *   2. apply the candidate (journal)  -> settle -> measure arm window
+ *   3. paired deltas  ->  DecisionLedger (accumulates across sessions)
+ *   4. verdict:
+ *        KEEP       -> stays applied
+ *        DROP       -> reverted, and AppStore.boost() will not re-apply it
+ *        NEUTRAL    -> reverted (clean system, same FPS)
+ *        NEEDS_MORE -> reverted now, measured again next session
+ *
+ * Safety (non-negotiable):
+ *  - never runs without a privileged shell and a real FPS source;
+ *  - pauses while the effective thermal status is >= MODERATE (the
+ *    predictive trend can escalate one tier early);
+ *  - every applied candidate lives in the main journal, so "restore all"
+ *    and the game-exit watcher revert it like any other modification;
+ *  - any exception inside a step is logged and the loop keeps going.
+ */
+class AdaptiveLoop(
+    private val engine: BoostEngine,
+    private val context: () -> BoostContext,
+    val ledger: DecisionLedger,
+    private val sampler: AdaptiveSampler,
+    private val cfg: TrialConfig,
+    private val effectiveThermal: () -> Int,
+    private val log: (String) -> Unit = {}
+) {
+
+    companion object {
+        /** Only performance-relevant modules are worth an A/B trial. */
+        val TRIAL_MODULES = setOf(
+            Module.CPU, Module.GPU, Module.TWEAKS, Module.NETWORK
+        )
+    }
+
+    @Volatile var phase: String = "idle"
+        private set
+    @Volatile var candidateId: String? = null
+        private set
+    @Volatile var pausedReason: String? = null
+        private set
+
+    private var scope: CoroutineScope? = null
+    private var job: Job? = null
+    @Volatile
+    private var running = false
+
+    val isRunning: Boolean get() = running
+
+    fun start() {
+        if (running) return
+        running = true
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        job = scope?.launch { loop() }
+        log("adaptive engine started")
+    }
+
+    fun stop() {
+        if (!running) return
+        running = false
+        job?.cancel()
+        scope?.cancel()
+        job = null
+        scope = null
+        phase = "idle"
+        candidateId = null
+        pausedReason = null
+        log("adaptive engine stopped")
+    }
+
+    private suspend fun loop() {
+        while (running) {
+            try {
+                step()
+            } catch (e: Exception) {
+                log("adaptive step failed: ${e.message}")
+            }
+            delay(2_000)
+        }
+    }
+
+    private suspend fun step() {
+        pausedReason = pauseReason()
+        if (pausedReason != null) {
+            phase = "paused"
+            candidateId = null
+            return
+        }
+        val ctx = context()
+        val task = nextCandidate(ctx)
+        if (task == null) {
+            phase = "done"
+            candidateId = null
+            return
+        }
+        candidateId = task.id
+        phase = "trial:${task.id}"
+        runTrial(task, ctx)
+    }
+
+    /** Returns a human reason when the engine must stand down, else null. */
+    fun pauseReason(): String? {
+        if (!sampler.privileged()) return "needs-shizuku"
+        val eff = effectiveThermal()
+        if (eff >= ThermalGuard.STATUS_MODERATE) return "thermal:$eff"
+        return null
+    }
+
+    /** Next profile-enabled, unresolved trial candidate, in task order. */
+    fun nextCandidate(ctx: BoostContext): BoostTask? =
+        engine.tasks().firstOrNull { t ->
+            t.module in TRIAL_MODULES &&
+                t.requiresPrivilege &&
+                ctx.profile.isEnabled(t) &&
+                !ledger.isResolved(t.id)
+        }
+
+    private suspend fun runTrial(task: BoostTask, ctx: BoostContext) {
+        // 1) baseline: candidate must be OFF
+        revertTask(task.id, ctx)
+        delay(cfg.settleMs)
+        val baseline = collectFps(cfg.windowMs)
+        if (baseline.size < 2) {
+            // FPS source not producing data — record and retry next session
+            ledger.record(
+                task.id, task.titleEn, emptyList(),
+                AdaptivePolicy.assess(emptyList(), cfg),
+                System.currentTimeMillis(), cfg
+            )
+            ledger.save()
+            log("adaptive ${task.id}: no FPS data to measure")
+            return
+        }
+        // 2) arm: candidate ON
+        val r = try {
+            task.apply(ctx)
+        } catch (e: Exception) {
+            TaskResult(task.id, TaskStatus.Failed("adaptive trial: ${e.message}"))
+        }
+        if (r.entries.isNotEmpty() && r.status.success) ctx.journal.add(r.entries)
+        delay(cfg.settleMs)
+        val arm = collectFps(cfg.windowMs)
+        if (arm.size < 2) {
+            revertTask(task.id, ctx)
+            return
+        }
+        // 3) decide over the accumulated pairs (this session + previous)
+        val deltas = AdaptivePolicy.deltasOf(baseline, arm)
+        val baseDeltas = ledger.entries[task.id]?.deltas ?: emptyList()
+        val outcome = AdaptivePolicy.assess(baseDeltas + deltas, cfg)
+        val merged = ledger.record(task.id, task.titleEn, deltas,
+            outcome, System.currentTimeMillis(), cfg)
+        ledger.save()
+        log(
+            "adaptive ${task.id}: ${merged.decision} " +
+                "mean=${merged.meanDelta?.let { String.format("%.2f", it) }} " +
+                "pairs=${merged.pairs} sessions=${merged.sessions}"
+        )
+        // 4) leave the system clean except for KEEP verdicts
+        when (merged.decision) {
+            Decision.KEEP -> Unit
+            else -> revertTask(task.id, ctx)
+        }
+    }
+
+    /** Revert all journal entries belonging to one task. */
+    fun revertTask(taskId: String, ctx: BoostContext) {
+        val entries = ctx.journal.entries.filter { it.taskId == taskId }
+        val ok = entries.filter { Journal.restore(it, ctx.executor) }
+        if (ok.isNotEmpty()) ctx.journal.remove(ok)
+    }
+
+    private suspend fun collectFps(windowMs: Long): List<Int> {
+        val out = mutableListOf<Int>()
+        val end = System.currentTimeMillis() + windowMs
+        while (running && System.currentTimeMillis() < end) {
+            sampler.fps()?.let { out.add(it) }
+            delay(1_000)
+        }
+        return out
+    }
+}

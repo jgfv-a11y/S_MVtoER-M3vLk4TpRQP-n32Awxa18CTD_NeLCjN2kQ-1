@@ -17,7 +17,8 @@ data class MonitorSnapshot(
     val fps: Int? = null,
     val pingMs: Int? = null,
     val retransPerSec: Int? = null,
-    val thermalStatus: Int = 0
+    val thermalStatus: Int = 0,
+    val ts: Long = 0
 ) {
     companion object {
         val EMPTY = MonitorSnapshot()

@@ -15,6 +15,8 @@ import com.nitroboost.app.R
 import com.nitroboost.app.SessionState
 import com.nitroboost.app.core.GameSpaceDetector
 import com.nitroboost.app.core.SessionReport
+import com.nitroboost.app.core.adaptive.Bottleneck
+import com.nitroboost.app.core.adaptive.Decision
 import com.nitroboost.app.data.Prefs
 import com.nitroboost.app.platform.MonitorSnapshot
 import com.nitroboost.app.service.BoosterService
@@ -35,6 +37,7 @@ class DashboardFragment : Fragment() {
     private var btnBoost: MaterialButton? = null
     private var reportText: TextView? = null
     private var gameSpaceHint: TextView? = null
+    private var adaptiveText: TextView? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -61,6 +64,7 @@ class DashboardFragment : Fragment() {
         btnBoost = view.findViewById(R.id.btn_boost)
         reportText = view.findViewById(R.id.report_text)
         gameSpaceHint = view.findViewById(R.id.game_space_hint)
+        adaptiveText = view.findViewById(R.id.adaptive_text)
 
         view.findViewById<MaterialButton>(R.id.btn_boost).setOnClickListener {
             if (BoosterService.active) {
@@ -138,6 +142,76 @@ class DashboardFragment : Fragment() {
         tv.visibility = View.VISIBLE
     }
 
+    private fun renderAdaptive(ui: AppStore.AdaptiveUi) {
+        val tv = adaptiveText ?: return
+        val lines = mutableListOf(
+            getString(R.string.adaptive_title),
+            buildString {
+                append(getString(R.string.adaptive_bottleneck))
+                append(": ")
+                append(
+                    when (ui.bottleneck) {
+                        Bottleneck.UNKNOWN -> getString(R.string.bottleneck_unknown)
+                        Bottleneck.NONE -> getString(R.string.bottleneck_none)
+                        Bottleneck.CPU -> "CPU"
+                        Bottleneck.GPU -> "GPU"
+                        Bottleneck.MEMORY -> getString(R.string.bottleneck_memory)
+                        Bottleneck.NETWORK -> getString(R.string.bottleneck_network)
+                        Bottleneck.THERMAL -> getString(R.string.bottleneck_thermal)
+                    }
+                )
+                if (ui.effectiveThermal > ui.osThermal) {
+                    append(" (")
+                    append(getString(R.string.thermal_predicted))
+                    append(")")
+                }
+            },
+            buildString {
+                append(getString(R.string.adaptive_state))
+                append(": ")
+                append(
+                    when {
+                        !ui.enabled -> getString(R.string.adaptive_off)
+                        ui.pausedReason != null ->
+                            getString(R.string.adaptive_paused, ui.pausedReason)
+                        ui.phase == "done" -> getString(R.string.adaptive_done)
+                        ui.phase.startsWith("trial:") ->
+                            getString(R.string.adaptive_trial, ui.phase.removePrefix("trial:"))
+                        else -> getString(R.string.adaptive_idle)
+                    }
+                )
+            }
+        )
+        for (d in ui.decisions) {
+            lines.add(
+                buildString {
+                    append(d.taskTitle)
+                    append(": ")
+                    when (d.decision) {
+                        Decision.KEEP -> append(
+                            getString(R.string.decision_keep,
+                                d.meanDelta?.let { String.format("%+.1f", it) } ?: "--",
+                                d.pairs)
+                        )
+                        Decision.DROP -> append(
+                            getString(R.string.decision_drop,
+                                d.meanDelta?.let { String.format("%.1f", it) } ?: "--",
+                                d.pairs)
+                        )
+                        Decision.NEUTRAL -> append(
+                            getString(R.string.decision_neutral, d.pairs)
+                        )
+                        Decision.NEEDS_MORE -> append(
+                            getString(R.string.decision_pending, d.pairs, 8)
+                        )
+                    }
+                }
+            )
+        }
+        tv.text = lines.joinToString("\n")
+        tv.visibility = View.VISIBLE
+    }
+
     private fun observeAll(owner: LifecycleOwner) {
         AppStore.score.observe(owner, Observer { s ->
             scoreValue?.text = s.toString()
@@ -177,6 +251,9 @@ class DashboardFragment : Fragment() {
         })
         AppStore.report.observe(owner, Observer { rep ->
             renderReport(rep)
+        })
+        AppStore.adaptiveUi.observe(owner, Observer { ui ->
+            renderAdaptive(ui)
         })
     }
 }

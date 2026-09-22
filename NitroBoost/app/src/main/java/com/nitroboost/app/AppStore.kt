@@ -12,6 +12,15 @@ import androidx.lifecycle.MutableLiveData
 import com.nitroboost.app.core.BoostContext
 import com.nitroboost.app.core.BoostEngine
 import com.nitroboost.app.core.Journal
+import com.nitroboost.app.core.adaptive.AdaptiveLoop
+import com.nitroboost.app.core.adaptive.AdaptiveSampler
+import com.nitroboost.app.core.adaptive.Bottleneck
+import com.nitroboost.app.core.adaptive.BottleneckDetector
+import com.nitroboost.app.core.adaptive.DecisionLedger
+import com.nitroboost.app.core.adaptive.FrameMetrics
+import com.nitroboost.app.core.adaptive.LedgerEntry
+import com.nitroboost.app.core.adaptive.ThermalTrend
+import com.nitroboost.app.core.adaptive.TrialConfig
 import com.nitroboost.app.core.ScoreEngine
 import com.nitroboost.app.core.SessionReport
 import com.nitroboost.app.core.SessionReportBuilder
@@ -68,8 +77,34 @@ object AppStore {
     val logLines = MutableLiveData<List<String>>(emptyList())
     val report = MutableLiveData<SessionReport?>(null)
 
+    /** Adaptive-engine UI state, refreshed with every monitor sample. */
+    data class AdaptiveUi(
+        val enabled: Boolean,
+        val running: Boolean,
+        val phase: String,
+        val pausedReason: String?,
+        val bottleneck: Bottleneck,
+        val effectiveThermal: Int,
+        val osThermal: Int,
+        val decisions: List<LedgerEntry>
+    )
+
+    val adaptiveUi = MutableLiveData<AdaptiveUi>(
+        AdaptiveUi(false, false, "idle", null, Bottleneck.UNKNOWN, 0, 0, emptyList())
+    )
+
     private var hub: MonitorHub? = null
     private var theJournal: Journal? = null
+    private var theLedger: DecisionLedger? = null
+    private var adaptiveLoop: AdaptiveLoop? = null
+
+    private val trend = ThermalTrend()
+    @Volatile
+    private var lastFrame: FrameMetrics? = null
+    @Volatile
+    private var lastFpsTs = 0L
+    @Volatile
+    private var currentTargetFps = 60
 
     // ---------------- Session measurement ----------------
     // While a boost session is active every monitor sample is kept; at the
@@ -84,6 +119,37 @@ object AppStore {
 
     @Volatile
     private var sessFailed = 0
+
+    fun ledger(): DecisionLedger {
+        theLedger?.let { return it }
+        val l = DecisionLedger(File(ctx().filesDir, "adaptive_ledger.json"))
+        l.load()
+        theLedger = l
+        return l
+    }
+
+    /** OS thermal status escalated by the predictive trend (never below OS). */
+    fun effectiveThermalStatus(): Int {
+        val s = monitor.value ?: return 0
+        return maxOf(s.thermalStatus, trend.effectiveStatus(s.thermalStatus))
+    }
+
+    /** Loop-side view of the monitor: fresh FPS samples only (ts-deduped). */
+    private val sampler = object : AdaptiveSampler {
+        override fun fps(): Int? {
+            val s = monitor.value ?: return null
+            if (s.ts == lastFpsTs) return null
+            lastFpsTs = s.ts
+            return s.fps
+        }
+        override fun metrics(): FrameMetrics? = lastFrame
+        override fun privileged(): Boolean =
+            try {
+                AndroidExecutor(ctx()).privileged
+            } catch (e: Exception) {
+                false
+            }
+    }
 
     private val measLock = Any()
     private val sessFps = mutableListOf<Int>()
@@ -189,15 +255,69 @@ object AppStore {
             collectSample(s)
         }
         loadLogs()
+        adaptiveLoop = AdaptiveLoop(
+            engine = engine,
+            context = {
+                val c = ctx()
+                BoostContext(
+                    ProfileStore(c).resolve(Prefs.activeProfile(c)),
+                    AndroidExecutor(c),
+                    journal()
+                ) { line -> appendLog(line) }
+            },
+            ledger = ledger(),
+            sampler = sampler,
+            cfg = TrialConfig(),
+            effectiveThermal = { effectiveThermalStatus() },
+            log = { line -> appendLog("adaptive: $line") }
+        )
     }
 
     private fun collectSample(s: MonitorSnapshot) {
+        // Predictive thermal trend + frame metrics feed the adaptive engine
+        // every sample, session or not.
+        trend.record(s.ts, s.tempC)
+        lastFrame = FrameMetrics(
+            fps = s.fps,
+            targetFps = currentTargetFps,
+            cpuPct = s.cpuPct,
+            ramPct = s.ramPct,
+            pingMs = s.pingMs,
+            retransPerSec = s.retransPerSec,
+            thermalStatus = s.thermalStatus,
+            tempC = s.tempC
+        )
+        postAdaptiveUi()
         if (sessStart == 0L) return
         synchronized(measLock) {
             s.fps?.let { sessFps.add(it) }
             s.tempC?.let { sessTemp.add(it.toInt()) }
             s.pingMs?.let { sessPing.add(it) }
             if (s.ramUsedMb > 0) sessRam.add(s.ramUsedMb.toInt())
+        }
+    }
+
+    private fun postAdaptiveUi() {
+        try {
+            val s = monitor.value ?: return
+            val frame = lastFrame ?: return
+            val loop = adaptiveLoop
+            adaptiveUi.postValue(
+                AdaptiveUi(
+                    enabled = Prefs.getBool(ctx(), Prefs.KEY_ADAPTIVE_ON, true),
+                    running = loop?.isRunning == true,
+                    phase = loop?.phase ?: "idle",
+                    pausedReason = loop?.pausedReason,
+                    bottleneck = BottleneckDetector.detect(frame),
+                    effectiveThermal = effectiveThermalStatus(),
+                    osThermal = s.thermalStatus,
+                    decisions = ledger().entries.values.toList()
+                        .sortedByDescending { it.pairs }
+                        .take(5)
+                )
+            )
+        } catch (e: Exception) {
+            // UI state must never break the monitor
         }
     }
 
@@ -272,6 +392,14 @@ object AppStore {
                 sessApplied = report.appliedCount + report.noChangeCount
                 sessFailed = report.failedCount
                 setGamePackage(profile.packageName)
+                currentTargetFps = profile.fpsCap
+                    .takeIf { it > 0 }
+                    ?: profile.refreshRate.takeIf { it > 0 }
+                    ?: 60
+                honorDroppedTasks(bctx)
+                if (Prefs.getBool(c, Prefs.KEY_ADAPTIVE_ON, true)) {
+                    adaptiveLoop?.start()
+                }
                 if (BoosterService.active) BoosterService.pushScore(c, computeScore(profile))
                 refreshTaskStates()
                 val s = computeScore(profile)
@@ -295,9 +423,28 @@ object AppStore {
         }
     }
 
+    /**
+     * The engine's DROP verdicts are binding: if a boost re-applied a task
+     * the adaptive engine measured as harmful, revert it immediately —
+     * "no conflicts" includes conflicts with our own past measurements.
+     */
+    private fun honorDroppedTasks(ctx: BoostContext) {
+        val dropped = ledger().entries.values.filter { it.decision == com.nitroboost.app.core.adaptive.Decision.DROP }
+        for (entry in dropped) {
+            val entries = ctx.journal.entries.filter { it.taskId == entry.taskId }
+            if (entries.isEmpty()) continue
+            val ok = entries.filter { com.nitroboost.app.core.Journal.restore(it, ctx.executor) }
+            if (ok.isNotEmpty()) {
+                ctx.journal.remove(ok)
+                appendLog("adaptive: reverted dropped task ${entry.taskId}")
+            }
+        }
+    }
+
     fun stopSession() {
         scope.launch(Dispatchers.IO) {
             try {
+                adaptiveLoop?.stop()
                 val executor = AndroidExecutor(ctx())
                 val bctx = BoostContext(
                     ProfileStore(ctx()).resolve(Prefs.activeProfile(ctx())),

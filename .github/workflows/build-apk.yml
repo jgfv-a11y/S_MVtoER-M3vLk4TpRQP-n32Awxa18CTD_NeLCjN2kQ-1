@@ -119,11 +119,24 @@ jobs:
       - name: Publish release with APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: nitroboost-v1.1.0
-          name: NitroBoost v1.1.0 (debug build)
+          tag_name: nitroboost-v1.2.0
+          name: NitroBoost v1.2.0 (debug build)
           body: |
             Debug build of NitroBoost — install on a real device (Shizuku required
             for the full feature set; the app degrades gracefully without it).
+
+            ## v1.2.0 — Adaptive Engine
+            - **A/B adaptive engine**: every performance tweak is tested on
+              your device (baseline vs applied, real FPS from gfxinfo) and
+              only statistically significant tweaks are kept (paired 95%
+              confidence interval). Verdicts persist across sessions in the
+              decision ledger; DROPped tweaks are never re-applied.
+            - **Bottleneck detector**: live classification of where frames
+              are lost (CPU / GPU / memory / network / thermal).
+            - **Predictive thermal headroom**: temperature trend can
+              de-escalate one tier BEFORE the OS thermal status flips.
+            - Dashboard engine card + settings toggle.
+            - +32 JVM unit tests (62 total).
 
             ## v1.1.0
             - **Game API (Android 12+)**: official `cmd game` render downscale

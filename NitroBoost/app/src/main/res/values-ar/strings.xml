@@ -122,7 +122,7 @@
     <string name="restore">استعادة</string>
     <string name="clear_log">مسح السجل</string>
     <string name="about_title">عن نيترو بوست</string>
-    <string name="about_text">الإصدار 1.1.0 — مسرّع ألعاب نظيف يعتمد على الدفتر. كل تغيير يُسجّل ويمكن إرجاعه بضغطة واحدة. الأمان الحراري فوق الأداء. الإصدار 1.1 يضيف تخفيف دقة الرسوميات (Game API)، كشف تطبيقات Game Space، وتقرير أداء مقاس بعد كل جلسة.</string>
+    <string name="about_text">الإصدار 1.2.0 — مسرّع ألعاب نظيف يعتمد على الدفتر. كل تغيير يُسجّل ويمكن إرجاعه بضغطة واحدة. الأمان الحراري فوق الأداء. الإصدار 1.2 يضيف المحرك التكيفي A/B: كل تعديل يُقاس على جهازك ويُحتفظ فقط بما ثبتت فائدته إحصائيًا، مع كشف اختناق حي وهامش حراري تنبؤي.</string>
 
     <!-- Session report -->
     <string name="report_title">تقرير آخر جلسة</string>
@@ -136,6 +136,27 @@
 
     <!-- Game space detection -->
     <string name="game_space_hint">تم كشف Game Space خاص بالصانع: %1$s — يُنصح بتفعيل وضع لعبته أيضًا لأفضل نتيجة.</string>
+
+    <!-- Adaptive engine -->
+    <string name="adaptive_label">المحرك التكيفي (اختبار أ/ب لكل تعديل على جهازك)</string>
+    <string name="adaptive_title">المحرك التكيفي</string>
+    <string name="adaptive_bottleneck">نقطة الاختناق</string>
+    <string name="adaptive_state">الحالة</string>
+    <string name="adaptive_off">متوقف (فعّله من الإعدادات)</string>
+    <string name="adaptive_paused">متوقف مؤقتًا: %1$s</string>
+    <string name="adaptive_done">قُيست جميع المرشحات</string>
+    <string name="adaptive_trial">جارٍ قياس %1$s…</string>
+    <string name="adaptive_idle">خامل</string>
+    <string name="thermal_predicted">تنبؤ مبكر</string>
+    <string name="bottleneck_unknown">لا مصدر FPS (يتطلب شيزوكو)</string>
+    <string name="bottleneck_none">لا يوجد — هناك هامش</string>
+    <string name="bottleneck_memory">الذاكرة</string>
+    <string name="bottleneck_network">الشبكة</string>
+    <string name="bottleneck_thermal">خنق حراري</string>
+    <string name="decision_keep">مفيد: %1$s fps (%2$d زوج) — أُبقي عليه</string>
+    <string name="decision_drop">ضار: %1$s fps (%2$d زوج) — أُعيد</string>
+    <string name="decision_neutral">محايد بعد %1$d زوج — أُعيد</string>
+    <string name="decision_pending">قيد القياس… %1$d/%2$d زوج</string>
 
     <!-- Common -->
     <string name="save">حفظ</string>

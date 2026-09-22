@@ -156,7 +156,11 @@ class BoosterService : Service() {
                 try {
                     val ex = AndroidExecutor(this@BoosterService)
                     val status = ex.thermalStatus()
-                    val drop = ThermalGuard.modulesToDrop(status)
+                    // Predictive: the adaptive engine's temperature trend can
+                    // escalate one tier early, de-escalating BEFORE the OS
+                    // thermal status flips and frames actually drop.
+                    val eff = maxOf(status, AppStore.effectiveThermalStatus())
+                    val drop = ThermalGuard.modulesToDrop(eff)
                     if (drop.isNotEmpty()) {
                         val bctx = BoostContext(
                             ProfileStore(this@BoosterService)

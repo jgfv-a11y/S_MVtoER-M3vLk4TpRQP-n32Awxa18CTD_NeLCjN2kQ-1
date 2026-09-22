@@ -122,7 +122,7 @@
     <string name="restore">Restore</string>
     <string name="clear_log">Clear log</string>
     <string name="about_title">About NitroBoost</string>
-    <string name="about_text">Version 1.1.0 — a clean, journal-based game booster. Every change is recorded and can be reverted in one tap. Thermal safety outranks performance. v1.1 adds the Android 12+ Game API downscale, OEM game-space detection and a measured session report.</string>
+    <string name="about_text">Version 1.2.0 — a clean, journal-based game booster. Every change is recorded and can be reverted in one tap. Thermal safety outranks performance. v1.2 adds the adaptive A/B engine: every tweak is measured on your device and kept only if statistically beneficial, plus live bottleneck detection and predictive thermal headroom.</string>
 
     <!-- Session report -->
     <string name="report_title">Last session report</string>
@@ -136,6 +136,27 @@
 
     <!-- Game space detection -->
     <string name="game_space_hint">OEM game space detected: %1$s — consider enabling its game mode too for the best result.</string>
+
+    <!-- Adaptive engine -->
+    <string name="adaptive_label">Adaptive engine (A/B test every tweak on your device)</string>
+    <string name="adaptive_title">Adaptive engine</string>
+    <string name="adaptive_bottleneck">Bottleneck</string>
+    <string name="adaptive_state">State</string>
+    <string name="adaptive_off">off (enable in Settings)</string>
+    <string name="adaptive_paused">paused: %1$s</string>
+    <string name="adaptive_done">all candidates measured</string>
+    <string name="adaptive_trial">testing %1$s…</string>
+    <string name="adaptive_idle">idle</string>
+    <string name="thermal_predicted">predicted early</string>
+    <string name="bottleneck_unknown">no FPS source (needs Shizuku)</string>
+    <string name="bottleneck_none">none — headroom available</string>
+    <string name="bottleneck_memory">memory</string>
+    <string name="bottleneck_network">network</string>
+    <string name="bottleneck_thermal">thermal throttling</string>
+    <string name="decision_keep">useful: %1$s fps (%2$d pairs) — kept</string>
+    <string name="decision_drop">harmful: %1$s fps (%2$d pairs) — reverted</string>
+    <string name="decision_neutral">neutral after %1$d pairs — reverted</string>
+    <string name="decision_pending">measuring… %1$d/%2$d pairs</string>
 
     <!-- Common -->
     <string name="save">Save</string>
