@@ -82,7 +82,7 @@ class GovernorTaskTest {
     @Test
     fun `second apply is a no-op after success`() {
         val ex = FakeExecutor()
-        ex.sysfs[govPath] = "schedutil"
+        ex.sysfs[govPath] = "performance"
         val j = journal()
         val task = GovernorTask(governor = "schedutil")
         val ctx = BoostContext(testProfile(Module.CPU), ex, j)
