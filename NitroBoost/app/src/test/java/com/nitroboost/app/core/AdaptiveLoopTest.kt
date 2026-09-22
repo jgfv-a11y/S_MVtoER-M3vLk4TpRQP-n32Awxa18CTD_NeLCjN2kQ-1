@@ -8,7 +8,6 @@ import com.nitroboost.app.core.adaptive.FrameMetrics
 import com.nitroboost.app.core.adaptive.TrialConfig
 import com.nitroboost.app.core.tasks.AllTasks
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 import java.io.File
@@ -86,8 +85,7 @@ class AdaptiveLoopTest {
         loop.ledger.record("game_mode", "Game Mode", deltas,
             AdaptivePolicy.assess(deltas, TrialConfig()), 1L, TrialConfig())
         val next = loop.nextCandidate(ctx())
-        assertNotNull(next)
-        assertEquals("cpu_governor", next.id)
+        assertEquals("cpu_governor", next!!.id)
     }
 
     @Test fun `no candidates when profile has no trial modules`() {
