@@ -41,6 +41,7 @@ class DecisionLedgerTest {
         val a = DecisionLedger(f, 40)
         a.record("cpu_floor", "CPU floor", List(8) { 1.0 },
             AdaptivePolicy.assess(List(8) { 1.0 }, cfg), 1_000L, cfg)
+        a.save()
 
         val b = DecisionLedger(f, 40)
         b.load()

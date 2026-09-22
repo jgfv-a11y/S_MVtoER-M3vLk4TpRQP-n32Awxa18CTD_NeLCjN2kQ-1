@@ -61,7 +61,8 @@ class AdaptivePolicyTest {
     }
 
     @Test fun `deltas truncate to the shorter list`() {
+        // arm - baseline per pair, truncated to the shorter list
         val d = AdaptivePolicy.deltasOf(listOf(1, 2, 3), listOf(5, 5))
-        assertEquals(listOf(3.0, 3.0), d)
+        assertEquals(listOf(4.0, 3.0), d)
     }
 }
