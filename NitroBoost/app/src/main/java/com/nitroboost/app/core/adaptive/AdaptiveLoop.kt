@@ -358,7 +358,7 @@ class AdaptiveLoop(
         val best = pickBestArm(arms) ?: return
         val raw = AdaptivePolicy.assess(best.deltas, cfg)
         val outcome = withThermalGuard(
-            raw, baseline.thermalMean, armThermals[best.detail] ?: baseline.thermalMean
+            raw, baseline.thermalMean, armThermals[best.level] ?: baseline.thermalMean
         )
         val merged = ledger.record(
             task.id, task.titleEn, best.deltas, outcome,
