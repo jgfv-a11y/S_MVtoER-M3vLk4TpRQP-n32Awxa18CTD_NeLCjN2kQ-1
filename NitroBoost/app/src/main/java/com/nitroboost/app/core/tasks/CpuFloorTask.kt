@@ -82,8 +82,7 @@ class CpuFloorTask : BoostTask {
             } else if (!w.ok) {
                 return TaskResult(
                     id,
-                    TaskStatus.Failed,
-                    "ROM blocks scaling_min_freq writes on ${p.dir}"
+                    TaskStatus.Failed("ROM blocks scaling_min_freq writes on ${p.dir}")
                 )
             }
         }

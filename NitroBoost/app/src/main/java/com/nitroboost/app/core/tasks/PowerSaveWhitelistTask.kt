@@ -41,7 +41,7 @@ class PowerSaveWhitelistTask : BoostTask {
         if (isApplied(ctx)) return TaskResult(id, TaskStatus.NoChange)
         val r = ctx.executor.shell("cmd deviceidle whitelist +$p 2>/dev/null")
         if (!r.ok) {
-            return TaskResult(id, TaskStatus.Failed, "deviceidle whitelist not writable on this ROM")
+            return TaskResult(id, TaskStatus.Failed("deviceidle whitelist not writable on this ROM"))
         }
         return TaskResult(
             id,
