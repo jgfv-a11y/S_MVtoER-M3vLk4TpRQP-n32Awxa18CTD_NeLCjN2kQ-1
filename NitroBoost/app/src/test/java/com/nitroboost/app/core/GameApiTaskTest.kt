@@ -69,4 +69,18 @@ class GameApiTaskTest {
         assertFalse(task.isSupported(ctx))
         assertEquals(TaskStatus.Skipped, task.apply(ctx).status)
     }
+
+    @Test
+    fun `sweep levels produce level-specific commands`() {
+        for (level in listOf("0.9", "0.7")) {
+            val ex = FakeExecutor()
+            ex.privileged = true
+            val j = journal()
+            val task = GameApiTask(sdk = 34, level = level)
+            val ctx = BoostContext(testProfile(Module.GPU), ex, j)
+            val r = task.apply(ctx)
+            assertEquals(TaskStatus.Applied, r.status)
+            assertTrue(ex.shellLog.any { it == "cmd game set --downscale $level com.test.game 2>&1" })
+        }
+    }
 }

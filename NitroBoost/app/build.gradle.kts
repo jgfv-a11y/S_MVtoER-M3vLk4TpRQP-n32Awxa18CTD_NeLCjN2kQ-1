@@ -11,8 +11,23 @@ android {
         applicationId = "com.nitroboost.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.2.0"
+        versionCode = 4
+        versionName = "1.3.0"
+    }
+
+    // Optional release signing for store distribution.
+    // Activated ONLY when the CI secrets are provided as env vars
+    // (KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD) —
+    // see docs/DISTRIBUTION.md. Local/CI debug builds are unaffected.
+    signingConfigs {
+        if (System.getenv("KEYSTORE_BASE64") != null) {
+            create("release") {
+                storeFile = file(System.getenv("KEYSTORE_FILE") ?: "release.jks")
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -22,6 +37,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (System.getenv("KEYSTORE_BASE64") != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 

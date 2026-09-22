@@ -122,7 +122,7 @@
     <string name="restore">Restore</string>
     <string name="clear_log">Clear log</string>
     <string name="about_title">About NitroBoost</string>
-    <string name="about_text">Version 1.2.0 — a clean, journal-based game booster. Every change is recorded and can be reverted in one tap. Thermal safety outranks performance. v1.2 adds the adaptive A/B engine: every tweak is measured on your device and kept only if statistically beneficial, plus live bottleneck detection and predictive thermal headroom.</string>
+    <string name="about_text">Version 1.3.0 — a clean, journal-based game booster. Every change is recorded and can be reverted in one tap. Thermal safety outranks performance. v1.3 adds the dynamic-resolution sweep (0.9/0.8/0.7) that keeps the winner measured on your device; v1.2 added the adaptive A/B engine: every tweak is measured on your device and kept only if statistically beneficial, plus live bottleneck detection and predictive thermal headroom.</string>
 
     <!-- Session report -->
     <string name="report_title">Last session report</string>

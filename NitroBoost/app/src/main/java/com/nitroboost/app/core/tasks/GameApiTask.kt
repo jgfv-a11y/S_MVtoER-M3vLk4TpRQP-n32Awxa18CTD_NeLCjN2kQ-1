@@ -10,8 +10,12 @@ import com.nitroboost.app.core.TaskStatus
 
 /**
  * Official Android 12+ Game Manager: ask the platform to downscale the
- * game's rendering at 80% (GPU does 36% less pixel work → cooler device,
- * steadier frames on mid/low SoCs).
+ * game's rendering (default 80% — the GPU does 36% less pixel work →
+ * cooler device, steadier frames on mid/low SoCs).
+ *
+ * [level] is injectable because the adaptive engine SWEEPS the legal
+ * levels (0.9 / 0.8 / 0.7) on the real device and keeps whichever yields
+ * the best measured FPS/thermal balance for THIS SoC.
  *
  * Guarded end-to-end:
  *  - Android 12+ (SDK 31) and a privileged shell only;
@@ -24,7 +28,10 @@ import com.nitroboost.app.core.TaskStatus
  * tracked through the journal entry — which is also what makes the revert
  * precise.
  */
-class GameApiTask(private val sdk: Int = Build.VERSION.SDK_INT) : BoostTask {
+class GameApiTask(
+    private val sdk: Int = Build.VERSION.SDK_INT,
+    val level: String = DOWNSCALE
+) : BoostTask {
 
     override val id = "game_api_downscale"
     override val titleAr = "تخفيف دقة الرسوميات (Game API)"
@@ -68,7 +75,7 @@ class GameApiTask(private val sdk: Int = Build.VERSION.SDK_INT) : BoostTask {
         }
         if (isApplied(ctx)) return TaskResult(id, TaskStatus.NoChange)
         val r = ctx.executor.shell(
-            "cmd game set --downscale $DOWNSCALE $p 2>&1"
+            "cmd game set --downscale $level $p 2>&1"
         )
         if (!r.ok) {
             return TaskResult(
@@ -79,14 +86,14 @@ class GameApiTask(private val sdk: Int = Build.VERSION.SDK_INT) : BoostTask {
         return TaskResult(
             id,
             TaskStatus.Applied,
-            "downscale $DOWNSCALE (Game Manager)",
+            "downscale $level (Game Manager)",
             entries = listOf(
                 JournalEntry(
                     taskId = id,
                     kind = JournalEntry.Kind.CMD,
                     key = "game_api:$p",
                     oldValue = "none",
-                    newValue = "--downscale $DOWNSCALE",
+                    newValue = "--downscale $level",
                     revertCmd = "cmd game reset $p 2>/dev/null"
                 )
             )

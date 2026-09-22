@@ -82,13 +82,23 @@ gradle wrapper --gradle-version 8.7   # إذا كان Gradle 8.7 مثبتًا
 
 APK الناتج في `app/build/outputs/apk/debug/`.
 
-> 📲 **APK جاهز للتنزيل (v1.2.0)**: [nitroboost-debug.apk](../dist/nitroboost-debug.apk)
+> 📲 **APK جاهز للتنزيل (v1.3.0)**: [nitroboost-debug.apk](../dist/nitroboost-debug.apk)
 > (أو من صفحة [Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) —
 > يُعاد بناؤه تلقائيًا عبر GitHub Actions عند كل تغيير).
 
 ---
 
 ## 📜 سجل الإصدارات
+
+### v1.3.0 — مسح الدقة الديناميكي (إصدار مستقر)
+- **مسح مستويات تخفيف الدقة (0.9 / 0.8 / 0.7)**: المحرك يقيس كل مستوى
+  قانوني مقابل baseline مشترك واحد على جهازك، ويبقي **الفائز** — تحكم حقيقي
+  في الدقة الديناميكية لتطبيق خارجي.
+- المستوى الفائز يُحفظ في دفتر القرارات ويُستعاد تلقائيًا في كل جلسة تالية.
+- **إصدار عادي (مستقر)** — لم يعد تجريبيًا.
+- تجهيز النشر العالمي: توقيع release اختياري عبر CI +
+  [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md) (خارطة Play Store / F-Droid).
+- 67 اختبار JVM في خط البناء.
 
 ### v1.2.0 — المحرك التكيفي
 - **محرك تكيفي A/B كامل**: كل تعديل أداء يُختبر على جهازك الحقيقي

@@ -73,6 +73,23 @@ class DecisionLedgerTest {
         assertEquals(listOf("pending"), a.pendingIds())
     }
 
+    @Test fun `sweep detail survives round trip and re-records`() {
+        val f = file()
+        val a = DecisionLedger(f, 40)
+        a.record("game_api_downscale", "Render downscale", List(10) { 2.0 },
+            AdaptivePolicy.assess(List(10) { 2.0 }, cfg), 1_000L, cfg, detail = "level=0.7")
+        a.save()
+
+        val b = DecisionLedger(f, 40)
+        b.load()
+        assertEquals("level=0.7", b.entries["game_api_downscale"]?.detail)
+
+        // a re-measure without detail keeps the previous winner
+        b.record("game_api_downscale", "Render downscale", List(10) { 2.0 },
+            AdaptivePolicy.assess(List(20) { 2.0 }, cfg), 2_000L, cfg)
+        assertEquals("level=0.7", b.entries["game_api_downscale"]?.detail)
+    }
+
     @Test fun `corrupt file yields empty ledger, not a crash`() {
         val f = file()
         f.writeText("this is { not json")

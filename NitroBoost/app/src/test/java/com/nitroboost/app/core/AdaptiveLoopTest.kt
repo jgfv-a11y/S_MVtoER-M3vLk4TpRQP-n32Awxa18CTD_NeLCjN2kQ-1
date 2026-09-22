@@ -100,4 +100,38 @@ class AdaptiveLoopTest {
         assertEquals("idle", loop.phase)
         assertEquals(false, loop.isRunning)
     }
+
+    @Test fun `sweep levels are legal AOSP ratios, mildest first`() {
+        AdaptiveLoop.SWEEP_LEVELS.forEach { level ->
+            val f = level.toFloat()
+            assertTrue(f in 0.3f..0.9f)
+            // AOSP accepts 0.05 steps
+            assertTrue((f * 100f % 5f) == 0f)
+        }
+        assertTrue(AdaptiveLoop.SWEEP_LEVELS.first().toFloat() >
+            AdaptiveLoop.SWEEP_LEVELS.last().toFloat())
+    }
+
+    @Test fun `pickBestArm chooses the highest mean delta`() {
+        val best = AdaptiveLoop.pickBestArm(
+            listOf(
+                AdaptiveLoop.SweepArm("0.9", listOf(1.0, 1.0, 1.0)),
+                AdaptiveLoop.SweepArm("0.8", listOf(3.0, 3.0, 3.0)),
+                AdaptiveLoop.SweepArm("0.7", listOf(0.5, 0.5))
+            )
+        )
+        assertEquals("0.8", best!!.level)
+    }
+
+    @Test fun `pickBestArm handles empty and negative arms`() {
+        assertEquals(null, AdaptiveLoop.pickBestArm(emptyList()))
+        val best = AdaptiveLoop.pickBestArm(
+            listOf(
+                AdaptiveLoop.SweepArm("0.9", emptyList()),
+                AdaptiveLoop.SweepArm("0.8", listOf(-1.0, -0.5))
+            )
+        )
+        assertEquals("0.8", best!!.level) // -0.75 beats NEGATIVE_INFINITY
+        assertTrue(best.mean < 0)
+    }
 }

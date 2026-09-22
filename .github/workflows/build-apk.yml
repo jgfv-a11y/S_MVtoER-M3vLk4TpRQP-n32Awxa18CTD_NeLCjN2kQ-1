@@ -119,11 +119,27 @@ jobs:
       - name: Publish release with APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: nitroboost-v1.2.0
-          name: NitroBoost v1.2.0 (debug build)
+          tag_name: nitroboost-v1.3.0
+          name: NitroBoost v1.3.0
           body: |
-            Debug build of NitroBoost — install on a real device (Shizuku required
-            for the full feature set; the app degrades gracefully without it).
+            NitroBoost — journal-based game booster with a full adaptive A/B
+            engine. Install on a real device (Shizuku required for the full
+            feature set; the app degrades gracefully without it).
+            Debug-signed build for direct install; store builds (signed
+            release) are prepared — see `NitroBoost/docs/DISTRIBUTION.md`.
+
+            ## v1.3.0 — Dynamic resolution sweep
+            - **Downscale sweep (0.9 / 0.8 / 0.7)**: the adaptive engine
+              measures EVERY legal render-downscale level on your device
+              against one shared baseline and keeps the winner — real
+              dynamic-resolution control for a userland booster.
+            - The winning level persists in the decision ledger and is
+              restored automatically on every later session.
+            - **Stable release** (no longer prerelease).
+            - Store distribution prep: optional CI release signing
+              (keystore via GitHub secrets) + `docs/DISTRIBUTION.md`
+              (Play Store / F-Droid roadmap).
+            - +5 JVM unit tests (67 total).
 
             ## v1.2.0 — Adaptive Engine
             - **A/B adaptive engine**: every performance tweak is tested on
@@ -150,6 +166,6 @@ jobs:
               the FPS delta vs the previous session.
             - 16 boost tasks (was 15): +game_api_downscale.
           files: NitroBoost/nitroboost-debug.apk
-          prerelease: true
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

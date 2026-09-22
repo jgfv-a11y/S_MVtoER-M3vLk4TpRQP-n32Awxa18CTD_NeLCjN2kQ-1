@@ -396,7 +396,7 @@ object AppStore {
                     .takeIf { it > 0 }
                     ?: profile.refreshRate.takeIf { it > 0 }
                     ?: 60
-                honorDroppedTasks(bctx)
+                honorLedger(bctx)
                 if (Prefs.getBool(c, Prefs.KEY_ADAPTIVE_ON, true)) {
                     adaptiveLoop?.start()
                 }
@@ -424,19 +424,44 @@ object AppStore {
     }
 
     /**
-     * The engine's DROP verdicts are binding: if a boost re-applied a task
-     * the adaptive engine measured as harmful, revert it immediately —
-     * "no conflicts" includes conflicts with our own past measurements.
+     * The engine's verdicts are binding on every boost:
+     *  - DROP  -> if the boost re-applied a measured-harmful task, revert it
+     *    ("no conflicts" includes conflicts with our own past measurements);
+     *  - KEEP with a sweep detail (e.g. "level=0.7") -> the normal boost
+     *    applied the built-in default level; replace it with the winner the
+     *    engine measured on THIS device.
      */
-    private fun honorDroppedTasks(ctx: BoostContext) {
-        val dropped = ledger().entries.values.filter { it.decision == com.nitroboost.app.core.adaptive.Decision.DROP }
-        for (entry in dropped) {
+    private fun honorLedger(ctx: BoostContext) {
+        for (entry in ledger().entries.values) {
             val entries = ctx.journal.entries.filter { it.taskId == entry.taskId }
-            if (entries.isEmpty()) continue
-            val ok = entries.filter { com.nitroboost.app.core.Journal.restore(it, ctx.executor) }
-            if (ok.isNotEmpty()) {
-                ctx.journal.remove(ok)
-                appendLog("adaptive: reverted dropped task ${entry.taskId}")
+            when (entry.decision) {
+                com.nitroboost.app.core.adaptive.Decision.DROP -> {
+                    if (entries.isEmpty()) continue
+                    val ok = entries.filter { com.nitroboost.app.core.Journal.restore(it, ctx.executor) }
+                    if (ok.isNotEmpty()) {
+                        ctx.journal.remove(ok)
+                        appendLog("adaptive: reverted dropped task ${entry.taskId}")
+                    }
+                }
+                com.nitroboost.app.core.adaptive.Decision.KEEP -> {
+                    val detail = entry.detail ?: continue
+                    if (entry.taskId != "game_api_downscale" || !detail.startsWith("level=")) continue
+                    val level = detail.removePrefix("level=")
+                    if (level == com.nitroboost.app.core.tasks.GameApiTask.DOWNSCALE) continue
+                    val ok = entries.filter { com.nitroboost.app.core.Journal.restore(it, ctx.executor) }
+                    if (ok.isNotEmpty()) ctx.journal.remove(ok)
+                    val t = com.nitroboost.app.core.tasks.GameApiTask(level = level)
+                    val r = try {
+                        t.apply(ctx)
+                    } catch (e: Exception) {
+                        null
+                    }
+                    if (r != null && r.entries.isNotEmpty() && r.status.success) {
+                        ctx.journal.add(r.entries)
+                        appendLog("adaptive: restored winning downscale $level")
+                    }
+                }
+                else -> Unit
             }
         }
     }

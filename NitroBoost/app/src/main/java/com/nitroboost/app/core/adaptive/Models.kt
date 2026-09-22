@@ -72,7 +72,9 @@ data class LedgerEntry(
     val ciHigh: Double?,
     val pairs: Int,
     val sessions: Int,
-    val evaluatedAt: Long
+    val evaluatedAt: Long,
+    /** e.g. "level=0.8" for the downscale sweep winner — engine metadata. */
+    val detail: String? = null
 ) {
     val resolved: Boolean
         get() = decision == Decision.KEEP || decision == Decision.DROP || decision == Decision.NEUTRAL

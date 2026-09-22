@@ -37,7 +37,8 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
                     ciHigh = if (o.isNull("ciHigh")) null else o.optDouble("ciHigh"),
                     pairs = o.optInt("pairs"),
                     sessions = o.optInt("sessions", 1),
-                    evaluatedAt = o.optLong("evaluatedAt")
+                    evaluatedAt = o.optLong("evaluatedAt"),
+                    detail = if (o.isNull("detail")) null else o.optString("detail")
                 )
                 entries[entry.taskId] = entry
             }
@@ -62,6 +63,7 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
                     .put("pairs", e.pairs)
                     .put("sessions", e.sessions)
                     .put("evaluatedAt", e.evaluatedAt)
+                    .put("detail", e.detail ?: JSONObject.NULL)
                 arr.put(o)
             }
             file.writeText(arr.toString())
@@ -72,7 +74,8 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
 
     /** Merge new trial deltas and re-assess. Returns the new record. */
     fun record(taskId: String, taskTitle: String, newDeltas: List<Double>,
-               outcome: TrialOutcome, nowMs: Long, cfg: TrialConfig): LedgerEntry {
+               outcome: TrialOutcome, nowMs: Long, cfg: TrialConfig,
+               detail: String? = null): LedgerEntry {
         val prev = entries[taskId]
         val base = prev?.deltas ?: emptyList()
         val deltas = (base + newDeltas).takeLast(maxPairs)
@@ -87,7 +90,8 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
             ciHigh = final.ciHigh,
             pairs = deltas.size,
             sessions = (prev?.sessions ?: 0) + if (newDeltas.isNotEmpty()) 1 else 0,
-            evaluatedAt = nowMs
+            evaluatedAt = nowMs,
+            detail = detail ?: prev?.detail
         )
         entries[taskId] = merged
         return merged
