@@ -33,6 +33,8 @@ class DashboardFragment : Fragment() {
     private var statFps: TextView? = null
     private var statPing: TextView? = null
     private var btnBoost: MaterialButton? = null
+    private var reportText: TextView? = null
+    private var gameSpaceHint: TextView? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,

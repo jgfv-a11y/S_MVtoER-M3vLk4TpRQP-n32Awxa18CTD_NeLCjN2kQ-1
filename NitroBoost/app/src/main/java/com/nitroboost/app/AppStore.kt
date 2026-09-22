@@ -109,8 +109,8 @@ object AppStore {
         val temp = mutableListOf<Int>()
         val ping = mutableListOf<Int>()
         val ram = mutableListOf<Int>()
-        val applied = 0
-        val failed = 0
+        var applied = 0
+        var failed = 0
         val start = synchronized(measLock) {
             fps += sessFps
             temp += sessTemp
