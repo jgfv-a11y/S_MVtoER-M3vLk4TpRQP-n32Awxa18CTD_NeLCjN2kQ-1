@@ -16,8 +16,11 @@ import com.nitroboost.app.core.TaskStatus
  * the lowest-latency option on blk-mq kernels; it is restored on exit,
  * so sequential workloads keep their batched default.
  *
- * The main user-data block device is probed (mmcblk / sda / nvme); on a
- * device where none is writable the task is Skipped, never Failed.
+ * The main user-data block device is probed (mmcblk / sda / nvme). Some
+ * kernels report the full option list ("[mq-deadline] kyber none"), some
+ * only the active token after a switch ("none") — both forms are handled.
+ * Blocked-rom semantics: no writable node or a locked node = Skipped,
+ * never Failed.
  */
 class IoSchedulerTask : BoostTask {
 
@@ -36,7 +39,7 @@ class IoSchedulerTask : BoostTask {
         val CANDIDATES = listOf("mmcblk0", "sda", "nvme0n1")
     }
 
-    private data class SchedNode(val dev: String, val active: String)
+    private data class SchedNode(val dev: String, val active: String, val options: List<String>)
 
     private fun path(dev: String): String = "/sys/block/$dev/queue/scheduler"
 
@@ -46,14 +49,15 @@ class IoSchedulerTask : BoostTask {
         return (m?.groupValues?.get(1) ?: value.trim()).trim()
     }
 
+    private fun optionsOf(value: String): List<String> =
+        value.trim().removePrefix("[").removeSuffix("]").trim().split(' ').filter { it.isNotEmpty() }
+
+    /** First schedulable block device, or null when none is visible. */
     private fun detect(ctx: BoostContext): SchedNode? {
         for (dev in CANDIDATES) {
             val v = ctx.executor.readSys(path(dev)) ?: continue
             if (v.isBlank()) continue
-            // The device must actually offer more than one scheduler to be
-            // meaningful (a single-option node is a no-op).
-            val options = v.trim().removePrefix("[").removeSuffix("]").trim().split(' ')
-            if (options.size >= 2) return SchedNode(dev, active(v))
+            return SchedNode(dev, active(v), optionsOf(v))
         }
         return null
     }
@@ -73,6 +77,9 @@ class IoSchedulerTask : BoostTask {
         val node = detect(ctx)
             ?: return TaskResult(id, TaskStatus.Skipped, "no schedulable block device visible to shell")
         if (node.active == TARGET) return TaskResult(id, TaskStatus.NoChange, "already $TARGET")
+        if (node.options.size < 2) {
+            return TaskResult(id, TaskStatus.Skipped, "device offers a single scheduler (${node.active})")
+        }
         val p = path(node.dev)
         val ok = ctx.executor.writeSys(p, TARGET) &&
             ctx.executor.readSys(p)?.let { active(it) == TARGET } == true
