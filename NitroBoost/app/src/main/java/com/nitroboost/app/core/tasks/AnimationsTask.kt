@@ -20,6 +20,7 @@ class AnimationsTask : BoostTask {
     override val descEn = "Zero the system animation scales for instant responses"
     override val module = Module.TWEAKS
     override val requiresPrivilege = false
+    override val boostLevel = 1
 
     private val keys = listOf(
         "window_animation_scale",

@@ -21,6 +21,7 @@ class GameModeTask : BoostTask {
     override val descEn = "System Game Mode — full priority for the game"
     override val module = Module.CPU
     override val requiresPrivilege = true
+    override val boostLevel = 1
 
     private fun current(ctx: BoostContext): Int {
         val r = ctx.executor.shell("settings get secure game_mode")

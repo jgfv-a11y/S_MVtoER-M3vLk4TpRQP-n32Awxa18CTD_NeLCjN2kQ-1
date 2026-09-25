@@ -21,6 +21,7 @@ class DndTask : BoostTask {
     override val descEn = "Hide all notifications while gaming, alarms still ring"
     override val module = Module.DND
     override val requiresPrivilege = false
+    override val boostLevel = 1
 
     override fun isSupported(ctx: BoostContext): Boolean = true
 

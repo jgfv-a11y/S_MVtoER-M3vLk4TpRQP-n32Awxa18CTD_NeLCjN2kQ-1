@@ -1,5 +1,6 @@
 package com.nitroboost.app.ui
 
+import android.graphics.Typeface
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -9,6 +10,7 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.Observer
@@ -56,6 +58,7 @@ class HomeFragment : Fragment() {
     private var shizukuCard: View? = null
     private var shizukuStatus: TextView? = null
     private var btnShizuku: MaterialButton? = null
+    private var levelChips: List<TextView> = emptyList()
 
     private val shizukuPoller = object : Runnable {
         override fun run() {
@@ -96,8 +99,14 @@ class HomeFragment : Fragment() {
         shizukuCard = view.findViewById(R.id.shizuku_card)
         shizukuStatus = view.findViewById(R.id.shizuku_card_status)
         btnShizuku = view.findViewById(R.id.btn_shizuku)
+        levelChips = listOf(
+            view.findViewById(R.id.lv_chip_1),
+            view.findViewById(R.id.lv_chip_2),
+            view.findViewById(R.id.lv_chip_3)
+        )
 
         buildChips()
+        setupLevelChips()
 
         btnBoost?.setOnClickListener {
             if (BoosterService.active) {
@@ -136,6 +145,7 @@ class HomeFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         buildChips()
+        renderLevelChips()
         shizukuPoller.run()
     }
 
@@ -171,6 +181,31 @@ class HomeFragment : Fragment() {
             m.marginEnd = (8 * c.resources.displayMetrics.density).toInt()
             row.layoutParams = m
             container.addView(chip)
+        }
+    }
+
+    // ---------------- Boost level chips (v1.5) ----------------
+
+    private fun setupLevelChips() {
+        val c = requireContext()
+        levelChips.forEachIndexed { i, chip ->
+            chip.setOnClickListener {
+                Prefs.putInt(c, Prefs.KEY_BOOST_LEVEL, i + 1)
+                renderLevelChips()
+            }
+        }
+        renderLevelChips()
+    }
+
+    private fun renderLevelChips() {
+        val c = requireContext()
+        val sel = Prefs.getInt(c, Prefs.KEY_BOOST_LEVEL, 2)
+        val accent = ContextCompat.getColor(c, R.color.nb_accent)
+        val normal = ContextCompat.getColor(c, R.color.nb_text)
+        levelChips.forEachIndexed { i, chip ->
+            val on = i + 1 == sel
+            chip.setTextColor(if (on) accent else normal)
+            chip.setTypeface(null, if (on) Typeface.BOLD else Typeface.NORMAL)
         }
     }
 

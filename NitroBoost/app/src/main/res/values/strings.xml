@@ -60,6 +60,10 @@ The app keeps checking by itself until connected. On rooted devices, Root is use
     <!-- Dashboard -->
     <string name="score_label">BOOST SCORE</string>
     <string name="btn_boost_start">BOOST NOW</string>
+    <!-- v1.5: boost levels -->
+    <string name="level_1">1 · Basic</string>
+    <string name="level_2">2 · Standard</string>
+    <string name="level_3">3 · Max</string>
     <string name="btn_boost_stop">STOP BOOST</string>
     <string name="btn_boost_running">BOOSTING…</string>
     <string name="session_idle">Session idle</string>

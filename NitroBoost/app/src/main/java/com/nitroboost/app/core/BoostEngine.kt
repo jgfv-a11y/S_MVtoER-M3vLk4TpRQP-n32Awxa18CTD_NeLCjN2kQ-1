@@ -33,12 +33,15 @@ class BoostEngine(private val tasks: List<BoostTask>) {
      * right now (e.g. the candidate the adaptive engine is currently
      * measuring — a re-apply mid-trial would corrupt its arm window).
      */
-    fun boost(ctx: BoostContext, exclude: Set<String> = emptySet()): Report {
+    fun boost(ctx: BoostContext, exclude: Set<String> = emptySet(), maxLevel: Int = 3): Report {
         val results = linkedMapOf<String, TaskResult>()
         for (task in tasks) {
             val r = try {
                 if (task.id in exclude) {
                     TaskResult(task.id, TaskStatus.Skipped, "reserved by adaptive trial")
+                } else if (task.boostLevel > maxLevel) {
+                    TaskResult(task.id, TaskStatus.Skipped,
+                        "boost level too low (needs ${task.boostLevel})")
                 } else if (!ctx.profile.isEnabled(task)) {
                     TaskResult(task.id, TaskStatus.Skipped, "disabled in profile")
                 } else {

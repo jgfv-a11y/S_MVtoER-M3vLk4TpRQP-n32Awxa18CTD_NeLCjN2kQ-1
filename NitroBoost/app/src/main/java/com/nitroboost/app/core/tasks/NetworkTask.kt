@@ -21,6 +21,7 @@ class NetworkTask : BoostTask {
     override val descEn = "Stop the system from restricting the network while gaming"
     override val module = Module.NETWORK
     override val requiresPrivilege = true
+    override val boostLevel = 1
 
     private fun current(ctx: BoostContext): String {
         val r = ctx.executor.shell("settings get global no_background_data")

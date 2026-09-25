@@ -21,6 +21,7 @@ class TouchBoostTask : BoostTask {
     override val descEn = "Boost the CPU the instant touch input lands — lower input latency"
     override val module = Module.TWEAKS
     override val requiresPrivilege = true
+    override val boostLevel = 3
 
     private data class Node(val path: String, val target: String)
 

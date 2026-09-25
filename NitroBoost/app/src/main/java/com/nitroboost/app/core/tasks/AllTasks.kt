@@ -25,7 +25,13 @@ object AllTasks {
         NetworkTask(),
         WaltSchedulerTask(),
         TouchBoostTask(),
-        ThermalOverrideTask()
+        ThermalOverrideTask(),
+        // v1.5 Turbo Kit
+        PeakBrightnessTask(),
+        IoSchedulerTask(),
+        CpuOnlineTask(),
+        DeviceIdleTask(),
+        GamePerfModeTask()
     )
 
     val byId: Map<String, BoostTask> = tasks.associateBy { it.id }

@@ -119,14 +119,44 @@ jobs:
       - name: Publish release with APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: nitroboost-v1.4.0
-          name: NitroBoost v1.4.0
+          tag_name: nitroboost-v1.5.0
+          name: NitroBoost v1.5.0
           body: |
             NitroBoost — journal-based game booster with a full adaptive A/B
             engine. Install on a real device (Shizuku required for the full
             feature set; the app degrades gracefully without it).
             Debug-signed build for direct install; store builds (signed
             release) are prepared — see `NitroBoost/docs/DISTRIBUTION.md`.
+
+            ## v1.5.0 — Turbo Kit: boost levels + 5 new acceleration tasks
+            - **Boost level selector (1/2/3)**: choose how hard the engine
+              pushes — 1 = safe basics (no privileges), 2 = standard
+              performance (default), 3 = aggressive. "Max" is now opt-in,
+              and level 3 is clearly separated from everyday boosts.
+            - **Keep all CPU cores online**: stops core hot-plug during the
+              session — removes the 1–3 frame wake-up hitches games hit
+              when the scheduler parks a big core mid-burst.
+            - **Low-latency I/O scheduler**: switches the data block device
+              to `none` (mq direct dispatch) while gaming — small random
+              reads (textures, level streaming) come back faster; previous
+              scheduler restored on exit.
+            - **Peak brightness in game**: locks the panel to max and
+              disables auto-dim for the session — no readability dips in
+              dark scenes. Works even without Shizuku when WRITE_SETTINGS
+              is granted.
+            - **Doze exemption**: whitelists the game in Android's device
+              idle subsystem — no background throttling of network or jobs
+              while the game is the focus.
+            - **Game Manager performance mode (Android 12+)**: asks the
+              platform scheduler/thermal policy to give the game full
+              performance priority via the official `cmd game` API.
+            - **Bug fix**: built-in profiles never enabled the GPU module,
+              so the Game API downscale + the adaptive sweep behind it
+              were silently off for built-in games. Now on by default —
+              80% render is the designed standard and the adaptive engine
+              refines it per SoC.
+            - Every new task is journaled, idempotent and revertible;
+              blocked-on-ROM = Skipped, never Failed.
 
             ## v1.4.0 — New UI + Shizuku/Root auto-connect
             - **Brand-new UI**: 4 simple tabs (Home / Boost / Profiles /

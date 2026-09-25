@@ -92,6 +92,14 @@ interface BoostTask {
     val module: Module
     val requiresPrivilege: Boolean
 
+    /**
+     * Boost level required (v1.5). 1 = basic (no privileges),
+     * 2 = standard performance, 3 = aggressive. The engine applies a task
+     * only when the user-selected level is >= this one — the intensity
+     * valve that makes "max" opt-in instead of default.
+     */
+    val boostLevel: Int get() = 2
+
     /** False when the device/permission situation makes the task impossible. */
     fun isSupported(ctx: BoostContext): Boolean
 

@@ -13,6 +13,8 @@ import com.nitroboost.app.core.TaskStatus
  */
 class RamTrimTask : BoostTask {
 
+    override val boostLevel = 3 // aggressive
+
     override val id = "ram_trim"
     override val titleAr = "تنظيف ذاكرة التخزين المؤقت"
     override val titleEn = "Trim app caches"
@@ -76,6 +78,8 @@ object BackgroundSelector {
  * no-op until the Android side wires it up.
  */
 class RamKillTask : BoostTask {
+
+    override val boostLevel = 3 // aggressive
 
     override val id = "ram_kill"
     override val titleAr = "إنهاء تطبيقات الخلفية"

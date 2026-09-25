@@ -15,6 +15,8 @@ class FakeExecutor : SystemExecutor {
 
     var dndFilter = DndFilters.ALL
     var failDnd = false
+    /** Simulates a device that refuses Settings.System writes (no WRITE_SETTINGS). */
+    var failSys = false
     override var privileged: Boolean = true
 
     override fun shell(cmd: String): ShellResult {
@@ -26,6 +28,35 @@ class FakeExecutor : SystemExecutor {
                 .map { (k, v) -> "$k $v" }
                 .joinToString("\n")
             return ShellResult(true, 0, out, "")
+        }
+
+        // v1.5: core-online listing loop (cpu_online task)
+        if (cmd.startsWith("for c in /sys/devices/system/cpu/cpu")) {
+            val out = sysfs.filterKeys { it.endsWith("/online") }
+                .map { (k, v) ->
+                    "${k.substringAfterLast("cpu").substringBefore("/online")}=$v"
+                }
+                .joinToString("\n")
+            return ShellResult(true, 0, out, "")
+        }
+
+        // v1.5: device idle (Doze) API
+        if (cmd.startsWith("cmd deviceidle help")) {
+            return ShellResult(
+                true, 0,
+                "deviceidle commands:\n whitelist <pkg>\n whitelist-remove <pkg>", ""
+            )
+        }
+        if (cmd.startsWith("cmd deviceidle whitelist")) {
+            val remove = cmd.contains("whitelist-remove")
+            written.add("deviceidle:${if (remove) "rm:" else "add:"}$cmd")
+            return ShellResult(true, 0, "", "")
+        }
+
+        // v1.5: Game Manager performance mode
+        if (cmd.startsWith("cmd game set --mode")) {
+            written.add("game-mode:$cmd")
+            return ShellResult(true, 0, "", "")
         }
 
         // Simulate "echo value > path"
@@ -85,6 +116,7 @@ class FakeExecutor : SystemExecutor {
 
     override fun sysSettingGet(key: String): String? = sys[key]
     override fun sysSettingPut(key: String, value: String): Boolean {
+        if (failSys) return false
         sys[key] = value
         written.add("sys:$key")
         return true

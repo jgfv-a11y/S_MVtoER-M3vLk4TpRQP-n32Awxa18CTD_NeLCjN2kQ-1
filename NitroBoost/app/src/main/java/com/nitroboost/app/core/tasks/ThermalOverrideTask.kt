@@ -23,6 +23,7 @@ class ThermalOverrideTask : BoostTask {
     override val descEn = "Disable thermal throttling — hotter device, faster drain (auto-guarded)"
     override val module = Module.THERMAL
     override val requiresPrivilege = true
+    override val boostLevel = 3
 
     private fun probe(ctx: BoostContext): Boolean =
         ctx.executor.shell("cmd thermalservice override-status").ok

@@ -93,7 +93,9 @@ class AdaptiveLoop(
     private val sampler: AdaptiveSampler,
     private val cfg: TrialConfig,
     private val effectiveThermal: () -> Int,
-    private val log: (String) -> Unit = {}
+    private val log: (String) -> Unit = {},
+    /** v1.5: user-selected boost level — trials above it must not run. */
+    private val maxLevel: () -> Int = { 3 }
 ) {
 
     companion object {
@@ -200,12 +202,16 @@ class AdaptiveLoop(
         return null
     }
 
+    /** v1.5: candidate must be at or below the user-selected boost level. */
+    private fun withinLevel(t: BoostTask): Boolean = t.boostLevel <= maxLevel()
+
     /** Next profile-enabled, unresolved trial candidate, in task order. */
     fun nextCandidate(ctx: BoostContext): BoostTask? =
         engine.tasks().firstOrNull { t ->
             t.module in TRIAL_MODULES &&
                 t.requiresPrivilege &&
                 ctx.profile.isEnabled(t) &&
+                withinLevel(t) &&
                 !ledger.isResolved(t.id)
         }
 
@@ -215,6 +221,7 @@ class AdaptiveLoop(
             t.module in TRIAL_MODULES &&
                 t.requiresPrivilege &&
                 ctx.profile.isEnabled(t) &&
+                withinLevel(t) &&
                 !ledger.isResolved(t.id)
         }
         var ms = pending.toLong() * (cfg.windowMs + 2 * cfg.settleMs)

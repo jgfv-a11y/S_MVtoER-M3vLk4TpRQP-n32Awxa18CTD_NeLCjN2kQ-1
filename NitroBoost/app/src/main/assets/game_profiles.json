@@ -2,7 +2,15 @@
   {
     "packageName": "com.pubg.imobile",
     "name": "PUBG Mobile",
-    "enabledModules": ["cpu", "ram", "display", "dnd", "power", "tweaks"],
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "display",
+      "dnd",
+      "power",
+      "tweaks",
+      "gpu"
+    ],
     "dpi": 0,
     "refreshRate": 0,
     "fpsCap": 0,
@@ -16,7 +24,15 @@
   {
     "packageName": "com.tencent.ig",
     "name": "PUBG Mobile (Global)",
-    "enabledModules": ["cpu", "ram", "display", "dnd", "power", "tweaks"],
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "display",
+      "dnd",
+      "power",
+      "tweaks",
+      "gpu"
+    ],
     "dpi": 0,
     "refreshRate": 0,
     "fpsCap": 0,
@@ -30,7 +46,16 @@
   {
     "packageName": "com.mobile.legends",
     "name": "Mobile Legends: Bang Bang",
-    "enabledModules": ["cpu", "ram", "display", "dnd", "power", "network", "tweaks"],
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "display",
+      "dnd",
+      "power",
+      "network",
+      "tweaks",
+      "gpu"
+    ],
     "dpi": 0,
     "refreshRate": 0,
     "fpsCap": 0,
@@ -44,7 +69,15 @@
   {
     "packageName": "com.garena.game.codm",
     "name": "Call of Duty Mobile",
-    "enabledModules": ["cpu", "ram", "display", "dnd", "power", "tweaks"],
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "display",
+      "dnd",
+      "power",
+      "tweaks",
+      "gpu"
+    ],
     "dpi": 0,
     "refreshRate": 0,
     "fpsCap": 0,
@@ -58,7 +91,14 @@
   {
     "packageName": "com.mihoyo.genshinimpact",
     "name": "Genshin Impact",
-    "enabledModules": ["cpu", "ram", "dnd", "power", "tweaks"],
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "dnd",
+      "power",
+      "tweaks",
+      "gpu"
+    ],
     "dpi": 0,
     "refreshRate": 0,
     "fpsCap": 0,
@@ -72,7 +112,11 @@
   {
     "packageName": "com.supercell.clashofclans",
     "name": "Clash of Clans",
-    "enabledModules": ["ram", "dnd"],
+    "enabledModules": [
+      "ram",
+      "dnd",
+      "gpu"
+    ],
     "dpi": 0,
     "refreshRate": 0,
     "fpsCap": 0,
@@ -86,7 +130,16 @@
   {
     "packageName": "com.tencent.tmgp.sgame",
     "name": "Honor of Kings",
-    "enabledModules": ["cpu", "ram", "display", "dnd", "power", "network", "tweaks"],
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "display",
+      "dnd",
+      "power",
+      "network",
+      "tweaks",
+      "gpu"
+    ],
     "dpi": 0,
     "refreshRate": 0,
     "fpsCap": 0,
@@ -100,7 +153,15 @@
   {
     "packageName": "com.dts.freefireth",
     "name": "Free Fire",
-    "enabledModules": ["cpu", "ram", "display", "dnd", "power", "tweaks"],
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "display",
+      "dnd",
+      "power",
+      "tweaks",
+      "gpu"
+    ],
     "dpi": 0,
     "refreshRate": 0,
     "fpsCap": 0,
@@ -114,7 +175,13 @@
   {
     "packageName": "com.ea.gp.fifamobile",
     "name": "EA SPORTS FC Mobile",
-    "enabledModules": ["cpu", "ram", "display", "dnd"],
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "display",
+      "dnd",
+      "gpu"
+    ],
     "dpi": 0,
     "refreshRate": 0,
     "fpsCap": 0,
@@ -128,7 +195,14 @@
   {
     "packageName": "com.epicgames.fortnite",
     "name": "Fortnite",
-    "enabledModules": ["cpu", "ram", "dnd", "power", "thermal"],
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "dnd",
+      "power",
+      "thermal",
+      "gpu"
+    ],
     "dpi": 0,
     "refreshRate": 0,
     "fpsCap": 0,

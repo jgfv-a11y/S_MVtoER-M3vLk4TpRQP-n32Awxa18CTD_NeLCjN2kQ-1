@@ -60,6 +60,10 @@
     <!-- Dashboard -->
     <string name="score_label">نقاط الأداء</string>
     <string name="btn_boost_start">تحسين الآن</string>
+    <!-- v1.5: boost levels -->
+    <string name="level_1">١ · أساسي</string>
+    <string name="level_2">٢ · قياسي</string>
+    <string name="level_3">٣ · أقصى</string>
     <string name="btn_boost_stop">إيقاف التحسين</string>
     <string name="btn_boost_running">جارٍ التحسين…</string>
     <string name="session_idle">الجلسة متوقفة</string>

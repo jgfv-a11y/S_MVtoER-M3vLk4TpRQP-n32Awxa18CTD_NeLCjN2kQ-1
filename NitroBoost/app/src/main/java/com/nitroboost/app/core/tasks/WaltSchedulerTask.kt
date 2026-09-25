@@ -23,6 +23,7 @@ class WaltSchedulerTask : BoostTask {
     override val descEn = "Tighter latency/granularity so the scheduler reacts faster to load spikes"
     override val module = Module.TWEAKS
     override val requiresPrivilege = true
+    override val boostLevel = 3
 
     private data class Node(val path: String, val target: String)
 

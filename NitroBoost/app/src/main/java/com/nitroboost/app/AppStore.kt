@@ -281,7 +281,8 @@ object AppStore {
             sampler = sampler,
             cfg = TrialConfig(),
             effectiveThermal = { effectiveThermalStatus() },
-            log = { line -> appendLog("adaptive: $line") }
+            log = { line -> appendLog("adaptive: $line") },
+            maxLevel = { Prefs.getInt(ctx(), Prefs.KEY_BOOST_LEVEL, 2) }
         )
         // Self-healing monitor: if the sampling hub ever dies (process
         // pressure, ANR recovery), restart it so the UI and the adaptive
@@ -446,7 +447,9 @@ object AppStore {
                 val reserved: Set<String> = adaptiveLoop?.let {
                     if (it.isRunning) setOfNotNull(it.candidateId) else emptySet()
                 } ?: emptySet()
-                val report = engine.boost(bctx, exclude = reserved)
+                // v1.5: level gate — 1 = basics, 2 = standard, 3 = max.
+                val maxLevel = Prefs.getInt(c, Prefs.KEY_BOOST_LEVEL, 2)
+                val report = engine.boost(bctx, exclude = reserved, maxLevel = maxLevel)
                 sessApplied = report.appliedCount + report.noChangeCount
                 sessFailed = report.failedCount
                 setGamePackage(profile.packageName)
@@ -454,7 +457,7 @@ object AppStore {
                     .takeIf { it > 0 }
                     ?: profile.refreshRate.takeIf { it > 0 }
                     ?: 60
-                honorLedger(bctx, skip = reserved)
+                honorLedger(bctx, skip = reserved, maxLevel = maxLevel)
                 if (Prefs.getBool(c, Prefs.KEY_ADAPTIVE_ON, true)) {
                     adaptiveLoop?.start()
                 }
@@ -504,9 +507,17 @@ object AppStore {
      *    applied the built-in default level; replace it with the winner the
      *    engine measured on THIS device.
      */
-    private fun honorLedger(ctx: BoostContext, skip: Set<String> = emptySet()) {
+    private fun honorLedger(
+        ctx: BoostContext,
+        skip: Set<String> = emptySet(),
+        maxLevel: Int = 3
+    ) {
+        // v1.5: the user's level valve wins over the ledger — a level-1
+        // session must not re-apply a level-2/3 "winner".
         for (entry in ledger().entries.values) {
             if (entry.taskId in skip) continue
+            val task = com.nitroboost.app.core.tasks.AllTasks.byId[entry.taskId]
+            if (task != null && task.boostLevel > maxLevel) continue
             val entries = ctx.journal.entries.filter { it.taskId == entry.taskId }
             when (entry.decision) {
                 com.nitroboost.app.core.adaptive.Decision.DROP -> {
