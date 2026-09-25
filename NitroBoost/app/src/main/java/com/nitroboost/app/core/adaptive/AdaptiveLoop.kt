@@ -293,7 +293,27 @@ class AdaptiveLoop(
         } catch (e: Exception) {
             TaskResult(task.id, TaskStatus.Failed("adaptive trial: ${e.message}"))
         }
-        if (r.entries.isNotEmpty() && r.status.success) ctx.journal.add(r.entries)
+        when {
+            r.entries.isNotEmpty() && r.status.success -> ctx.journal.add(r.entries)
+            // The candidate cannot run on this device at all. Do NOT
+            // measure: an "off vs off" window would accumulate fake
+            // zero-pairs and eventually mark a fine task NEUTRAL.
+            r.status == TaskStatus.Skipped || r.status is TaskStatus.Failed -> {
+                ledger.record(
+                    task.id, task.titleEn, emptyList(),
+                    TrialOutcome(Decision.NEEDS_MORE, null, null, null,
+                        ledger.entries[task.id]?.pairs ?: 0,
+                        "cannot apply on this device (${r.detail})"),
+                    System.currentTimeMillis(), cfg
+                )
+                ledger.save()
+                log("adaptive ${task.id}: not applicable on this device — not measured")
+                return
+            }
+            // NoChange: already applied from a previous session — the arm
+            // window below still measures the real on-state. Fine.
+            else -> Unit
+        }
         delay(cfg.settleMs)
         val arm = collectWindow(cfg.windowMs)
         if (arm.fps.size < 2) {

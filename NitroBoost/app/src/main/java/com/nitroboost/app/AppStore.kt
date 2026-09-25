@@ -441,7 +441,12 @@ object AppStore {
                 val executor = AndroidExecutor(c)
                 wireRamKill(profile, executor)
                 val bctx = BoostContext(profile, executor, journal) { line -> appendLog(line) }
-                val report = engine.boost(bctx)
+                // Never re-apply the candidate the adaptive engine is
+                // currently measuring — it would corrupt its arm window.
+                val reserved: Set<String> = adaptiveLoop?.let {
+                    if (it.isRunning) setOfNotNull(it.candidateId) else emptySet()
+                } ?: emptySet()
+                val report = engine.boost(bctx, exclude = reserved)
                 sessApplied = report.appliedCount + report.noChangeCount
                 sessFailed = report.failedCount
                 setGamePackage(profile.packageName)
@@ -449,7 +454,7 @@ object AppStore {
                     .takeIf { it > 0 }
                     ?: profile.refreshRate.takeIf { it > 0 }
                     ?: 60
-                honorLedger(bctx)
+                honorLedger(bctx, skip = reserved)
                 if (Prefs.getBool(c, Prefs.KEY_ADAPTIVE_ON, true)) {
                     adaptiveLoop?.start()
                 }
@@ -499,8 +504,9 @@ object AppStore {
      *    applied the built-in default level; replace it with the winner the
      *    engine measured on THIS device.
      */
-    private fun honorLedger(ctx: BoostContext) {
+    private fun honorLedger(ctx: BoostContext, skip: Set<String> = emptySet()) {
         for (entry in ledger().entries.values) {
+            if (entry.taskId in skip) continue
             val entries = ctx.journal.entries.filter { it.taskId == entry.taskId }
             when (entry.decision) {
                 com.nitroboost.app.core.adaptive.Decision.DROP -> {

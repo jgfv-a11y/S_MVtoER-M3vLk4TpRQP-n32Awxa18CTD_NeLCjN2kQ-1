@@ -27,12 +27,19 @@ class BoostEngine(private val tasks: List<BoostTask>) {
 
     fun tasks(): List<BoostTask> = tasks
 
-    /** Apply every task enabled by the profile. Idempotent and failure-tolerant. */
-    fun boost(ctx: BoostContext): Report {
+    /**
+     * Apply every task enabled by the profile. Idempotent and
+     * failure-tolerant. [exclude] lists task ids that must NOT be touched
+     * right now (e.g. the candidate the adaptive engine is currently
+     * measuring — a re-apply mid-trial would corrupt its arm window).
+     */
+    fun boost(ctx: BoostContext, exclude: Set<String> = emptySet()): Report {
         val results = linkedMapOf<String, TaskResult>()
         for (task in tasks) {
             val r = try {
-                if (!ctx.profile.isEnabled(task)) {
+                if (task.id in exclude) {
+                    TaskResult(task.id, TaskStatus.Skipped, "reserved by adaptive trial")
+                } else if (!ctx.profile.isEnabled(task)) {
                     TaskResult(task.id, TaskStatus.Skipped, "disabled in profile")
                 } else {
                     task.apply(ctx)
