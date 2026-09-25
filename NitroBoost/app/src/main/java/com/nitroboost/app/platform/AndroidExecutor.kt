@@ -8,6 +8,7 @@ import com.nitroboost.app.core.DndFilters
 import com.nitroboost.app.core.ShellResult
 import com.nitroboost.app.core.SystemExecutor
 import java.io.File
+import kotlin.concurrent.Volatile
 
 /**
  * Android implementation of [SystemExecutor].
@@ -20,26 +21,53 @@ class AndroidExecutor(private val context: Context) : SystemExecutor {
     private val notificationManager: NotificationManager =
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
+    /**
+     * Privilege check with a short TTL cache. It probes Shizuku (binder +
+     * user service) and possibly root; the UI asks it on every list
+     * refresh, so an uncached probe would thrash both channels.
+     */
+    @Volatile
+    private var privCache: Pair<Boolean, Long> = (false to 0L)
+    private val PRIV_TTL_MS = 2_000L
+
     override val privileged: Boolean
-        get() = try {
-            ShizukuShell.isUsable(context)
-        } catch (e: Exception) {
-            false
+        get() {
+            val (cached, at) = privCache
+            if (System.currentTimeMillis() - at < PRIV_TTL_MS) return cached
+            val value = try {
+                ShizukuShell.isUsable(context) || RootShell.isAvailable()
+            } catch (e: Exception) {
+                false
+            }
+            privCache = value to System.currentTimeMillis()
+            return value
         }
 
-    /** Shell command through the Shizuku user service (bound on demand). */
+    /**
+     * Shell command through the best available privileged channel:
+     * Shizuku first, then root. Never through the unprivileged app shell
+     * (that would silently do nothing on most ROMs).
+     */
     private fun runPriv(cmd: String): ShellResult {
-        if (!ShizukuShell.isReady()) return ShellResult.fail("shizuku_not_ready")
-        if (!ShizukuShell.ensureBound(context)) return ShellResult.fail("shizuku_service_not_bound")
-        return ShizukuShell.run(cmd)
+        if (ShizukuShell.isReady()) {
+            if (ShizukuShell.ensureBound(context)) {
+                return ShizukuShell.run(cmd)
+            }
+        }
+        if (RootShell.isAvailable()) {
+            return RootShell.run(cmd)
+        }
+        return ShellResult.fail("no_privileged_channel")
     }
 
     override fun shell(cmd: String): ShellResult = runPriv(cmd)
 
     /** Shell command without waiting for a service bind; null when unavailable. */
     fun shellNonBlocking(cmd: String): ShellResult? {
-        if (!ShizukuShell.isReady()) return null
-        return ShizukuShell.runIfReady(cmd)
+        if (ShizukuShell.isReady()) {
+            ShizukuShell.runIfReady(cmd)?.let { return it }
+        }
+        return if (RootShell.isAvailable()) RootShell.run(cmd) else null
     }
 
     override fun readSys(path: String): String? {
@@ -49,17 +77,23 @@ class AndroidExecutor(private val context: Context) : SystemExecutor {
         } catch (e: Exception) {
             // fall through to the privileged service
         }
-        if (!ShizukuShell.isReady()) return null
-        if (!ShizukuShell.ensureBound(context)) return null
-        return ShizukuShell.readSys(path)
+        if (ShizukuShell.isReady()) {
+            if (ShizukuShell.ensureBound(context)) {
+                ShizukuShell.readSys(path)?.let { return it }
+            }
+        }
+        return if (RootShell.isAvailable()) RootShell.readSys(path) else null
     }
 
     override fun writeSys(path: String, value: String): Boolean {
-        if (!ShizukuShell.isReady()) return false
-        if (!ShizukuShell.ensureBound(context)) return false
-        val r = ShizukuShell.run("echo \"$value\" > \"$path\" 2>/dev/null")
-        if (!r.ok) return false
-        return readSys(path) == value
+        if (ShizukuShell.isReady() && ShizukuShell.ensureBound(context)) {
+            val r = ShizukuShell.run("echo \"$value\" > \"$path\" 2>/dev/null")
+            if (r.ok && readSys(path) == value) return true
+        }
+        if (RootShell.isAvailable()) {
+            return RootShell.writeSys(path, value)
+        }
+        return false
     }
 
     // ---------------- Settings.System ----------------

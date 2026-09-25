@@ -188,8 +188,8 @@ class ProfileAdapter(
         val pkg: TextView = root.findViewById(R.id.profile_pkg)
         val modules: TextView = root.findViewById(R.id.profile_modules)
         val badge: TextView = root.findViewById(R.id.profile_active)
-        val btnEdit: Button = root.findViewById(R.id.btn_edit)
-        val btnDelete: Button = root.findViewById(R.id.btn_delete)
+        val btnEdit: android.widget.ImageButton = root.findViewById(R.id.btn_edit)
+        val btnDelete: android.widget.ImageButton = root.findViewById(R.id.btn_delete)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {

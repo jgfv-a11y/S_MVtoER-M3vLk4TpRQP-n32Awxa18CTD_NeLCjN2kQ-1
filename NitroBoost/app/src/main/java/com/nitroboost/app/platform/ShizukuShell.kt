@@ -25,6 +25,16 @@ import kotlin.concurrent.Volatile
 object ShizukuShell {
 
     private const val REQUEST_CODE = 1
+    const val SHIZUKU_PKG = "moe.shizuku.manager"
+
+    /** Where the Shizuku setup stands — drives the in-app guidance card. */
+    enum class ShizukuState {
+        NOT_INSTALLED,   // the Shizuku app is missing entirely
+        NOT_STARTED,     // installed, but the Shizuku daemon is not running
+        PENDING_PERMISSION, // running, but this app has not been granted
+        NOT_BOUND,       // granted, but the user service bind failed
+        READY            // fully usable
+    }
 
     @Volatile
     private var service: INitroService? = null
@@ -35,6 +45,27 @@ object ShizukuShell {
     private var conn: ServiceConnection? = null
     private var args: Shizuku.UserServiceArgs? = null
     private var appCtx: Context? = null
+
+    /** True when the Shizuku app is installed. */
+    fun isInstalled(ctx: Context): Boolean {
+        return try {
+            ctx.packageManager.getPackageInfo(SHIZUKU_PKG, 0)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Precise setup state, cheapest check first. Call on a background
+     * thread (ensureBound may bind the user service).
+     */
+    fun state(ctx: Context): ShizukuState {
+        if (!isInstalled(ctx)) return ShizukuState.NOT_INSTALLED
+        if (!isReady()) return ShizukuState.NOT_STARTED
+        if (!isPermissionGranted()) return ShizukuState.PENDING_PERMISSION
+        return if (ensureBound(ctx)) ShizukuState.READY else ShizukuState.NOT_BOUND
+    }
 
     /** True when the Shizuku binder is alive (the Shizuku app is running). */
     fun isReady(): Boolean {
@@ -245,10 +276,25 @@ object ShizukuShell {
         }
     }
 
-    /** True when a privileged command actually succeeds end-to-end. */
+    /**
+     * True when a privileged command actually succeeds end-to-end.
+     * Cached for a short TTL: the check pings the binder AND the user
+     * service on every call, and the UI asks it on every refresh —
+     * without the cache the app would hammer the binder while idle.
+     */
     fun isUsable(ctx: Context): Boolean {
-        if (!isReady()) return false
-        if (!ensureBound(ctx)) return false
-        return run("true").ok
+        val now = System.currentTimeMillis()
+        val c = usableCache
+        if (c.second + USABLE_CACHE_MS > now) return c.first
+        val ok = try {
+            isReady() && ensureBound(ctx) && run("true").ok
+        } catch (e: Exception) {
+            false
+        }
+        usableCache = ok to now
+        return ok
     }
+
+    private var usableCache: Pair<Boolean, Long> = (false to 0L)
+    private const val USABLE_CACHE_MS = 2_000L
 }

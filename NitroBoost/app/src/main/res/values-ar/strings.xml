@@ -6,7 +6,54 @@
     <!-- Tabs -->
     <string name="tab_dashboard">الرئيسية</string>
     <string name="tab_boost">التحسين</string>
-    <string name="tab_profiles">الالعاب</string>
+    <string name="tab_profiles">الالعاب</string>    <!-- v1.5.0 redesign -->
+    <string name="app_brand">نيترو</string>
+    <string name="tab_home">الرئيسية</string>
+    <string name="btn_boost_all">تحسين الكل</string>
+    <string name="btn_restore_all">استعادة الكل</string>
+    <string name="btn_add_profile">+ ملف لعبة جديد</string>
+    <string name="shizuku_card_title">شيزوكو / الروت غير متصل</string>
+    <string name="shizuku_state_not_installed">ثبّت تطبيق شيزوكو من GitHub (shizuku.rikka.app). على جهاز بجذر (Root) يعمل التطبيق عبر الروت مباشرة.</string>
+    <string name="shizuku_state_not_started">شيزوكو مثبّت. افتحه مرة واحدة واضغط «شغّل» (عبر ADB أو الجذر). كل ما بعد ذلك تلقائي.</string>
+    <string name="shizuku_state_pending">اضغط «السماح» في نافذة شيزوكو لمنح نيترو بوست الصلاحية.</string>
+    <string name="shizuku_state_not_bound">جارٍ الربط… أعد المحاولة إن استمر الحال.</string>
+    <string name="btn_open_shizuku">فتح شيزوكو</string>
+    <string name="btn_grant">السماح</string>
+    <string name="btn_retry">إعادة</string>
+    <string name="overlay_perm_title">المؤشر العائم يحتاج صلاحية واحدة</string>
+    <string name="overlay_perm_msg">لعرض FPS / المعالج / الحرارة فوق اللعبة، فعّل «العرض فوق التطبيقات الأخرى» لتطبيق نيترو بوست.</string>
+    <string name="overlay_perm_open">فتح الإعدادات</string>
+    <string name="task_state_pending">بانتظار شيزوكو</string>
+    <string name="sec_adaptive">المحرك التكيفي</string>
+    <string name="sec_system">النظام والذاكرة</string>
+    <string name="sec_journal">سجل التعديلات</string>
+    <string name="sec_preferences">التفضيلات</string>
+    <string name="sec_about">حول</string>
+    <string name="shizuku_steps">كيف يتم الاتصال بشيزوكو:
+1. افتح تطبيق شيزوكو (يُثبَّت من GitHub).
+2. اضغط «شغّل» — عبر ADB (التشخيص اللاسلكي) أو عبر الجذر.
+3. سمح لنيترو بوست عند ظهور نافذة شيزوكو.
+يبقى التطبيق يحاول تلقائيًا حتى يتصل. على الأجهزة المجذورة يُستخدم الروت تلقائيًا عند غياب شيزوكو.</string>
+    <string name="storage_line">%1$s متبقٍ من %2$s</string>
+    <string name="btn_edit_protected">تعديل قائمة الحماية</string>    <string name="sw_overlay_label">عرض المؤشر فوق اللعبة</string>
+    <string name="sw_ov_fps_label">الإطارات FPS</string>
+    <string name="sw_ov_cpu_label">المعالج</string>
+    <string name="sw_ov_ram_label">الذاكرة</string>
+    <string name="sw_ov_temp_label">الحرارة</string>
+    <string name="sw_ov_ping_label">الاستجابة Ping</string>
+    <string name="sw_adaptive_label">المحرك التكيفي A/B</string>
+    <string name="adaptive_desc">يقس كل تعديل على جهازك الحقيقي ولا يحتفظ إلا بما يفوز إحصائيًا (نوافذ 12 ثانية، قصّ القيم الشاذة، قرارات واعية بالحرارة).</string>
+    <string name="btn_refresh">تحديث</string>
+    <string name="btn_clear_log">مسح السجل</string>
+    <string name="sw_auto_boost_label">التحسين تلقائيًا عند بدء اللعبة</string>
+    <string name="sw_auto_restore_label">استعادة كل شيء عند خروج اللعبة</string>
+    <string name="sw_boot_label">إعادة تفعيل المؤشر بعد إعادة التشغيل</string>
+    <string name="btn_lang">عربي / EN</string>
+    <string name="about_line">نيترو بوست — معزّز ألعاب قائم على السجل. كل تعديل يُسجَّل وقابل للتكرار والاستعادة. مبني بـ Kotlin + Material 3 على Shizuku API 13.1.5.</string>    <string name="shizuku_via_root">الروت متصل — المهام المميزة تعمل عبر su.</string>
+    <string name="about_version_format">الإصدار %1$s</string>
+
+
+
     <string name="tab_system">النظام</string>
     <string name="tab_settings">الإعدادات</string>
 

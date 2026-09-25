@@ -32,7 +32,22 @@ class ProfileStore(private val ctx: Context) {
         }
     }
 
-    fun all(): List<AppProfile> = builtins() + customs()
+    /**
+     * Built-ins + custom profiles. A custom profile SHADOWS a built-in with
+     * the same package name (the user's settings win) — the list never shows
+     * the same game twice.
+     */
+    fun all(): List<AppProfile> =
+        mergeProfiles(builtins(), customs())
+
+    companion object {
+        /** Pure, unit-testable merge: customs shadow builtins by packageName. */
+        fun mergeProfiles(builtins: List<AppProfile>, customs: List<AppProfile>): List<AppProfile> {
+            val customPkgs = customs.mapTo(HashSet()) { it.packageName }
+            val shadowed = builtins.filter { it.packageName !in customPkgs }
+            return shadowed + customs
+        }
+    }
 
     fun resolve(pkg: String?): AppProfile {
         val all = all()

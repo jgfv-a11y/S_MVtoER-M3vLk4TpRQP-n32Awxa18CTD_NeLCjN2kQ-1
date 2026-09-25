@@ -100,6 +100,11 @@ class BoostEngine(private val tasks: List<BoostTask>) {
         } catch (e: Exception) {
             false
         }
+        val supported = try {
+            t.isSupported(ctx)
+        } catch (e: Exception) {
+            false
+        }
         TaskState(
             id = t.id,
             titleAr = t.titleAr,
@@ -108,12 +113,9 @@ class BoostEngine(private val tasks: List<BoostTask>) {
             descEn = t.descEn,
             module = t.module,
             applied = applied,
-            supported = try {
-                t.isSupported(ctx)
-            } catch (e: Exception) {
-                false
-            },
-            requiresPrivilege = t.requiresPrivilege
+            supported = supported,
+            requiresPrivilege = t.requiresPrivilege,
+            pending = t.requiresPrivilege && !supported && !ctx.executor.privileged
         )
     }
 

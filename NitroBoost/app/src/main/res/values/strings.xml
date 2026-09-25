@@ -6,7 +6,54 @@
     <!-- Tabs -->
     <string name="tab_dashboard">Home</string>
     <string name="tab_boost">Boost</string>
-    <string name="tab_profiles">Games</string>
+    <string name="tab_profiles">Games</string>    <!-- v1.5.0 redesign -->
+    <string name="app_brand">Nitro</string>
+    <string name="tab_home">Home</string>
+    <string name="btn_boost_all">Boost All</string>
+    <string name="btn_restore_all">Restore All</string>
+    <string name="btn_add_profile">+ New Game Profile</string>
+    <string name="shizuku_card_title">Shizuku / Root not connected</string>
+    <string name="shizuku_state_not_installed">Install the Shizuku app from GitHub (shizuku.rikka.app). On a rooted device the app also works via Root directly.</string>
+    <string name="shizuku_state_not_started">Shizuku is installed. Open it once and press Start (ADB or Root). Everything else is automatic.</string>
+    <string name="shizuku_state_pending">Press "Allow" in the Shizuku window to grant NitroBoost access.</string>
+    <string name="shizuku_state_not_bound">Connecting… retry if this stays.</string>
+    <string name="btn_open_shizuku">Open Shizuku</string>
+    <string name="btn_grant">Allow</string>
+    <string name="btn_retry">Retry</string>
+    <string name="overlay_perm_title">Floating monitor needs one permission</string>
+    <string name="overlay_perm_msg">To show FPS / CPU / temperature over the game, enable "Display over other apps" for NitroBoost.</string>
+    <string name="overlay_perm_open">Open Settings</string>
+    <string name="task_state_pending">Waiting for Shizuku</string>
+    <string name="sec_adaptive">Adaptive engine</string>
+    <string name="sec_system">System &amp; RAM</string>
+    <string name="sec_journal">Modification journal</string>
+    <string name="sec_preferences">Preferences</string>
+    <string name="sec_about">About</string>
+    <string name="shizuku_steps">How to connect Shizuku:
+1. Open the Shizuku app (installed from GitHub).
+2. Press Start — via ADB (wireless debugging) or via Root.
+3. Allow NitroBoost when the Shizuku window appears.
+The app keeps checking by itself until connected. On rooted devices, Root is used automatically when Shizuku is unavailable.</string>
+    <string name="storage_line">%1$s free of %2$s</string>
+    <string name="btn_edit_protected">Edit protection list</string>    <string name="sw_overlay_label">Show monitor over the game</string>
+    <string name="sw_ov_fps_label">FPS</string>
+    <string name="sw_ov_cpu_label">CPU</string>
+    <string name="sw_ov_ram_label">RAM</string>
+    <string name="sw_ov_temp_label">Temp</string>
+    <string name="sw_ov_ping_label">Ping</string>
+    <string name="sw_adaptive_label">Adaptive A/B engine</string>
+    <string name="adaptive_desc">Measures every tweak on your real device and keeps only what statistically wins (12s windows, outlier trimming, thermal-aware).</string>
+    <string name="btn_refresh">Refresh</string>
+    <string name="btn_clear_log">Clear log</string>
+    <string name="sw_auto_boost_label">Boost automatically when the game starts</string>
+    <string name="sw_auto_restore_label">Restore everything when the game exits</string>
+    <string name="sw_boot_label">Re-enable the monitor after reboot</string>
+    <string name="btn_lang">EN / AR</string>
+    <string name="about_line">NitroBoost — journal-based game booster. Every modification is recorded, idempotent and revertible. Built with Kotlin + Material 3 on Shizuku API 13.1.5.</string>    <string name="shizuku_via_root">Root connected — privileged tasks work via su.</string>
+    <string name="about_version_format">Version %1$s</string>
+
+
+
     <string name="tab_system">System</string>
     <string name="tab_settings">Settings</string>
 

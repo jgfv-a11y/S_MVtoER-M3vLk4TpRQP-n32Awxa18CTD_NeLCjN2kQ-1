@@ -453,10 +453,10 @@ object AppStore {
                 if (Prefs.getBool(c, Prefs.KEY_ADAPTIVE_ON, true)) {
                     adaptiveLoop?.start()
                 }
-                if (BoosterService.active) BoosterService.pushScore(c, computeScore(profile))
                 refreshTaskStates()
-                val s = computeScore(profile)
-                score.postValue(s)
+                postScore(profile)
+                val s = score.value ?: 0
+                if (BoosterService.active) BoosterService.pushScore(c, s)
                 session.postValue(
                     SessionState.Boosted(
                         profile.name, s,
@@ -469,12 +469,27 @@ object AppStore {
                     WidgetProvider.update(c)
                 } catch (e: Exception) {
                 }
+                // The floating monitor goes up with the session — that is
+                // where the user expects it (over the game).
+                if (Prefs.getBool(c, Prefs.KEY_OVERLAY_ON, true)) {
+                    if (android.provider.Settings.canDrawOverlays(c)) {
+                        try {
+                            com.nitroboost.app.service.FpsOverlayService.start(c)
+                        } catch (e: Exception) {
+                        }
+                    } else {
+                        overlayPermNeeded.value = true
+                    }
+                }
             } catch (e: Exception) {
                 appendLog("boost crashed: ${e.message}")
                 session.postValue(SessionState.Boosting(profile.name))
             }
         }
     }
+
+    /** Set once per session start when the overlay is on but not permitted. */
+    val overlayPermNeeded = MutableLiveData(false)
 
     /**
      * The engine's verdicts are binding on every boost:
@@ -543,9 +558,9 @@ object AppStore {
                 setGamePackage(null)
                 finishSessionMeasurement()
                 refreshTaskStates()
-                score.postValue(computeScore(
+                postScore(
                     ProfileStore(ctx()).resolve(Prefs.activeProfile(ctx()))
-                ))
+                )
                 session.postValue(SessionState.Idle)
                 try {
                     WidgetProvider.update(ctx())
@@ -574,7 +589,12 @@ object AppStore {
         }
     }
 
-    private fun computeScore(profile: AppProfile): Int {
+    /**
+     * (current score, potential score). The potential is what the SAME
+     * device could reach with every applicable task applied — so the user
+     * sees "3 / 62" instead of a mysterious "0" before the first boost.
+     */
+    private fun computeScores(profile: AppProfile): Pair<Int, Int> {
         val c = ctx()
         try {
             val states = tasks.value
@@ -595,13 +615,33 @@ object AppStore {
             } catch (e: Exception) {
                 0
             }
-            return ScoreEngine.compute(
+            val current = ScoreEngine.compute(
                 ScoreEngine.Inputs(applied, applicable, thermal, ramFree, storage)
             )
+            // For the potential we count PENDING tasks too: they are not
+            // applicable yet only because Shizuku/root is not connected,
+            // not because the device lacks them.
+            val applicableWithPending = states?.count {
+                (it.supported || it.pending) &&
+                    profile.isEnabled(engine.taskFor(it.id) ?: return@count false)
+            } ?: applicable
+            val potential = ScoreEngine.compute(
+                ScoreEngine.Inputs(applicableWithPending, applicableWithPending, thermal, ramFree, storage)
+            )
+            return current to potential
         } catch (e: Exception) {
-            return 0
+            return 0 to 0
         }
     }
+
+    private fun postScore(profile: AppProfile) {
+        val (s, p) = computeScores(profile)
+        score.postValue(s)
+        scorePotential.postValue(p)
+    }
+
+    /** Maximum the device can reach with this profile — shown as "X / Y". */
+    val scorePotential = MutableLiveData(0)
 
     // ---------------- Background apps ----------------
 

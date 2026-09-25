@@ -119,14 +119,35 @@ jobs:
       - name: Publish release with APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: nitroboost-v1.3.2
-          name: NitroBoost v1.3.2
+          tag_name: nitroboost-v1.4.0
+          name: NitroBoost v1.4.0
           body: |
             NitroBoost — journal-based game booster with a full adaptive A/B
             engine. Install on a real device (Shizuku required for the full
             feature set; the app degrades gracefully without it).
             Debug-signed build for direct install; store builds (signed
             release) are prepared — see `NitroBoost/docs/DISTRIBUTION.md`.
+
+            ## v1.4.0 — New UI + Shizuku/Root auto-connect
+            - **Brand-new UI**: 4 simple tabs (Home / Boost / Profiles /
+              Settings), one big boost button, live stats, everything one
+              tap away.
+            - **Shizuku state machine**: the app now knows exactly where
+              the setup stands (installed / started / granted / bound) and
+              shows a guidance card on Home with the right action.
+            - **Root fallback**: rooted devices without Shizuku work
+              automatically via `su` (conservative probe, cached, all
+              writes still journaled + revertible).
+            - **Honest task states**: "Waiting for Shizuku" instead of
+              "not supported" for hardware that can't be verified yet.
+            - **Floating monitor**: auto-starts with the session; one-tap
+              permission prompt when missing; safe no-permission guard.
+            - **Score "current / potential"**: the home score shows what
+              the device can reach, not a mysterious 0.
+            - **Profiles deduped**: a custom profile replaces (shadows)
+              the built-in of the same game — no more duplicates.
+            - Lighter: privileged checks cached (2s TTL) — no more binder
+              polling on every UI refresh.
 
             ## v1.3.2 — Faster, more precise, stronger engine
             - **~2x faster adaptive sessions**: 12s windows, 2s settles,

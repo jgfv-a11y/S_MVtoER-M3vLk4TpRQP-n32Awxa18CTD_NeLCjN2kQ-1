@@ -111,15 +111,26 @@ class TaskAdapter(
         holder.desc.text = if (langAr) t.descAr else t.descEn
         holder.module.text = t.module.name
         holder.status.text = when {
-            !t.supported -> c.getString(R.string.task_state_unsupported)
             t.applied -> c.getString(R.string.task_state_applied)
+            !t.supported && t.pending -> c.getString(R.string.task_state_pending)
+            !t.supported -> c.getString(R.string.task_state_unsupported)
             else -> c.getString(R.string.task_state_off)
         }
+        val (fg, bg) = when {
+            t.applied -> 0xFF00E676.toInt() to 0x3300E676
+            !t.supported && t.pending -> 0xFFFFB74D.toInt() to 0x33FFB74D
+            !t.supported -> 0xFFFF5370.toInt() to 0x33FF5370
+            else -> 0xFF8FA0B3.toInt() to 0x22FFFFFF
+        }
+        holder.status.setTextColor(fg)
+        holder.status.background.setTint(bg)
         val enabled = c.getSharedPreferences("nitroboost_prefs", 0)
             .getBoolean("task_enabled_" + t.id, true)
         holder.sw.setOnCheckedChangeListener(null)
         holder.sw.isChecked = enabled
-        holder.sw.isEnabled = t.supported
+        // Pending tasks can be pre-enabled — they activate once a
+        // privileged channel (Shizuku/root) becomes available.
+        holder.sw.isEnabled = t.supported || t.pending
         holder.sw.setOnCheckedChangeListener { _, isChecked ->
             onToggle(t, isChecked)
         }

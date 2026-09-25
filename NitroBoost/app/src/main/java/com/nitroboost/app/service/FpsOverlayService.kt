@@ -36,10 +36,18 @@ class FpsOverlayService : Service() {
         private const val CHANNEL_OVERLAY = "overlay"
         private const val TAG_TEXT = "overlay_text"
 
-        @Volatile
-        var visible: Boolean = false
+    @Volatile
+    var visible: Boolean = false
 
-        fun start(ctx: Context) {
+    /**
+     * Set when the service was asked to start but the "display over other
+     * apps" permission is missing. The UI reads this to show the grant
+     * prompt instead of letting the addView call crash the service.
+     */
+    @Volatile
+    var blockedNoPermission: Boolean = false
+
+    fun start(ctx: Context) {
             if (visible) return
             val i = Intent(ctx, FpsOverlayService::class.java)
             ContextCompat.startForegroundService(ctx, i)
@@ -84,6 +92,11 @@ class FpsOverlayService : Service() {
             startForeground(1002, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
             startForeground(1002, n)
+        }
+        if (!android.provider.Settings.canDrawOverlays(this)) {
+            blockedNoPermission = true
+            stopSelf()
+            return START_NOT_STICKY
         }
         if (!visible) showOverlay()
         return START_STICKY

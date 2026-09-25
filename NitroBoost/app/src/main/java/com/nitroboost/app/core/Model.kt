@@ -72,7 +72,14 @@ data class TaskState(
     val module: Module,
     val applied: Boolean,
     val supported: Boolean,
-    val requiresPrivilege: Boolean
+    val requiresPrivilege: Boolean,
+    /**
+     * Needs Shizuku/root but the hardware support cannot be verified yet
+     * (no privileged shell to probe with). UI shows "بانتظار شيزوكو"
+     * instead of "غير مدعوم" — once a privileged channel appears the real
+     * support state is re-evaluated.
+     */
+    val pending: Boolean = false
 )
 
 /** A single reversible optimization. */

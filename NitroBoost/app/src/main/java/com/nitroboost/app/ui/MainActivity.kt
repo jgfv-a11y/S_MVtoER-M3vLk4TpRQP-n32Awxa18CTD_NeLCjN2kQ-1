@@ -1,12 +1,16 @@
 package com.nitroboost.app.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Observer
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.nitroboost.app.AppStore
 import com.nitroboost.app.R
@@ -17,12 +21,11 @@ import com.nitroboost.app.service.BoosterService
 
 class MainActivity : AppCompatActivity() {
 
-    companion object {
-        private const val SHIZUKU_PKG = "moe.shizuku.manager"
-    }
-
     private val notifLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    /** Shizuku is opened at most once per launch — the poller keeps the rest automatic. */
+    private var shizukuOpenedThisLaunch = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,9 +36,8 @@ class MainActivity : AppCompatActivity() {
             val fragment: androidx.fragment.app.Fragment = when (item.itemId) {
                 R.id.nav_boost -> BoostFragment()
                 R.id.nav_profiles -> ProfilesFragment()
-                R.id.nav_system -> SystemFragment()
                 R.id.nav_settings -> SettingsFragment()
-                else -> DashboardFragment()
+                else -> HomeFragment()
             }
             supportFragmentManager.beginTransaction()
                 .replace(R.id.container, fragment)
@@ -43,7 +45,7 @@ class MainActivity : AppCompatActivity() {
             true
         }
         if (savedInstanceState == null) {
-            nav.selectedItemId = R.id.nav_dashboard
+            nav.selectedItemId = R.id.nav_home
         }
 
         // Launched from the home widget with a boost hint.
@@ -51,43 +53,64 @@ class MainActivity : AppCompatActivity() {
             onBoostTap()
         }
 
-        // First run: ask for the permissions that unlock the app (popup).
         maybeShowOnboarding()
-        // Shizuku: fully automatic — the app drives the whole flow, the
-        // user never has to hunt for a button.
         autoShizuku()
+
+        // The overlay can be auto-started by a session; if the permission is
+        // missing we explain exactly where to enable it.
+        AppStore.overlayPermNeeded.observe(this, Observer { needed ->
+            if (needed != true) return@Observer
+            AppStore.overlayPermNeeded.value = null
+            AlertDialog.Builder(this)
+                .setTitle(R.string.overlay_perm_title)
+                .setMessage(R.string.overlay_perm_msg)
+                .setPositiveButton(R.string.overlay_perm_open) { _, _ ->
+                    try {
+                        startActivity(
+                            Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:$packageName")
+                            )
+                        )
+                    } catch (e: Exception) {
+                        try {
+                            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
+                        } catch (e2: Exception) {
+                        }
+                    }
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+        })
     }
 
     override fun onResume() {
         super.onResume()
         AppStore.refreshTaskStates()
         maybeAutoBoost()
-        // Shizuku may have (re)started in the meantime — re-check & rebind.
         autoShizuku()
     }
 
     /**
      * Automatic Shizuku flow:
-     *  - Shizuku app missing          -> nothing to do (app degrades);
-     *  - Shizuku not running          -> open it (it then auto-starts on boot);
-     *  - running, permission not yet  -> dispatch Shizuku's grant dialog;
-     *  - granted                      -> bind the user service (auto retry).
+     *  - not installed          -> nothing to do (root fallback may still work);
+     *  - installed, not running -> open it ONCE (the user presses Start there,
+     *                              the poller picks up the binder afterwards);
+     *  - running, not granted   -> dispatch Shizuku's grant dialog;
+     *  - granted                -> bind the user service (auto retry).
      */
     private fun autoShizuku() {
         Thread {
             try {
-                val installed = try {
-                    packageManager.getPackageInfo(SHIZUKU_PKG, 0)
-                    true
-                } catch (e: PackageManager.NameNotFoundException) {
-                    false
-                }
-                if (!installed) return@Thread
+                if (!ShizukuShell.isInstalled(this)) return@Thread
                 if (!ShizukuShell.isReady()) {
-                    runOnUiThread {
-                        try {
-                            ShizukuShell.openShizukuApp(this)
-                        } catch (e: Exception) {
+                    if (!shizukuOpenedThisLaunch) {
+                        shizukuOpenedThisLaunch = true
+                        runOnUiThread {
+                            try {
+                                ShizukuShell.openShizukuApp(this)
+                            } catch (e: Exception) {
+                            }
                         }
                     }
                     return@Thread
