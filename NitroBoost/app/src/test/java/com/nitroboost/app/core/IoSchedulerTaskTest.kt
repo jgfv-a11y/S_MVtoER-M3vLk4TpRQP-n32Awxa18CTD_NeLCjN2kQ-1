@@ -45,7 +45,7 @@ class IoSchedulerTaskTest {
     }
 
     @Test
-    fun `single-option scheduler node is not meaningful -> skipped`() {
+    fun `single-option scheduler node is not meaningful - skipped`() {
         val ex = FakeExecutor()
         ex.privileged = true
         ex.sysfs["/sys/block/mmcblk0/queue/scheduler"] = "[none]"
