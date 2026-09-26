@@ -96,12 +96,13 @@ jobs:
           name: build-fail-log
           path: NitroBoost/nitroboost-build.log
 
-      - name: Build signed release APK (only when signing secrets are configured)
+      - name: Build signed release APK (if signing secrets are configured)
+        # NOTE: `secrets` may not appear in step `if:` expressions, so the
+        # no-secret case is handled inside the script (empty env = skip).
         # Set the repo secrets NITRO_KEYSTORE_BASE64 (base64 of the .jks),
         # NITRO_KEYSTORE_PASSWORD, NITRO_KEY_ALIAS, NITRO_KEY_PASSWORD and a
         # real signed release is built + published alongside the debug APK.
         # See NitroBoost/docs/DISTRIBUTION.md.
-        if: ${{ secrets.NITRO_KEYSTORE_BASE64 != '' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.NITRO_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.NITRO_KEYSTORE_PASSWORD }}
@@ -109,6 +110,10 @@ jobs:
           KEY_PASSWORD: ${{ secrets.NITRO_KEY_PASSWORD }}
         working-directory: NitroBoost
         run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "No NITRO_KEYSTORE_BASE64 secret — skipping release build"
+            exit 0
+          fi
           echo "$KEYSTORE_BASE64" | base64 -d > release.jks
           export KEYSTORE_FILE=$(pwd)/release.jks
           ./gradlew assembleRelease --no-daemon --stacktrace >> nitroboost-build.log 2>&1
