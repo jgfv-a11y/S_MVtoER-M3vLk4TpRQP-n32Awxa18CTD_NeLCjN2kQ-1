@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NitroBoost</string>
+    <string name="tile_name">Nitro Boost</string>
+
+    <!-- Tabs -->
+    <string name="tab_dashboard">Home</string>
+    <string name="tab_boost">Boost</string>
+    <string name="tab_profiles">Games</string>    <!-- v1.5.0 redesign -->
+    <string name="app_brand">Nitro</string>
+    <string name="tab_home">Home</string>
+    <string name="btn_boost_all">Boost All</string>
+    <string name="btn_restore_all">Restore All</string>
+    <string name="btn_add_profile">+ New Game Profile</string>
+    <string name="shizuku_card_title">Shizuku / Root not connected</string>
+    <string name="shizuku_state_not_installed">Install the Shizuku app from GitHub (shizuku.rikka.app). On a rooted device the app also works via Root directly.</string>
+    <string name="shizuku_state_not_started">Shizuku is installed. Open it once and press Start (ADB or Root). Everything else is automatic.</string>
+    <string name="shizuku_state_pending">Press "Allow" in the Shizuku window to grant NitroBoost access.</string>
+    <string name="shizuku_state_not_bound">Connecting… retry if this stays.</string>
+    <string name="btn_open_shizuku">Open Shizuku</string>
+    <string name="btn_grant">Allow</string>
+    <string name="btn_retry">Retry</string>
+    <string name="overlay_perm_title">Floating monitor needs one permission</string>
+    <string name="overlay_perm_msg">To show FPS / CPU / temperature over the game, enable "Display over other apps" for NitroBoost.</string>
+    <string name="overlay_perm_open">Open Settings</string>
+    <string name="task_state_pending">Waiting for Shizuku</string>
+    <string name="sec_adaptive">Adaptive engine</string>
+    <string name="sec_system">System &amp; RAM</string>
+    <string name="sec_journal">Modification journal</string>
+    <string name="sec_preferences">Preferences</string>
+    <string name="sec_about">About</string>
+    <string name="shizuku_steps">How to connect Shizuku:
+1. Open the Shizuku app (installed from GitHub).
+2. Press Start — via ADB (wireless debugging) or via Root.
+3. Allow NitroBoost when the Shizuku window appears.
+The app keeps checking by itself until connected. On rooted devices, Root is used automatically when Shizuku is unavailable.</string>
+    <string name="storage_line">%1$s free of %2$s</string>
+    <string name="btn_edit_protected">Edit protection list</string>    <string name="sw_overlay_label">Show monitor over the game</string>
+    <string name="sw_ov_fps_label">FPS</string>
+    <string name="sw_ov_cpu_label">CPU</string>
+    <string name="sw_ov_ram_label">RAM</string>
+    <string name="sw_ov_temp_label">Temp</string>
+    <string name="sw_ov_ping_label">Ping</string>
+    <string name="sw_adaptive_label">Adaptive A/B engine</string>
+    <string name="adaptive_desc">Measures every tweak on your real device and keeps only what statistically wins (12s windows, outlier trimming, thermal-aware).</string>
+    <string name="btn_refresh">Refresh</string>
+    <string name="btn_clear_log">Clear log</string>
+    <string name="sw_auto_boost_label">Boost automatically when the game starts</string>
+    <string name="sw_auto_restore_label">Restore everything when the game exits</string>
+    <string name="sw_boot_label">Re-enable the monitor after reboot</string>
+    <string name="btn_lang">EN / AR</string>
+    <string name="about_line">NitroBoost — journal-based game booster. Every modification is recorded, idempotent and revertible. Built with Kotlin + Material 3 on Shizuku API 13.1.5.</string>    <string name="shizuku_via_root">Root connected — privileged tasks work via su.</string>
+    <string name="about_version_format">Version %1$s</string>
+
+
+
+    <string name="tab_system">System</string>
+    <string name="tab_settings">Settings</string>
+
+    <!-- Dashboard -->
+    <string name="score_label">BOOST SCORE</string>
+    <string name="btn_boost_start">BOOST NOW</string>
+    <!-- v1.5: boost levels -->
+    <string name="level_1">1 · Basic</string>
+    <string name="level_2">2 · Standard</string>
+    <string name="level_3">3 · Max</string>
+    <string name="btn_boost_stop">STOP BOOST</string>
+    <string name="btn_boost_running">BOOSTING…</string>
+    <string name="session_idle">Session idle</string>
+    <string name="session_idle_hint">Pick a game and tap Boost</string>
+    <string name="session_active">Boost active</string>
+    <string name="session_boosting">Boosting…</string>
+    <string name="stat_cpu">CPU</string>
+    <string name="stat_ram">RAM</string>
+    <string name="stat_temp">TEMP</string>
+    <string name="stat_bat">BATTERY</string>
+    <string name="stat_fps">FPS</string>
+    <string name="stat_ping">PING</string>
+    <string name="btn_overlay">Overlay</string>
+    <string name="btn_restore">Restore</string>
+    <string name="btn_perms">Permissions</string>
+
+    <!-- Session notification -->
+    <string name="session_running">NitroBoost session active</string>
+    <string name="session_notify_body">Gaming optimizations are applied. We will restore everything when the game closes.</string>
+    <string name="session_notify_channel">Boost session</string>
+    <string name="session_stop_action">Stop &amp; restore</string>
+
+    <!-- Overlay -->
+    <string name="overlay_channel_name">Performance monitor</string>
+    <string name="overlay_cpu">CPU</string>
+    <string name="overlay_ram">RAM</string>
+    <string name="overlay_temp">TEMP</string>
+    <string name="overlay_ping">PING</string>
+
+    <!-- Permissions guide -->
+    <string name="perm_title">Permissions</string>
+    <string name="perm_notify_title">Notifications</string>
+    <string name="perm_notify_desc">Needed for the boost session notification</string>
+    <string name="perm_overlay_title">Display over other apps</string>
+    <string name="perm_overlay_desc">Needed for the floating FPS/CPU monitor</string>
+    <string name="perm_dnd_title">Do Not Disturb access</string>
+    <string name="perm_dnd_desc">Needed to silence notifications while gaming</string>
+    <string name="perm_write_title">Modify system settings</string>
+    <string name="perm_write_desc">Needed to kill animations</string>
+    <string name="perm_usage_title">Usage access</string>
+    <string name="perm_usage_desc">Needed to detect the running game and background apps</string>
+
+    <!-- Boost tab -->
+    <string name="boost_all">Boost all</string>
+    <string name="restore_all">Restore all</string>
+    <string name="task_state_applied">● active</string>
+    <string name="task_state_unsupported">not supported</string>
+    <string name="task_state_off">off</string>
+
+    <!-- Profiles -->
+    <string name="profile_add_title">Add game profile</string>
+    <string name="profile_delete_title">Delete profile?</string>
+    <string name="profile_active_label">ACTIVE</string>
+    <string name="profile_modules_title">ENABLED MODULES</string>
+    <string name="mod_cpu">CPU</string>
+    <string name="mod_ram">RAM</string>
+    <string name="mod_display">Display</string>
+    <string name="mod_dnd">DND</string>
+    <string name="mod_power">Power</string>
+    <string name="mod_network">Network</string>
+    <string name="mod_tweaks">Tweaks</string>
+    <string name="mod_gpu">GPU</string>
+    <string name="mod_thermal">Thermal</string>
+    <string name="opt_dnd">Do Not Disturb while gaming</string>
+    <string name="opt_anim">Kill animations</string>
+    <string name="opt_ram_kill">Force-stop idle background apps</string>
+    <string name="opt_thermal">Thermal override (aggressive — auto-guarded)</string>
+    <string name="hint_dpi">DPI (0=auto)</string>
+    <string name="hint_refresh">Hz (0=auto)</string>
+    <string name="hint_game_mode">Mode</string>
+
+    <!-- System tab -->
+    <string name="storage_label">STORAGE</string>
+    <string name="protected_none">No protected apps</string>
+    <string name="protected_title">Protected apps</string>
+    <string name="protected_hint">One package per line. These apps are never force-stopped.</string>
+    <string name="edit">Edit</string>
+    <string name="procs_title">Top RAM consumers</string>
+    <string name="kill">Kill</string>
+    <string name="kill_confirm_title">Force-stop this app?</string>
+    <string name="kill_needs_shizuku">Killing apps needs Shizuku (see Settings)</string>
+
+    <!-- Settings -->
+    <string name="lang_label">Language / اللغة</string>
+    <string name="lang_switch">English</string>
+    <string name="sec_automation">AUTOMATION</string>
+    <string name="auto_boost_label">Boost automatically when a game starts</string>
+    <string name="auto_restore_label">Restore automatically when the game closes</string>
+    <string name="boot_label">Restore overlay / session after reboot</string>
+    <string name="sec_overlay">FLOATING MONITOR</string>
+    <string name="overlay_label">Show floating monitor</string>
+    <string name="ov_fps_label">FPS</string>
+    <string name="ov_cpu_label">CPU</string>
+    <string name="ov_ram_label">RAM</string>
+    <string name="ov_temp_label">Temperature</string>
+    <string name="ov_ping_label">Ping</string>
+    <string name="sec_shizuku">SHIZUKU (POWER)</string>
+    <string name="shizuku_ready">Shizuku is connected — full power unlocked</string>
+    <string name="shizuku_missing">Shizuku is not connected. CPU governor, Game Mode, RAM clean and refresh rate need it.</string>
+    <string name="shizuku_help">Install the Shizuku app, start it (Wi-Fi or USB), then connect here. Everything else works without it.</string>
+    <string name="shizuku_connect">Connect Shizuku</string>
+    <string name="sec_safety">SAFETY CENTER</string>
+    <string name="journal_entries">%1$d system change(s) recorded in the journal</string>
+    <string name="journal_zero">No pending system changes</string>
+    <string name="restore_confirm_title">Restore everything?</string>
+    <string name="restore_confirm_msg">Every change made by NitroBoost will be reverted to its original value.</string>
+    <string name="restore">Restore</string>
+    <string name="clear_log">Clear log</string>
+    <string name="about_title">About NitroBoost</string>
+    <string name="about_text">Version 1.3.0 — a clean, journal-based game booster. Every change is recorded and can be reverted in one tap. Thermal safety outranks performance. v1.3 adds the dynamic-resolution sweep (0.9/0.8/0.7) that keeps the winner measured on your device; v1.2 added the adaptive A/B engine: every tweak is measured on your device and kept only if statistically beneficial, plus live bottleneck detection and predictive thermal headroom.</string>
+
+    <!-- Session report -->
+    <string name="report_title">Last session report</string>
+    <string name="report_fps">Avg FPS: %1$s</string>
+    <string name="report_fps_delta">(%1$d vs previous session)</string>
+    <string name="report_fps_none">Avg FPS: -- (needs Shizuku + gfxinfo)</string>
+    <string name="report_temp">Peak temp: %1$d°C</string>
+    <string name="report_ping">Min ping: %1$dms</string>
+    <string name="report_tasks">Tasks applied: %1$d, failed: %2$d</string>
+    <string name="report_duration">Duration: %1$d s</string>
+
+    <!-- Game space detection -->
+    <string name="game_space_hint">OEM game space detected: %1$s — consider enabling its game mode too for the best result.</string>
+
+    <!-- Adaptive engine -->
+    <string name="adaptive_label">Adaptive engine (A/B test every tweak on your device)</string>
+    <string name="adaptive_title">Adaptive engine</string>
+    <string name="adaptive_bottleneck">Bottleneck</string>
+    <string name="adaptive_state">State</string>
+    <string name="adaptive_off">off (enable in Settings)</string>
+    <string name="adaptive_paused">paused: %1$s</string>
+    <string name="adaptive_done">all candidates measured</string>
+    <string name="adaptive_trial">testing %1$s…</string>
+    <string name="adaptive_idle">idle</string>
+    <string name="thermal_predicted">predicted early</string>
+    <string name="bottleneck_unknown">no FPS source (needs Shizuku)</string>
+    <string name="bottleneck_none">none — headroom available</string>
+    <string name="bottleneck_memory">memory</string>
+    <string name="bottleneck_network">network</string>
+    <string name="bottleneck_thermal">thermal throttling</string>
+    <string name="decision_keep">useful: %1$s fps (%2$d pairs) — kept</string>
+    <string name="decision_drop">harmful: %1$s fps (%2$d pairs) — reverted</string>
+    <string name="decision_neutral">neutral after %1$d pairs — reverted</string>
+    <string name="decision_pending">measuring… %1$d/%2$d pairs</string>
+    <string name="adaptive_eta">ETA ~%1$d min</string>
+    <string name="report_min_fps">Min FPS: %1$d</string>
+    <string name="report_peak_ram">Peak RAM: %1$dGB</string>
+    <string name="report_end_bottleneck">Main bottleneck at session end: %1$s</string>
+    <string name="onboarding_title">Quick setup — optional but unlocks the full power</string>
+    <string name="onboarding_msg">Tap an item to grant it (you can also do this later in Settings). Everything is optional; the app works with a reduced feature set without each one.</string>
+
+    <!-- Common -->
+    <string name="save">Save</string>
+    <string name="cancel">Cancel</string>
+    <string name="delete">Delete</string>
+</resources>
