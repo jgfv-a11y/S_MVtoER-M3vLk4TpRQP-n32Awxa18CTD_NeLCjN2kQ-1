@@ -15,40 +15,33 @@ keytool -genkey -v -keystore nitroboost-release.jks \
 
 ## الخطوة 2 — وضع السرية في GitHub Actions
 
-`Settings → Secrets and variables → Actions → New repository secret`
-(أو Variables):
+`Settings → Secrets and variables → Actions → New repository secret`:
 
 | الاسم | القيمة |
 |---|---|
-| `KEYSTORE_BASE64` | `base64 -w0 nitroboost-release.jks` (محتوى الملف كسطر) |
-| `KEYSTORE_PASSWORD` | كلمة مرور المخزن |
-| `KEY_ALIAS` | `nitroboost` |
-| `KEY_PASSWORD` | كلمة مرور المفتاح |
+| `NITRO_KEYSTORE_BASE64` | `base64 -w0 nitroboost-release.jks` (محتوى الملف كسطر) |
+| `NITRO_KEYSTORE_PASSWORD` | كلمة مرور المخزن |
+| `NITRO_KEY_ALIAS` | `nitroboost` |
+| `NITRO_KEY_PASSWORD` | كلمة مرور المفتاح |
 
-`app/build.gradle.kts` مهيأ بالفعل: عند وجود `KEYSTORE_BASE64` يُنشأ
-`signingConfig("release")` ويُربط بـ release build تلقائيًا.
+`app/build.gradle.kts` مهيأ بالفعل: عند وجود السرية يَبنِي CI تلقائيًا
+APK release موقّعًا ويُنشره مع debug APK في نفس الإصدار.
 
-## الخطوة 3 — بناء APK موقّع
+## الخطوة 3 — ما يفعله CI تلقائيًا (منذ v1.5.1)
+
+1. يبني `assembleRelease` موقّعًا فقط عند وجود الأسرار (إلا إذا غابوا
+   فيُتجاهل الخطو بسلام — لا فشل).
+2. **حارس إلزامي**: أي release APK يحتوي `debuggable=true` يُسقط البُني
+   بأكمله (فحص `aapt2 dump badging`) — لا يمكن نشر إصدار قابل للتصحيح.
+3. يُرفق كل APK موجود (debug + release) في صفحة الإصدار وفي `dist/`.
+
+للبني محليًا:
 
 ```bash
-KEYSTORE_BASE64=... KEYSTORE_PASSWORD=... KEY_ALIAS=nitroboost \
+KEYSTORE_BASE64=... KEYSTORE_FILE=nitroboost-release.jks \
+KEYSTORE_PASSWORD=... KEY_ALIAS=nitroboost \
 KEY_PASSWORD=... ./gradlew assembleRelease
 # الناتج: app/build/outputs/apk/release/app-release.apk
-```
-
-أو أضف خطوة CI اختيارية:
-
-```yaml
-- name: Build signed release (if keystore provided)
-  if: env.KEYSTORE_BASE64 != ''
-  env:
-    KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-    KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-    KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-    KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-  run: |
-    echo "$KEYSTORE_BASE64" | base64 -d > release.jks
-    KEYSTORE_FILE=release.jks ./gradlew assembleRelease --no-daemon
 ```
 
 ## الخطوة 4 — المتجر

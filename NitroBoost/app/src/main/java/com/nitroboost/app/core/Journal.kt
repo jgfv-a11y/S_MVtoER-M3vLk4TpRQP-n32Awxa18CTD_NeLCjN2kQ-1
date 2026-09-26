@@ -86,7 +86,12 @@ class Journal(val file: File) {
                 o.put("ts", e.ts)
                 arr.put(o)
             }
-            file.writeText(arr.toString(2))
+            // Atomic write: a process kill mid-write must never leave a
+            // truncated journal (which would silently drop pending reverts).
+            val tmp = File(file.parentFile, file.name + ".tmp")
+            tmp.writeText(arr.toString(2))
+            if (!tmp.renameTo(file)) tmp.copyTo(file, overwrite = true)
+            tmp.delete()
         } catch (e: Exception) {
             // Never let persistence break the boost flow.
         }

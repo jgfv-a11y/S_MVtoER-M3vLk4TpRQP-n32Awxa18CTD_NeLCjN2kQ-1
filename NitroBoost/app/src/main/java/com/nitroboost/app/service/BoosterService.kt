@@ -159,7 +159,14 @@ class BoosterService : Service() {
                     // Predictive: the adaptive engine's temperature trend can
                     // escalate one tier early, de-escalating BEFORE the OS
                     // thermal status flips and frames actually drop.
-                    val eff = maxOf(status, AppStore.effectiveThermalStatus())
+                    val predictive = AppStore.effectiveThermalStatus()
+                    // Hard floor: raw thermistor temperature. The OS status
+                    // is blind while the (opt-in) thermal override is active
+                    // — the raw floor is the heat limit nothing can disable.
+                    val raw = ThermalGuard.rawStatusFor(
+                        com.nitroboost.app.platform.ThermalSampler(this@BoosterService).tempC()
+                    )
+                    val eff = maxOf(status, predictive, raw)
                     val drop = ThermalGuard.modulesToDrop(eff)
                     if (drop.isNotEmpty()) {
                         val bctx = BoostContext(

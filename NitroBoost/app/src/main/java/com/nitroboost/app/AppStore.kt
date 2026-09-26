@@ -309,6 +309,45 @@ object AppStore {
                 }
             }
         }
+        // Crash resilience (v1.5.1): if a previous session died without
+        // restoring (reboot, process kill, service stop), revert what the
+        // journal still holds — nothing stays applied across a dead session.
+        startStaleJournalGuard()
+    }
+
+    /**
+     * Reverts journal leftovers of a DEAD session. No-op while the journal
+     * is empty or a session is live. Retries every 10 s, which also covers
+     * the window where Shizuku is not bound yet at app start (auto-activate
+     * takes a few seconds), so even late-bound restores complete.
+     */
+    private fun startStaleJournalGuard() {
+        scope.launch(Dispatchers.IO) {
+            while (isActive) {
+                delay(10_000)
+                try {
+                    val j = journal()
+                    if (j.entries.isEmpty()) break // nothing stale — stop watching
+                    if (BoosterService.active) continue
+                    val c = ctx()
+                    val ex = AndroidExecutor(c)
+                    val profile = ProfileStore(c).resolve(Prefs.activeProfile(c))
+                    val before = j.entries.size
+                    // Re-check right before the destructive step: a boost
+                    // started in the gap owns the journal and wins.
+                    if (BoosterService.active) continue
+                    engine.restoreAll(BoostContext(profile, ex, j) { line -> appendLog(line) })
+                    if (j.entries.size < before) {
+                        appendLog(
+                            "stale-journal guard: reverted ${before - j.entries.size} " +
+                                "entr(ies) left by a dead session"
+                        )
+                    }
+                } catch (e: Exception) {
+                    // keep watching
+                }
+            }
+        }
     }
 
     private fun collectSample(s: MonitorSnapshot) {

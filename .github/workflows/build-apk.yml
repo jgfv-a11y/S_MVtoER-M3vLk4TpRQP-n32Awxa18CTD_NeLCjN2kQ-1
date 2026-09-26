@@ -96,14 +96,53 @@ jobs:
           name: build-fail-log
           path: NitroBoost/nitroboost-build.log
 
+      - name: Build signed release APK (only when signing secrets are configured)
+        # Set the repo secrets NITRO_KEYSTORE_BASE64 (base64 of the .jks),
+        # NITRO_KEYSTORE_PASSWORD, NITRO_KEY_ALIAS, NITRO_KEY_PASSWORD and a
+        # real signed release is built + published alongside the debug APK.
+        # See NitroBoost/docs/DISTRIBUTION.md.
+        if: ${{ secrets.NITRO_KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.NITRO_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.NITRO_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.NITRO_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.NITRO_KEY_PASSWORD }}
+        working-directory: NitroBoost
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > release.jks
+          export KEYSTORE_FILE=$(pwd)/release.jks
+          ./gradlew assembleRelease --no-daemon --stacktrace >> nitroboost-build.log 2>&1
+          tail -30 nitroboost-build.log
+          mv app/build/outputs/apk/release/app-release.apk nitroboost-release.apk
+          rm -f release.jks
+
+      - name: Guard — release APK must never be debuggable
+        if: ${{ hashFiles('NitroBoost/nitroboost-release.apk') != '' }}
+        run: |
+          AAPT2="${ANDROID_SDK_ROOT:-/usr/lib/android-sdk}/build-tools/34.0.0/aapt2"
+          if "$AAPT2" dump badging NitroBoost/nitroboost-release.apk | grep -q "application-debuggable"; then
+            echo "::error::Release APK is debuggable — refusing to publish"
+            exit 1
+          fi
+          echo "release APK is not debuggable OK"
+
       - name: Rename APK
         run: mv NitroBoost/app/build/outputs/apk/debug/app-debug.apk NitroBoost/nitroboost-debug.apk
+
+      - name: Collect APK artifacts
+        id: collect
+        run: |
+          FILES="NitroBoost/nitroboost-debug.apk"
+          if [ -f NitroBoost/nitroboost-release.apk ]; then
+            FILES="$FILES, NitroBoost/nitroboost-release.apk"
+          fi
+          echo "paths=$FILES" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: nitroboost-debug-apk
-          path: NitroBoost/nitroboost-debug.apk
+          path: ${{ steps.collect.outputs.paths }}
 
       - name: Commit APK to dist branch
         run: |
@@ -112,21 +151,44 @@ jobs:
           git config user.email "ci@nitroboost.local"
           mkdir -p dist
           cp NitroBoost/nitroboost-debug.apk dist/nitroboost-debug.apk
-          git add dist/nitroboost-debug.apk
+          [ -f NitroBoost/nitroboost-release.apk ] && cp NitroBoost/nitroboost-release.apk dist/nitroboost-release.apk
+          git add dist/
           git commit -m "dist: NitroBoost debug APK (build $GITHUB_RUN_ID)"
           git push origin HEAD:dist-apk --force
 
       - name: Publish release with APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: nitroboost-v1.5.0
-          name: NitroBoost v1.5.0
+          tag_name: nitroboost-v1.5.1
+          name: NitroBoost v1.5.1
           body: |
             NitroBoost — journal-based game booster with a full adaptive A/B
             engine. Install on a real device (Shizuku required for the full
             feature set; the app degrades gracefully without it).
-            Debug-signed build for direct install; store builds (signed
-            release) are prepared — see `NitroBoost/docs/DISTRIBUTION.md`.
+            Debug-signed build for direct install; a signed release APK is
+            published automatically once the signing secrets are configured
+            — see `NitroBoost/docs/DISTRIBUTION.md`.
+
+            ## v1.5.1 — Hardening: rollback guaranteed, heat limit that
+            nothing can disable, least-privilege surface
+            - **Crash/reboot rollback**: a dead session (reboot, process
+              kill, service stop) can no longer leave tweaks applied — a
+              stale-journal guard reverts leftovers at app start and keeps
+              retrying until Shizuku is bound; journal writes are atomic.
+            - **Hard thermal floor**: the opt-in thermal override used to
+              blind the OS status the safety guard reads. The guard now
+              also maps raw thermistor temperature (44/48/52 °C floors)
+              and takes the max — a heat limit the UI, profiles and the
+              override itself can never disable.
+            - **Fewer permissions**: unused `WAKE_LOCK` and
+              `ACCESS_NETWORK_STATE` removed. `INTERNET` is used only by
+              the ping sampler; no telemetry, no cloud, profiles are local.
+            - **Release pipeline**: optional signed release build via
+              GitHub secrets + a CI guard that fails the build if a release
+              APK is ever debuggable.
+            - **Repo hygiene**: the decompiled reference app (RevBoost
+              1.8.1-debug) moved to `reference/` — it no longer sits at the
+              repo root where it could be mistaken for NitroBoost.
 
             ## v1.5.0 — Turbo Kit: boost levels + 5 new acceleration tasks
             - **Boost level selector (1/2/3)**: choose how hard the engine
@@ -239,7 +301,7 @@ jobs:
               avg/min FPS (gfxinfo), peak temperature, min ping, RAM peak and
               the FPS delta vs the previous session.
             - 16 boost tasks (was 15): +game_api_downscale.
-          files: NitroBoost/nitroboost-debug.apk
+          files: ${{ steps.collect.outputs.paths }}
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
