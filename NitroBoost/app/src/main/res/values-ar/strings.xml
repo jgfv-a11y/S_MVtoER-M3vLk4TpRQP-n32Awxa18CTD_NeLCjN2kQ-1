@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">نيترو بوست</string>
+    <string name="tile_name">نيترو بوست</string>
+
+    <!-- Tabs -->
+    <string name="tab_dashboard">الرئيسية</string>
+    <string name="tab_boost">التحسين</string>
+    <string name="tab_profiles">الالعاب</string>    <!-- v1.5.0 redesign -->
+    <string name="app_brand">نيترو</string>
+    <string name="tab_home">الرئيسية</string>
+    <string name="btn_boost_all">تحسين الكل</string>
+    <string name="btn_restore_all">استعادة الكل</string>
+    <string name="btn_add_profile">+ ملف لعبة جديد</string>
+    <string name="shizuku_card_title">شيزوكو / الروت غير متصل</string>
+    <string name="shizuku_state_not_installed">ثبّت تطبيق شيزوكو من GitHub (shizuku.rikka.app). على جهاز بجذر (Root) يعمل التطبيق عبر الروت مباشرة.</string>
+    <string name="shizuku_state_not_started">شيزوكو مثبّت. افتحه مرة واحدة واضغط «شغّل» (عبر ADB أو الجذر). كل ما بعد ذلك تلقائي.</string>
+    <string name="shizuku_state_pending">اضغط «السماح» في نافذة شيزوكو لمنح نيترو بوست الصلاحية.</string>
+    <string name="shizuku_state_not_bound">جارٍ الربط… أعد المحاولة إن استمر الحال.</string>
+    <string name="btn_open_shizuku">فتح شيزوكو</string>
+    <string name="btn_grant">السماح</string>
+    <string name="btn_retry">إعادة</string>
+    <string name="overlay_perm_title">المؤشر العائم يحتاج صلاحية واحدة</string>
+    <string name="overlay_perm_msg">لعرض FPS / المعالج / الحرارة فوق اللعبة، فعّل «العرض فوق التطبيقات الأخرى» لتطبيق نيترو بوست.</string>
+    <string name="overlay_perm_open">فتح الإعدادات</string>
+    <string name="task_state_pending">بانتظار شيزوكو</string>
+    <string name="sec_adaptive">المحرك التكيفي</string>
+    <string name="sec_system">النظام والذاكرة</string>
+    <string name="sec_journal">سجل التعديلات</string>
+    <string name="sec_preferences">التفضيلات</string>
+    <string name="sec_about">حول</string>
+    <string name="shizuku_steps">كيف يتم الاتصال بشيزوكو:
+1. افتح تطبيق شيزوكو (يُثبَّت من GitHub).
+2. اضغط «شغّل» — عبر ADB (التشخيص اللاسلكي) أو عبر الجذر.
+3. سمح لنيترو بوست عند ظهور نافذة شيزوكو.
+يبقى التطبيق يحاول تلقائيًا حتى يتصل. على الأجهزة المجذورة يُستخدم الروت تلقائيًا عند غياب شيزوكو.</string>
+    <string name="storage_line">%1$s متبقٍ من %2$s</string>
+    <string name="btn_edit_protected">تعديل قائمة الحماية</string>    <string name="sw_overlay_label">عرض المؤشر فوق اللعبة</string>
+    <string name="sw_ov_fps_label">الإطارات FPS</string>
+    <string name="sw_ov_cpu_label">المعالج</string>
+    <string name="sw_ov_ram_label">الذاكرة</string>
+    <string name="sw_ov_temp_label">الحرارة</string>
+    <string name="sw_ov_ping_label">الاستجابة Ping</string>
+    <string name="sw_adaptive_label">المحرك التكيفي A/B</string>
+    <string name="adaptive_desc">يقس كل تعديل على جهازك الحقيقي ولا يحتفظ إلا بما يفوز إحصائيًا (نوافذ 12 ثانية، قصّ القيم الشاذة، قرارات واعية بالحرارة).</string>
+    <string name="btn_refresh">تحديث</string>
+    <string name="btn_clear_log">مسح السجل</string>
+    <string name="sw_auto_boost_label">التحسين تلقائيًا عند بدء اللعبة</string>
+    <string name="sw_auto_restore_label">استعادة كل شيء عند خروج اللعبة</string>
+    <string name="sw_boot_label">إعادة تفعيل المؤشر بعد إعادة التشغيل</string>
+    <string name="btn_lang">عربي / EN</string>
+    <string name="about_line">نيترو بوست — معزّز ألعاب قائم على السجل. كل تعديل يُسجَّل وقابل للتكرار والاستعادة. مبني بـ Kotlin + Material 3 على Shizuku API 13.1.5.</string>    <string name="shizuku_via_root">الروت متصل — المهام المميزة تعمل عبر su.</string>
+    <string name="about_version_format">الإصدار %1$s</string>
+
+
+
+    <string name="tab_system">النظام</string>
+    <string name="tab_settings">الإعدادات</string>
+
+    <!-- Dashboard -->
+    <string name="score_label">نقاط الأداء</string>
+    <string name="btn_boost_start">تحسين الآن</string>
+    <!-- v1.5: boost levels -->
+    <string name="level_1">١ · أساسي</string>
+    <string name="level_2">٢ · قياسي</string>
+    <string name="level_3">٣ · أقصى</string>
+    <string name="btn_boost_stop">إيقاف التحسين</string>
+    <string name="btn_boost_running">جارٍ التحسين…</string>
+    <string name="session_idle">الجلسة متوقفة</string>
+    <string name="session_idle_hint">اختر لعبة واضغط تحسين الآن</string>
+    <string name="session_active">التحسين يعمل</string>
+    <string name="session_boosting">جارٍ التحسين…</string>
+    <string name="stat_cpu">المعالج</string>
+    <string name="stat_ram">الذاكرة</string>
+    <string name="stat_temp">الحرارة</string>
+    <string name="stat_bat">البطارية</string>
+    <string name="stat_fps">الإطار/ث</string>
+    <string name="stat_ping">الزمن</string>
+    <string name="btn_overlay">المؤشر العائم</string>
+    <string name="btn_restore">استعادة</string>
+    <string name="btn_perms">الصلاحيات</string>
+
+    <!-- Session notification -->
+    <string name="session_running">جلسة نيترو بوست نشطة</string>
+    <string name="session_notify_body">تحسينات اللعب مفعلة. سيعيد التطبيق كل شيء عند إغلاق اللعبة.</string>
+    <string name="session_notify_channel">جلسة التحسين</string>
+    <string name="session_stop_action">إيقاف واستعادة</string>
+
+    <!-- Overlay -->
+    <string name="overlay_channel_name">مؤشر الأداء</string>
+    <string name="overlay_cpu">معالج</string>
+    <string name="overlay_ram">ذاكرة</string>
+    <string name="overlay_temp">حرارة</string>
+    <string name="overlay_ping">زمن</string>
+
+    <!-- Permissions guide -->
+    <string name="perm_title">الصلاحيات</string>
+    <string name="perm_notify_title">الإشعارات</string>
+    <string name="perm_notify_desc">مطلوبة لإشعار جلسة التحسين</string>
+    <string name="perm_overlay_title">العرض فوق التطبيقات</string>
+    <string name="perm_overlay_desc">مطلوبة للمؤشر العائم (FPS/معالج/ذاكرة)</string>
+    <string name="perm_dnd_title">الوصول إلى عدم الإزعاج</string>
+    <string name="perm_dnd_desc">مطلوبة لكتم الإشعارات أثناء اللعب</string>
+    <string name="perm_write_title">تعديل إعدادات النظام</string>
+    <string name="perm_write_desc">مطلوبة لتعطيل الأنيميشن</string>
+    <string name="perm_usage_title">سجل الاستخدام</string>
+    <string name="perm_usage_desc">مطلوبة لكشف اللعبة العاملة والتطبيقات الخلفية</string>
+
+    <!-- Boost tab -->
+    <string name="boost_all">تحسين الكل</string>
+    <string name="restore_all">استعادة الكل</string>
+    <string name="task_state_applied">● مفعّل</string>
+    <string name="task_state_unsupported">غير مدعوم</string>
+    <string name="task_state_off">متوقف</string>
+
+    <!-- Profiles -->
+    <string name="profile_add_title">إضافة ملف لعبة</string>
+    <string name="profile_delete_title">حذف الملف؟</string>
+    <string name="profile_active_label">نشط</string>
+    <string name="profile_modules_title">الوحدات المفعلة</string>
+    <string name="mod_cpu">المعالج</string>
+    <string name="mod_ram">الذاكرة</string>
+    <string name="mod_display">الشاشة</string>
+    <string name="mod_dnd">كتم</string>
+    <string name="mod_power">الطاقة</string>
+    <string name="mod_network">الشبكة</string>
+    <string name="mod_tweaks">ضبط</string>
+    <string name="mod_gpu">الرسوميات</string>
+    <string name="mod_thermal">الحرارة</string>
+    <string name="opt_dnd">عدم الإزعاج أثناء اللعب</string>
+    <string name="opt_anim">تعطيل الأنيميشن</string>
+    <string name="opt_ram_kill">إنهاء تطبيقات الخلفية الخاملة</string>
+    <string name="opt_thermal">تجاوز التبريد (مجازف — بمراقبة أوتوماتيكية)</string>
+    <string name="hint_dpi">الكثافة (0=أوتوماتيك)</string>
+    <string name="hint_refresh">هرتز (0=أوتوماتيك)</string>
+    <string name="hint_game_mode">المستوى</string>
+
+    <!-- System tab -->
+    <string name="storage_label">التخزين</string>
+    <string name="protected_none">لا توجد تطبيقات محمية</string>
+    <string name="protected_title">التطبيقات المحمية</string>
+    <string name="protected_hint">حزمة في كل سطر. هذه التطبيقات لن تُنهى أبدًا.</string>
+    <string name="edit">تعديل</string>
+    <string name="procs_title">أعلى مستهلكات الذاكرة</string>
+    <string name="kill">إنهاء</string>
+    <string name="kill_confirm_title">إنهاء هذا التطبيق؟</string>
+    <string name="kill_needs_shizuku">إنهاء التطبيقات يتطلب شيزوكو (انظر الإعدادات)</string>
+
+    <!-- Settings -->
+    <string name="lang_label">اللغة / Language</string>
+    <string name="lang_switch">العربية</string>
+    <string name="sec_automation">الأتمتة</string>
+    <string name="auto_boost_label">تحسين تلقائي عند بدء لعبة</string>
+    <string name="auto_restore_label">استعادة تلقائية عند إغلاق اللعبة</string>
+    <string name="boot_label">استعادة المؤشر / الجلسة بعد إعادة التشغيل</string>
+    <string name="sec_overlay">المؤشر العائم</string>
+    <string name="overlay_label">إظهار المؤشر العائم</string>
+    <string name="ov_fps_label">الإطارات (FPS)</string>
+    <string name="ov_cpu_label">المعالج</string>
+    <string name="ov_ram_label">الذاكرة</string>
+    <string name="ov_temp_label">الحرارة</string>
+    <string name="ov_ping_label">زمن الاستجابة</string>
+    <string name="sec_shizuku">شيزوكو (القوة)</string>
+    <string name="shizuku_ready">شيزوكو متصل — كل القوة مفعلة</string>
+    <string name="shizuku_missing">شيزوكو غير متصل. وضع المعالج ووضع اللعبة وتنظيف الذاكرة ومعدل التحديث يتطلبونه.</string>
+    <string name="shizuku_help">ثبّت تطبيق Shizuku وابدأه (واي فاي أو USB) ثم اتصل من هنا. كل شيء آخر يعمل بدونه.</string>
+    <string name="shizuku_connect">اتصال شيزوكو</string>
+    <string name="sec_safety">مركز الأمان</string>
+    <string name="journal_entries">%1$d تغييرًا نظاميًا مسجلًا في الدفتر</string>
+    <string name="journal_zero">لا توجد تغييرات معلقة</string>
+    <string name="restore_confirm_title">استعادة كل شيء؟</string>
+    <string name="restore_confirm_msg">سيتم إرجاع كل تغيير قام به نيترو بوست إلى قيمته الأصلية.</string>
+    <string name="restore">استعادة</string>
+    <string name="clear_log">مسح السجل</string>
+    <string name="about_title">عن نيترو بوست</string>
+    <string name="about_text">الإصدار 1.3.0 — مسرّع ألعاب نظيف يعتمد على الدفتر. كل تغيير يُسجّل ويمكن إرجاعه بضغطة واحدة. الأمان الحراري فوق الأداء. الإصدار 1.3 يضيف مسح مستويات تخفيف الدقة (0.9/0.8/0.7) الذي يحفظ الفائز على جهازك، والإصدار 1.2 أضاف المحرك التكيفي A/B: كل تعديل يُقاس على جهازك ويُحتفظ فقط بما ثبتت فائدته إحصائيًا، مع كشف اختناق حي وهامش حراري تنبؤي.</string>
+
+    <!-- Session report -->
+    <string name="report_title">تقرير آخر جلسة</string>
+    <string name="report_fps">متوسط FPS: %1$s</string>
+    <string name="report_fps_delta">(%1$d مقارنة بآخر جلسة)</string>
+    <string name="report_fps_none">متوسط FPS: -- (يتطلب شيزوكو + gfxinfo)</string>
+    <string name="report_temp">ذروة الحرارة: %1$d°م</string>
+    <string name="report_ping">أقل Ping: %1$dms</string>
+    <string name="report_tasks">المهام المنفّذة: %1$d، الفاشلة: %2$d</string>
+    <string name="report_duration">المدة: %1$d ث</string>
+
+    <!-- Game space detection -->
+    <string name="game_space_hint">تم كشف Game Space خاص بالصانع: %1$s — يُنصح بتفعيل وضع لعبته أيضًا لأفضل نتيجة.</string>
+
+    <!-- Adaptive engine -->
+    <string name="adaptive_label">المحرك التكيفي (اختبار أ/ب لكل تعديل على جهازك)</string>
+    <string name="adaptive_title">المحرك التكيفي</string>
+    <string name="adaptive_bottleneck">نقطة الاختناق</string>
+    <string name="adaptive_state">الحالة</string>
+    <string name="adaptive_off">متوقف (فعّله من الإعدادات)</string>
+    <string name="adaptive_paused">متوقف مؤقتًا: %1$s</string>
+    <string name="adaptive_done">قُيست جميع المرشحات</string>
+    <string name="adaptive_trial">جارٍ قياس %1$s…</string>
+    <string name="adaptive_idle">خامل</string>
+    <string name="thermal_predicted">تنبؤ مبكر</string>
+    <string name="bottleneck_unknown">لا مصدر FPS (يتطلب شيزوكو)</string>
+    <string name="bottleneck_none">لا يوجد — هناك هامش</string>
+    <string name="bottleneck_memory">الذاكرة</string>
+    <string name="bottleneck_network">الشبكة</string>
+    <string name="bottleneck_thermal">خنق حراري</string>
+    <string name="decision_keep">مفيد: %1$s fps (%2$d زوج) — أُبقي عليه</string>
+    <string name="decision_drop">ضار: %1$s fps (%2$d زوج) — أُعيد</string>
+    <string name="decision_neutral">محايد بعد %1$d زوج — أُعيد</string>
+    <string name="decision_pending">قيد القياس… %1$d/%2$d زوج</string>
+    <string name="adaptive_eta">المقدّر ~%1$d دقيقة</string>
+    <string name="report_min_fps">أدنى FPS: %1$d</string>
+    <string name="report_peak_ram">ذروة RAM: %1$dGB</string>
+    <string name="report_end_bottleneck">الاختناق الرئيسي نهاية الجلسة: %1$s</string>
+    <string name="onboarding_title">إعداد سريع — اختياري لكنه يفتح كامل القوة</string>
+    <string name="onboarding_msg">اضغط على أي بند للسماح له (يمكنك ذلك لاحقًا من الإعدادات). كل شيء اختياري، والتطبيق يعمل بمجموعة مزايا أقل بدونه.</string>
+
+    <!-- Common -->
+    <string name="save">حفظ</string>
+    <string name="cancel">إلغاء</string>
+    <string name="delete">حذف</string>
+</resources>

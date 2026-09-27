@@ -1,0 +1,312 @@
+name: Build APK
+
+on:
+  push:
+    branches:
+      - main
+      - 'arena/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Install required Android SDK components
+        run: |
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-/usr/lib/android-sdk}"
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Generate Gradle wrapper (jar not shipped in repo)
+        working-directory: NitroBoost
+        run: |
+          if [ ! -f gradlew ]; then
+            gradle wrapper --gradle-version 8.7 --no-daemon
+          fi
+
+      - name: Run unit tests + build debug APK
+        working-directory: NitroBoost
+        run: |
+          ./gradlew test assembleDebug --no-daemon --stacktrace > nitroboost-build.log 2>&1
+          rc=$?
+          tail -150 nitroboost-build.log
+          exit $rc
+
+      - name: Capture build log on failure
+        if: failure()
+        run: |
+          set +e
+          LOG=NitroBoost/nitroboost-build.log
+          PR=$(gh pr list --head "$GITHUB_HEAD_REF" --state open --json number 2>&1)
+          echo "PR-QUERY-OUTPUT: $PR" >> "$LOG"
+          PRN=$(echo "$PR" | grep -o '"number":[0-9]*' | head -1 | grep -o '[0-9]*')
+          echo "PR-NUMBER: ${PRN:-none}" >> "$LOG"
+          git config user.name "nitroboost-ci"
+          git config user.email "ci@nitroboost.local"
+          mkdir -p .build-logs
+          cp "$LOG" ".build-logs/fail-$GITHUB_RUN_ID.log"
+          git add ".build-logs/fail-$GITHUB_RUN_ID.log"
+          git commit -m "chore: capture failed build log (run $GITHUB_RUN_ID)" >> "$LOG" 2>&1
+          git fetch origin build-logs >> "$LOG" 2>&1
+          git push origin HEAD:build-logs --force >> "$LOG" 2>&1
+          echo "PUSH-EXIT: $?" >> "$LOG"
+          if [ -n "$PRN" ]; then
+            {
+              echo "## :x: Build failed (run $GITHUB_RUN_ID)"
+              echo '```'
+              grep -E "^e: |error:|FAILURE|What went wrong|Execution failed for|Caused by|> Task.*FAILED" "$LOG" | head -60
+              echo '--- tail ---'
+              tail -80 "$LOG"
+              echo '```'
+            } > /tmp/pr-comment.md
+            python3 -c 'import json; json.dump({"body": open("/tmp/pr-comment.md").read()}, open("/tmp/pr-comment.json","w"))'
+            curl -s -o /tmp/pr-comment-resp.json -w "COMMENT-HTTP:%{http_code}\n" \
+              -X POST \
+              -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$PRN/comments" \
+              --data @/tmp/pr-comment.json \
+              >> "$LOG" 2>&1
+            head -c 400 /tmp/pr-comment-resp.json >> "$LOG" 2>&1
+          fi
+          exit 0
+
+      - name: Upload build log artifact on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-fail-log
+          path: NitroBoost/nitroboost-build.log
+
+      - name: Build signed release APK (if signing secrets are configured)
+        # NOTE: `secrets` may not appear in step `if:` expressions, so the
+        # no-secret case is handled inside the script (empty env = skip).
+        # Set the repo secrets NITRO_KEYSTORE_BASE64 (base64 of the .jks),
+        # NITRO_KEYSTORE_PASSWORD, NITRO_KEY_ALIAS, NITRO_KEY_PASSWORD and a
+        # real signed release is built + published alongside the debug APK.
+        # See NitroBoost/docs/DISTRIBUTION.md.
+        env:
+          KEYSTORE_BASE64: ${{ secrets.NITRO_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.NITRO_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.NITRO_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.NITRO_KEY_PASSWORD }}
+        working-directory: NitroBoost
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "No NITRO_KEYSTORE_BASE64 secret — skipping release build"
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > release.jks
+          export KEYSTORE_FILE=$(pwd)/release.jks
+          ./gradlew assembleRelease --no-daemon --stacktrace >> nitroboost-build.log 2>&1
+          tail -30 nitroboost-build.log
+          mv app/build/outputs/apk/release/app-release.apk nitroboost-release.apk
+          rm -f release.jks
+
+      - name: Guard — release APK must never be debuggable
+        if: ${{ hashFiles('NitroBoost/nitroboost-release.apk') != '' }}
+        run: |
+          AAPT2="${ANDROID_SDK_ROOT:-/usr/lib/android-sdk}/build-tools/34.0.0/aapt2"
+          if "$AAPT2" dump badging NitroBoost/nitroboost-release.apk | grep -q "application-debuggable"; then
+            echo "::error::Release APK is debuggable — refusing to publish"
+            exit 1
+          fi
+          echo "release APK is not debuggable OK"
+
+      - name: Rename APK
+        run: mv NitroBoost/app/build/outputs/apk/debug/app-debug.apk NitroBoost/nitroboost-debug.apk
+
+      - name: Collect APK artifacts
+        id: collect
+        run: |
+          FILES="NitroBoost/nitroboost-debug.apk"
+          if [ -f NitroBoost/nitroboost-release.apk ]; then
+            FILES="$FILES, NitroBoost/nitroboost-release.apk"
+          fi
+          echo "paths=$FILES" >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nitroboost-debug-apk
+          path: ${{ steps.collect.outputs.paths }}
+
+      - name: Commit APK to dist branch
+        run: |
+          set +e
+          git config user.name "nitroboost-ci"
+          git config user.email "ci@nitroboost.local"
+          mkdir -p dist
+          cp NitroBoost/nitroboost-debug.apk dist/nitroboost-debug.apk
+          [ -f NitroBoost/nitroboost-release.apk ] && cp NitroBoost/nitroboost-release.apk dist/nitroboost-release.apk
+          git add dist/
+          git commit -m "dist: NitroBoost debug APK (build $GITHUB_RUN_ID)"
+          git push origin HEAD:dist-apk --force
+
+      - name: Publish release with APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nitroboost-v1.5.1
+          name: NitroBoost v1.5.1
+          body: |
+            NitroBoost — journal-based game booster with a full adaptive A/B
+            engine. Install on a real device (Shizuku required for the full
+            feature set; the app degrades gracefully without it).
+            Debug-signed build for direct install; a signed release APK is
+            published automatically once the signing secrets are configured
+            — see `NitroBoost/docs/DISTRIBUTION.md`.
+
+            ## v1.5.1 — Hardening: rollback guaranteed, heat limit that
+            nothing can disable, least-privilege surface
+            - **Crash/reboot rollback**: a dead session (reboot, process
+              kill, service stop) can no longer leave tweaks applied — a
+              stale-journal guard reverts leftovers at app start and keeps
+              retrying until Shizuku is bound; journal writes are atomic.
+            - **Hard thermal floor**: the opt-in thermal override used to
+              blind the OS status the safety guard reads. The guard now
+              also maps raw thermistor temperature (44/48/52 °C floors)
+              and takes the max — a heat limit the UI, profiles and the
+              override itself can never disable.
+            - **Fewer permissions**: unused `WAKE_LOCK` and
+              `ACCESS_NETWORK_STATE` removed. `INTERNET` is used only by
+              the ping sampler; no telemetry, no cloud, profiles are local.
+            - **Release pipeline**: optional signed release build via
+              GitHub secrets + a CI guard that fails the build if a release
+              APK is ever debuggable.
+            - **Repo hygiene**: the decompiled reference app (RevBoost
+              1.8.1-debug) moved to `reference/` — it no longer sits at the
+              repo root where it could be mistaken for NitroBoost.
+
+            ## v1.5.0 — Turbo Kit: boost levels + 5 new acceleration tasks
+            - **Boost level selector (1/2/3)**: choose how hard the engine
+              pushes — 1 = safe basics (no privileges), 2 = standard
+              performance (default), 3 = aggressive. "Max" is now opt-in,
+              and level 3 is clearly separated from everyday boosts.
+            - **Keep all CPU cores online**: stops core hot-plug during the
+              session — removes the 1–3 frame wake-up hitches games hit
+              when the scheduler parks a big core mid-burst.
+            - **Low-latency I/O scheduler**: switches the data block device
+              to `none` (mq direct dispatch) while gaming — small random
+              reads (textures, level streaming) come back faster; previous
+              scheduler restored on exit.
+            - **Peak brightness in game**: locks the panel to max and
+              disables auto-dim for the session — no readability dips in
+              dark scenes. Works even without Shizuku when WRITE_SETTINGS
+              is granted.
+            - **Doze exemption**: whitelists the game in Android's device
+              idle subsystem — no background throttling of network or jobs
+              while the game is the focus.
+            - **Game Manager performance mode (Android 12+)**: asks the
+              platform scheduler/thermal policy to give the game full
+              performance priority via the official `cmd game` API.
+            - **Bug fix**: built-in profiles never enabled the GPU module,
+              so the Game API downscale + the adaptive sweep behind it
+              were silently off for built-in games. Now on by default —
+              80% render is the designed standard and the adaptive engine
+              refines it per SoC.
+            - Every new task is journaled, idempotent and revertible;
+              blocked-on-ROM = Skipped, never Failed.
+
+            ## v1.4.0 — New UI + Shizuku/Root auto-connect
+            - **Brand-new UI**: 4 simple tabs (Home / Boost / Profiles /
+              Settings), one big boost button, live stats, everything one
+              tap away.
+            - **Shizuku state machine**: the app now knows exactly where
+              the setup stands (installed / started / granted / bound) and
+              shows a guidance card on Home with the right action.
+            - **Root fallback**: rooted devices without Shizuku work
+              automatically via `su` (conservative probe, cached, all
+              writes still journaled + revertible).
+            - **Honest task states**: "Waiting for Shizuku" instead of
+              "not supported" for hardware that can't be verified yet.
+            - **Floating monitor**: auto-starts with the session; one-tap
+              permission prompt when missing; safe no-permission guard.
+            - **Score "current / potential"**: the home score shows what
+              the device can reach, not a mysterious 0.
+            - **Profiles deduped**: a custom profile replaces (shadows)
+              the built-in of the same game — no more duplicates.
+            - Lighter: privileged checks cached (2s TTL) — no more binder
+              polling on every UI refresh.
+
+            ## v1.3.2 — Faster, more precise, stronger engine
+            - **~2x faster adaptive sessions**: 12s windows, 2s settles,
+              baseline measured ONCE per session and reused for every
+              candidate (re-measured only after 5 min or a thermal change).
+            - **More precise statistics**: outlier trimming (top/bottom 10%)
+              before the 95% CI; FPS + thermal strictly aligned per tick.
+            - **Thermal-aware verdicts**: an FPS win that heats the SoC a
+              full tier is downgraded to NEUTRAL — no wins paid in throttling.
+            - **Governor A/B**: `performance` vs `schedutil` tested against
+              each other; the winning variant is restored automatically.
+            - 1Hz sampling, self-healing monitor hub, live ETA in the UI.
+            - **First-run permissions popup** (real POST_NOTIFICATIONS
+              request) and **fully automatic Shizuku** (open -> grant ->
+              bind, on launch and after every resume).
+            - **Settings journal fixed**: live entry list with old->new
+              values, auto-refresh on every visit.
+            - **Enriched session report**: min FPS, peak RAM, main
+              bottleneck at session end.
+            - **Overlay fixed**: stats wrap instead of clipping; `--` for a
+              missing temperature sensor.
+            - **Honest task statuses**: ROM-blocked writes are now
+              "Skipped — this device blocks it", not "Failed".
+
+            ## v1.3.0 — Dynamic resolution sweep
+            - **Downscale sweep (0.9 / 0.8 / 0.7)**: the adaptive engine
+              measures EVERY legal render-downscale level on your device
+              against one shared baseline and keeps the winner — real
+              dynamic-resolution control for a userland booster.
+            - The winning level persists in the decision ledger and is
+              restored automatically on every later session.
+            - **Stable release** (no longer prerelease).
+            - Store distribution prep: optional CI release signing
+              (keystore via GitHub secrets) + `docs/DISTRIBUTION.md`
+              (Play Store / F-Droid roadmap).
+            - +5 JVM unit tests (67 total).
+
+            ## v1.2.0 — Adaptive Engine
+            - **A/B adaptive engine**: every performance tweak is tested on
+              your device (baseline vs applied, real FPS from gfxinfo) and
+              only statistically significant tweaks are kept (paired 95%
+              confidence interval). Verdicts persist across sessions in the
+              decision ledger; DROPped tweaks are never re-applied.
+            - **Bottleneck detector**: live classification of where frames
+              are lost (CPU / GPU / memory / network / thermal).
+            - **Predictive thermal headroom**: temperature trend can
+              de-escalate one tier BEFORE the OS thermal status flips.
+            - Dashboard engine card + settings toggle.
+            - +32 JVM unit tests (62 total).
+
+            ## v1.1.0
+            - **Game API (Android 12+)**: official `cmd game` render downscale
+              (80%) via the platform Game Manager — cooler, steadier frames;
+              fully journaled, reverted with `cmd game reset`.
+            - **OEM game-space detection**: OPlus / ColorOS / MI Game Turbo /
+              Samsung / HONOR / vivo / HeyTap are detected and the user is
+              advised to enable their game mode too.
+            - **Session report**: after every session the app reports measured
+              avg/min FPS (gfxinfo), peak temperature, min ping, RAM peak and
+              the FPS delta vs the previous session.
+            - 16 boost tasks (was 15): +game_api_downscale.
+          files: ${{ steps.collect.outputs.paths }}
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
