@@ -36,6 +36,15 @@ object ThermalGuard {
     const val RAW_SEVERE_C = 48.0
     const val RAW_CRITICAL_C = 52.0
 
+    /**
+     * Predictive thermal threshold. This is the "heat is rising too quickly"
+     * rule: even if the current temp looks safe, a fast slope tells us we are
+     * about to cross the thermal wall. A rising trend escalates one tier early
+     * so the boost backs off before frames collapse.
+     */
+    const val EARLY_WARNING_SLOPE_PER_MIN = 1.2
+    const val STRONG_HEAT_SLOPE_PER_MIN = 2.0
+
     /** Pure mapping: raw max-zone temperature -> guard status. */
     fun rawStatusFor(tempC: Double?): Int = when {
         tempC == null -> STATUS_NOMINAL
@@ -43,6 +52,19 @@ object ThermalGuard {
         tempC >= RAW_SEVERE_C -> STATUS_SEVERE
         tempC >= RAW_MODERATE_C -> STATUS_MODERATE
         else -> STATUS_NOMINAL
+    }
+
+    /**
+     * Combines current thermal reading and a rising trend. The trend can push a
+     * device up one tier early so the booster de-escalates before the OS flips.
+     */
+    fun predictiveStatusFor(tempC: Double?, slopePerMin: Double): Int {
+        val base = rawStatusFor(tempC)
+        return when {
+            slopePerMin >= STRONG_HEAT_SLOPE_PER_MIN && base < STATUS_CRITICAL -> STATUS_CRITICAL
+            slopePerMin >= EARLY_WARNING_SLOPE_PER_MIN && base < STATUS_SEVERE -> base + 1
+            else -> base
+        }.coerceIn(STATUS_NOMINAL, STATUS_SHUTDOWN)
     }
 
     /** Returns the modules that should be reverted for the given thermal status. */
