@@ -63,7 +63,13 @@ class ProfilesFragment : Fragment() {
                         .setMessage(p.name)
                         .setPositiveButton(R.string.delete) { _, _ ->
                             store.removeCustom(p.packageName)
-                            adapter.items = store.all()
+                            val remaining = store.all()
+                            if (Prefs.activeProfile(c) == p.packageName) {
+                                val fallback = remaining.firstOrNull()?.packageName
+                                Prefs.setActiveProfile(c, fallback)
+                                adapter.active = fallback ?: ""
+                            }
+                            adapter.items = remaining
                             adapter.notifyDataSetChanged()
                         }
                         .setNegativeButton(R.string.cancel, null)

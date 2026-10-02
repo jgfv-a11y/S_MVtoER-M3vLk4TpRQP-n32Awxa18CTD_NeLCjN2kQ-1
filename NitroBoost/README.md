@@ -91,13 +91,18 @@ gradle wrapper --gradle-version 8.7   # إذا كان Gradle 8.7 مثبتًا
 
 APK الناتج في `app/build/outputs/apk/debug/`.
 
-> 📲 **APK جاهز للتنزيل (v1.8.0)**: [nitroboost-debug.apk](../dist/nitroboost-debug.apk)
+> 📲 **APK جاهز للتنزيل (v1.9.0)**: [nitroboost-debug.apk](../dist/nitroboost-debug.apk)
 > (أو من صفحة [Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) —
 > يُعاد بناؤه تلقائيًا عبر GitHub Actions عند كل تغيير).
 
 ---
 
 ## 📜 سجل الإصدارات
+
+### v1.9.0 — ثبات ملفات Adaptive وإدارة profiles
+- **حفظ ذري لدفتر Adaptive** مع `fsync` قبل الاستبدال، حتى لا تضيع قرارات التجارب عند انقطاع التطبيق.
+- **حذف profile آمن**: حذف profile المفعّل يختار تلقائيًا profile بديلًا بدل ترك التطبيق على حزمة غير موجودة.
+- **تحديث توثيق الإصدار** وإزالة ملاحظات CI القديمة من وصف النشرة.
 
 ### v1.8.0 — مراجعة الاستعادة والتخزين والصلاحيات
 - **حارس الاستعادة المستمر**: يظل فعالًا حتى عندما يبدأ التطبيق بدفتر فارغ، فيلتقط أي جلسة لاحقة تموت دون استعادة.

@@ -41,6 +41,9 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Run static verifier
+        working-directory: NitroBoost
+        run: python3 tools/verify.py
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
 
@@ -195,26 +198,10 @@ jobs:
             automatically once the signing secrets are configured — see
             `NitroBoost/docs/DISTRIBUTION.md`.
 
-            ## v1.8.0 — recovery, permissions, and atomic profile storage
-            - **CI unblocked**: journal rotation archives as
-              `{filename}_{timestamp}` (the test that kept the last three
-              builds red).
-            - **Kill/reboot rollback**: `onDestroy` + stale-journal guard
-              revert leftover tweaks so a dead session cannot leave
-              governors / DND / DPI applied.
-            - **Shizuku reconnect wired**: `AndroidExecutor` retries the
-              user service before falling back to root / safe mode.
-            - **Monitor self-heal**: hub restarts if samples go stale
-              (>20s), not only when the last snapshot was empty.
-            - **Journal durability**: fsync-before-rename, `.bak` of last
-              known-good, skip unknown kinds instead of wiping the file.
-            - **Hard thermal floor + predictive slope**: 44/48/52 °C plus
-              an early-warning slope so boosts back off before throttling.
-            - **More game profiles**: Genshin Global, Star Rail, COD
-              Mobile Global, Free Fire MAX, Wild Rift, Roblox, Minecraft.
-            - `allowBackup=false` so a backup restore cannot replay a
-              journal that no longer matches the device.
-
+            ## v1.9.0 — adaptive ledger and profile safety
+            - **Atomic Adaptive ledger writes** with fsync-before-rename.
+            - **Safe active-profile deletion** selects a remaining profile automatically.
+            - **Profile persistence** remains atomic and interruption-safe.
             Previous notes: see NitroBoost/CHANGELOG.md and earlier GitHub
             releases (v1.5.1 hardening, v1.5.0 Turbo Kit, v1.4.0 UI).
           files: ${{ steps.collect.outputs.paths }}

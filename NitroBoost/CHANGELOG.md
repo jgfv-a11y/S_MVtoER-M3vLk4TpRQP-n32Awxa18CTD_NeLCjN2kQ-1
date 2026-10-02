@@ -1,4 +1,10 @@
 # Changelog
+## v1.9.0 — Adaptive ledger and profile safety
+- **Atomic Adaptive ledger writes** with fsync-before-rename to protect trial decisions from interruption.
+- **Safe active-profile deletion**: deleting the selected custom profile automatically selects the first remaining profile.
+- **Release documentation corrected** so the CI notes describe the actual version.
+- **Version code 12**.
+
 ## v1.8.0 — Recovery, permissions, and atomic profile storage
 - **Persistent stale-journal guard**: recovery continues polling after an empty journal, so it can also protect later sessions that die unexpectedly.
 - **Correct Usage Stats status**: the permission checklist no longer depends on overlay permission.

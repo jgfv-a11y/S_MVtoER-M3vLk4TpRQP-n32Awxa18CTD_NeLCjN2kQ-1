@@ -173,7 +173,7 @@ The app keeps checking by itself until connected. On rooted devices, Root is use
     <string name="restore">Restore</string>
     <string name="clear_log">Clear log</string>
     <string name="about_title">About NitroBoost</string>
-    <string name="about_text">Version 1.8.0 — a clean, journal-based game booster. Every change is recorded and can be reverted in one tap. Thermal safety outranks performance. v1.8 hardens recovery (atomic journal, stale-session rollback, Shizuku reconnect) so a killed session cannot leave tweaks applied.</string>
+    <string name="about_text">Version 1.9.0 — a clean, journal-based game booster. Every change is recorded and can be reverted in one tap. Thermal safety outranks performance. v1.9 hardens recovery (atomic journal, stale-session rollback, Shizuku reconnect) so a killed session cannot leave tweaks applied.</string>
 
     <!-- Session report -->
     <string name="report_title">Last session report</string>

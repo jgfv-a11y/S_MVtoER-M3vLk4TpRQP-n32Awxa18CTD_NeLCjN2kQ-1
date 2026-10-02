@@ -3,6 +3,7 @@ package com.nitroboost.app.core.adaptive
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
 
 /**
  * The engine's memory: every trial's delta pairs and verdict, persisted
@@ -66,7 +67,20 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
                     .put("detail", e.detail ?: JSONObject.NULL)
                 arr.put(o)
             }
-            file.writeText(arr.toString())
+            file.parentFile?.mkdirs()
+            val tmp = File(file.parentFile, file.name + ".tmp")
+            FileOutputStream(tmp).use { out ->
+                out.write(arr.toString().toByteArray(Charsets.UTF_8))
+                try {
+                    out.fd.sync()
+                } catch (_: Exception) {
+                    // Best effort on filesystems without fsync support.
+                }
+            }
+            if (!tmp.renameTo(file)) {
+                tmp.copyTo(file, overwrite = true)
+                tmp.delete()
+            }
         } catch (e: Exception) {
             // best effort — the in-memory map stays authoritative this session
         }
