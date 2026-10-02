@@ -8,6 +8,7 @@ import com.nitroboost.app.core.adaptive.Decision
 import com.nitroboost.app.core.adaptive.DecisionLedger
 import com.nitroboost.app.core.adaptive.FrameMetrics
 import com.nitroboost.app.core.adaptive.FrameTimeMetrics
+import com.nitroboost.app.core.adaptive.LedgerEntry
 import com.nitroboost.app.core.adaptive.PairObservation
 import com.nitroboost.app.core.adaptive.ScoreComponents
 import com.nitroboost.app.core.adaptive.SessionQualityGate
@@ -29,6 +30,9 @@ class AdaptiveEngineV2Test {
 
     private val gamePackage = "com.test.game"
     private val baseConfig = TrialConfig(minPairs = 8, maxPairs = 40)
+
+    private fun tempFile(tag: String): File =
+        File.createTempFile("nitro_$tag", ".json").also { it.deleteOnExit() }
 
     private fun metrics(
         fps: Double = 60.0,
