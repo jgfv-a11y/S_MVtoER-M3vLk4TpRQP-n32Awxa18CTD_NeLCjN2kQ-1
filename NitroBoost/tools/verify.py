@@ -112,6 +112,7 @@ def main():
         "Widget.Material3.Button",
         "Widget.Material3.Button.OutlinedButton",
         "Widget.Material3.Button.TextButton",
+        "Widget.Material3.Button.TonalButton",
         "Widget.Material3.CardView.Filled",
         "Theme.Material3.Dark.NoActionBar",
         "Theme.Material3.DayNight.NoActionBar",

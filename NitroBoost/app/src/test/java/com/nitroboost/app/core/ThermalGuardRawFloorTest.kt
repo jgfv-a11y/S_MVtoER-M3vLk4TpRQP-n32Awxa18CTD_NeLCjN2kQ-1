@@ -44,4 +44,24 @@ class ThermalGuardRawFloorTest {
         val drop = ThermalGuard.modulesToDrop(ThermalGuard.rawStatusFor(55.0))
         assertEquals(setOf(Module.CPU, Module.GPU, Module.THERMAL), drop)
     }
+
+    @Test
+    fun `predictive slope escalates one tier before the wall`() {
+        // Comfortable 40°C but climbing fast → act one tier early.
+        val mild = ThermalGuard.predictiveStatusFor(40.0, ThermalGuard.EARLY_WARNING_SLOPE_PER_MIN)
+        assertEquals(ThermalGuard.STATUS_LIGHT, mild)
+
+        val strong = ThermalGuard.predictiveStatusFor(40.0, ThermalGuard.STRONG_HEAT_SLOPE_PER_MIN)
+        assertEquals(ThermalGuard.STATUS_CRITICAL, strong)
+
+        val flat = ThermalGuard.predictiveStatusFor(40.0, 0.0)
+        assertEquals(ThermalGuard.STATUS_NOMINAL, flat)
+    }
+
+    @Test
+    fun `predictive never exceeds shutdown and never drops below raw`() {
+        val alreadyCritical = ThermalGuard.predictiveStatusFor(55.0, 9.0)
+        assertEquals(ThermalGuard.STATUS_CRITICAL, alreadyCritical)
+        assertTrue(alreadyCritical <= ThermalGuard.STATUS_SHUTDOWN)
+    }
 }

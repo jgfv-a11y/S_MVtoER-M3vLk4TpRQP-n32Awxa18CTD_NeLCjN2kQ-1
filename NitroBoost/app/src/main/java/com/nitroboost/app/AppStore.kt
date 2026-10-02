@@ -161,7 +161,6 @@ object AppStore {
             }
     }
 
-    private val measLock = Any()
     private val sessFps = mutableListOf<Int>()
     private val sessTemp = mutableListOf<Int>()
     private val sessPing = mutableListOf<Int>()
@@ -296,7 +295,11 @@ object AppStore {
                 delay(15_000)
                 try {
                     val v = monitor.value
-                    if (v == null || v.ts == 0L) {
+                    val now = android.os.SystemClock.elapsedRealtime()
+                    // Restart not only on an empty snapshot: if the hub died
+                    // the last posted sample stays around with a stale ts.
+                    val stale = v == null || v.ts == 0L || now - v.ts > 20_000L
+                    if (stale) {
                         synchronized(monitorLock) {
                             hub?.stop()
                             val newHub = MonitorHub(ctx().applicationContext)
@@ -368,8 +371,8 @@ object AppStore {
             tempC = s.tempC
         )
         postAdaptiveUi()
-        if (sessStart == 0L) return
-        synchronized(measLock) {
+        synchronized(sessionStateLock) {
+            if (sessStart == 0L) return
             s.fps?.let { sessFps.add(it) }
             s.tempC?.let { sessTemp.add(it.toInt()) }
             s.pingMs?.let { sessPing.add(it) }
@@ -633,6 +636,32 @@ object AppStore {
     }
 
     fun restoreAll() = stopSession()
+
+    /**
+     * Synchronous restore for process/service teardown. [stopSession] is
+     * async (IO dispatcher) and would lose the race against a dying
+     * process — this path runs on the caller's thread so `onDestroy`
+     * actually reverts leftover tweaks.
+     */
+    fun restoreAllBlocking() {
+        try {
+            adaptiveLoop?.stop()
+            val c = ctx()
+            val executor = AndroidExecutor(c)
+            val bctx = BoostContext(
+                ProfileStore(c).resolve(Prefs.activeProfile(c)),
+                executor, journal()
+            ) { line -> appendLog(line) }
+            engine.restoreAll(bctx)
+            setGamePackage(null)
+            session.postValue(SessionState.Idle)
+        } catch (e: Exception) {
+            try {
+                appendLog("blocking restore failed: ${e.message}")
+            } catch (_: Exception) {
+            }
+        }
+    }
 
     fun refreshTaskStates() {
         scope.launch(Dispatchers.IO) {

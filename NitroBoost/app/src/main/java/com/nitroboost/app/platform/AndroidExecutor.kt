@@ -53,6 +53,11 @@ class AndroidExecutor(private val context: Context) : SystemExecutor {
             if (ShizukuShell.ensureBound(context)) {
                 return ShizukuShell.run(cmd)
             }
+            // One reconnect burst (v1.6): a dropped user-service must not
+            // silently fall through to "no channel" while Shizuku is alive.
+            if (ShizukuShell.reconnect(context, maxAttempts = 2)) {
+                return ShizukuShell.run(cmd)
+            }
         }
         if (RootShell.isAvailable()) {
             return RootShell.run(cmd)

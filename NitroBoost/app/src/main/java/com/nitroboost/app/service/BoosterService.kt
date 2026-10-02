@@ -256,8 +256,17 @@ class BoosterService : Service() {
     }
 
     override fun onDestroy() {
+        // If the process/service is torn down without ACTION_STOP, still
+        // revert leftover journal entries so a killed session cannot leave
+        // governors / DND / DPI applied.
+        try {
+            if (active) {
+                active = false
+                AppStore.restoreAllBlocking()
+            }
+        } catch (_: Exception) {
+        }
         scope?.cancel()
-        active = false
         super.onDestroy()
     }
 }
