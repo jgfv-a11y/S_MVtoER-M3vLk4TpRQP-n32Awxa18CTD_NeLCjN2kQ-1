@@ -3,6 +3,7 @@ package com.nitroboost.app.core
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
 
 /**
  * Persistent, replayable record of every change the booster made.
@@ -43,6 +44,11 @@ class Journal(val file: File) {
         } catch (e: Exception) {
             // Corrupt journal: keep it safe, do not crash.
             entries.clear()
+            val backup = File(file.parentFile, file.name + ".corrupt")
+            try {
+                if (file.exists()) file.copyTo(backup, overwrite = true)
+            } catch (_: Exception) {
+            }
         }
     }
 
@@ -86,12 +92,38 @@ class Journal(val file: File) {
                 o.put("ts", e.ts)
                 arr.put(o)
             }
-            // Atomic write: a process kill mid-write must never leave a
-            // truncated journal (which would silently drop pending reverts).
+
+            // Atomic-ish safe write: avoid leaving a truncated JSON state behind.
+            val data = arr.toString(2).toByteArray(Charsets.UTF_8)
             val tmp = File(file.parentFile, file.name + ".tmp")
-            tmp.writeText(arr.toString(2))
-            if (!tmp.renameTo(file)) tmp.copyTo(file, overwrite = true)
-            tmp.delete()
+            val backup = File(file.parentFile, file.name + ".bak")
+
+            // keep a backup of the last known-good file before replace
+            if (file.exists()) {
+                try {
+                    file.copyTo(backup, overwrite = true)
+                } catch (_: Exception) {
+                }
+            }
+
+            FileOutputStream(tmp).use { it.write(data) }
+
+            // Final swap only after the tmp file is successful and complete.
+            if (!tmp.renameTo(file)) {
+                file.parentFile?.let { parent ->
+                    val replacement = File(parent, file.name + ".replacement")
+                    tmp.copyTo(replacement, overwrite = true)
+                    replacement.renameTo(file)
+                }
+            }
+
+            // rotate old entries if the file grows too large
+            if (entries.size > 250) {
+                val archived = File(file.parentFile, "journal_${System.currentTimeMillis()}.json")
+                file.copyTo(archived, overwrite = true)
+                entries.clear()
+                save()
+            }
         } catch (e: Exception) {
             // Never let persistence break the boost flow.
         }
