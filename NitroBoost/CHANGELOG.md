@@ -1,4 +1,9 @@
 # Changelog
+## v1.7.0 — Correct settings fallback and release hardening
+- **Fixed settings writes without direct permissions**: System, Secure, and Global settings now fall back to Shizuku/root when the public Android API returns `false`, instead of incorrectly stopping or reporting failure after a partial API attempt.
+- **Avoided redundant privileged commands**: successful public API writes return immediately, preventing unnecessary shell calls and reducing journal/task latency.
+- **Version code 10** with the existing recovery and thermal-safety guarantees from v1.6.0.
+
 
 ## v1.6.0 — Stability, thermal safety, and recovery hardening
 

@@ -195,7 +195,7 @@ jobs:
             automatically once the signing secrets are configured — see
             `NitroBoost/docs/DISTRIBUTION.md`.
 
-            ## v1.6.0 — Stability, thermal safety, recovery hardening
+            ## v1.7.0 — Stability, thermal safety, recovery hardening
             - **CI unblocked**: journal rotation archives as
               `{filename}_{timestamp}` (the test that kept the last three
               builds red).

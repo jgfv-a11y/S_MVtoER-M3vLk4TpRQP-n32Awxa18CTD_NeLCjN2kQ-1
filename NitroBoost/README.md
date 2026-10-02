@@ -91,7 +91,7 @@ gradle wrapper --gradle-version 8.7   # إذا كان Gradle 8.7 مثبتًا
 
 APK الناتج في `app/build/outputs/apk/debug/`.
 
-> 📲 **APK جاهز للتنزيل (v1.6.0)**: [nitroboost-debug.apk](../dist/nitroboost-debug.apk)
+> 📲 **APK جاهز للتنزيل (v1.7.0)**: [nitroboost-debug.apk](../dist/nitroboost-debug.apk)
 > (أو من صفحة [Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) —
 > يُعاد بناؤه تلقائيًا عبر GitHub Actions عند كل تغيير).
 
@@ -99,7 +99,7 @@ APK الناتج في `app/build/outputs/apk/debug/`.
 
 ## 📜 سجل الإصدارات
 
-### v1.6.0 — ثبات، أمان حراري، واستعادة مضمونة
+### v1.7.0 — ثبات، أمان حراري، واستعادة مضمونة
 - **CI أخضر من جديد**: أرشيف الدفتر باسم `{filename}_{timestamp}` — كان هذا الاختبار الوحيد الأحمر منذ إضافة اختبارات التدوير.
 - **استعادة عند قتل الخدمة**: `onDestroy` + حارس السجل القديم يعيدان كل تعديل متبقٍ؛ لا تبقى حوكمة/DND/DPI بعد موت العملية.
 - **إعادة ربط شيزوكو مستخدمة فعليًا**: المنفّذ يعيد المحاولة قبل التراجع إلى الروت/الوضع الآمن.

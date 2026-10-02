@@ -112,8 +112,11 @@ class AndroidExecutor(private val context: Context) : SystemExecutor {
 
     override fun sysSettingPut(key: String, value: String): Boolean {
         try {
-            Settings.System.putString(context.contentResolver, key, value)
-            return Settings.System.getString(context.contentResolver, key) == value
+            if (Settings.System.putString(context.contentResolver, key, value) &&
+                Settings.System.getString(context.contentResolver, key) == value
+            ) {
+                return true
+            }
         } catch (e: Exception) {
             // no WRITE_SETTINGS grant — try the Shizuku service
         }
@@ -140,7 +143,11 @@ class AndroidExecutor(private val context: Context) : SystemExecutor {
 
     override fun secureSettingPut(key: String, value: String): Boolean {
         try {
-            Settings.Secure.putString(context.contentResolver, key, value)
+            if (Settings.Secure.putString(context.contentResolver, key, value) &&
+                Settings.Secure.getString(context.contentResolver, key) == value
+            ) {
+                return true
+            }
         } catch (e: Exception) {
             // needs the Shizuku service
         }
@@ -167,7 +174,11 @@ class AndroidExecutor(private val context: Context) : SystemExecutor {
 
     override fun globalSettingPut(key: String, value: String): Boolean {
         try {
-            Settings.Global.putString(context.contentResolver, key, value)
+            if (Settings.Global.putString(context.contentResolver, key, value) &&
+                Settings.Global.getString(context.contentResolver, key) == value
+            ) {
+                return true
+            }
         } catch (e: Exception) {
             // needs the Shizuku service
         }
