@@ -68,7 +68,7 @@ object PermissionGuide {
         },
         Item(
             R.string.perm_usage_title, R.string.perm_usage_desc,
-            android.provider.Settings.canDrawOverlays(ctx) && usageGranted(ctx)
+            usageGranted(ctx)
         ) { c ->
             c.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
         }

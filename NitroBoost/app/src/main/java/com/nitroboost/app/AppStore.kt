@@ -333,7 +333,7 @@ object AppStore {
                 delay(10_000)
                 try {
                     val j = journal()
-                    if (j.entries.isEmpty()) break // nothing stale — stop watching
+                    if (j.entries.isEmpty()) continue // no stale work yet; keep watching future sessions
                     if (BoosterService.active) continue
                     val c = ctx()
                     val ex = AndroidExecutor(c)

@@ -1,4 +1,11 @@
 # Changelog
+## v1.8.0 — Recovery, permissions, and atomic profile storage
+- **Persistent stale-journal guard**: recovery continues polling after an empty journal, so it can also protect later sessions that die unexpectedly.
+- **Correct Usage Stats status**: the permission checklist no longer depends on overlay permission.
+- **Exact Doze package matching**: similar package names cannot be mistaken for the active game.
+- **Atomic custom profile writes** with fsync-before-rename, reducing corruption after interruption.
+- **Version code 11**.
+
 ## v1.7.0 — Correct settings fallback and release hardening
 - **Fixed settings writes without direct permissions**: System, Secure, and Global settings now fall back to Shizuku/root when the public Android API returns `false`, instead of incorrectly stopping or reporting failure after a partial API attempt.
 - **Avoided redundant privileged commands**: successful public API writes return immediately, preventing unnecessary shell calls and reducing journal/task latency.

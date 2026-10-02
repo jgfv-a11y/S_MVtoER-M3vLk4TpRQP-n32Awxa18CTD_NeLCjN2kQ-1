@@ -4,6 +4,7 @@ import android.content.Context
 import com.nitroboost.app.core.AppProfile
 import org.json.JSONArray
 import java.io.File
+import java.io.FileOutputStream
 
 /**
  * Profiles: built-ins shipped in assets (reference-compatible schema) plus
@@ -71,7 +72,21 @@ class ProfileStore(private val ctx: Context) {
         try {
             val arr = JSONArray()
             list.forEach { arr.put(AppProfile.toJson(it)) }
-            customFile().writeText(arr.toString(2))
+            val target = customFile()
+            target.parentFile?.mkdirs()
+            val tmp = File(target.parentFile, target.name + ".tmp")
+            FileOutputStream(tmp).use { out ->
+                out.write(arr.toString(2).toByteArray(Charsets.UTF_8))
+                try {
+                    out.fd.sync()
+                } catch (_: Exception) {
+                    // Some filesystems do not expose fsync; rename is still safer than direct write.
+                }
+            }
+            if (!tmp.renameTo(target)) {
+                tmp.copyTo(target, overwrite = true)
+                tmp.delete()
+            }
         } catch (e: Exception) {
             // never crash on persistence
         }

@@ -32,7 +32,9 @@ class PowerSaveWhitelistTask : BoostTask {
 
     override fun isApplied(ctx: BoostContext): Boolean {
         val r = ctx.executor.shell("dumpsys deviceidle whitelist")
-        return r.ok && r.stdout.contains(pkg(ctx))
+        if (!r.ok) return false
+        val wanted = Regex("(^|\\s)${Regex.escape(pkg(ctx))}(\\s|$)")
+        return r.stdout.lineSequence().any { wanted.containsMatchIn(it) }
     }
 
     override fun apply(ctx: BoostContext): TaskResult {
