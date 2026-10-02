@@ -71,6 +71,8 @@ object AppStore {
     val engine = BoostEngine(AllTasks.tasks)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val monitorLock = Any()
+    private val sessionStateLock = Any()
 
     val monitor = MutableLiveData<MonitorSnapshot>(MonitorSnapshot.EMPTY)
     val session = MutableLiveData<SessionState>(SessionState.Idle)
@@ -166,7 +168,7 @@ object AppStore {
     private val sessRam = mutableListOf<Int>()
 
     private fun beginSessionMeasurement() {
-        synchronized(measLock) {
+        synchronized(sessionStateLock) {
             sessFps.clear()
             sessTemp.clear()
             sessPing.clear()
@@ -185,7 +187,7 @@ object AppStore {
         val ram = mutableListOf<Int>()
         var applied: Int
         var failed: Int
-        val start = synchronized(measLock) {
+        val start = synchronized(sessionStateLock) {
             fps += sessFps
             temp += sessTemp
             ping += sessPing
@@ -261,10 +263,12 @@ object AppStore {
         app = ctx.applicationContext
         val h = MonitorHub(ctx.applicationContext)
         h.gamePackage = { gamePackage() }
-        hub = h
-        h.start { s ->
-            monitor.postValue(s)
-            collectSample(s)
+        synchronized(monitorLock) {
+            hub = h
+            h.start { s ->
+                monitor.postValue(s)
+                collectSample(s)
+            }
         }
         loadLogs()
         adaptiveLoop = AdaptiveLoop(
@@ -293,16 +297,15 @@ object AppStore {
                 try {
                     val v = monitor.value
                     if (v == null || v.ts == 0L) {
-                        try {
+                        synchronized(monitorLock) {
                             hub?.stop()
-                        } catch (e: Exception) {
-                        }
-                        val h = MonitorHub(ctx().applicationContext)
-                        h.gamePackage = { gamePackage() }
-                        hub = h
-                        h.start { s ->
-                            monitor.postValue(s)
-                            collectSample(s)
+                            val newHub = MonitorHub(ctx().applicationContext)
+                            newHub.gamePackage = { gamePackage() }
+                            hub = newHub
+                            newHub.start { s ->
+                                monitor.postValue(s)
+                                collectSample(s)
+                            }
                         }
                     }
                 } catch (e: Exception) {
@@ -379,12 +382,11 @@ object AppStore {
             val s = monitor.value ?: return
             val frame = lastFrame ?: return
             val loop = adaptiveLoop
-            val loop2 = loop
             var eta = 0
-            if (loop2?.isRunning == true) {
+            if (loop?.isRunning == true) {
                 try {
                     val c = ctx()
-                    eta = loop2.estimateRemainingMinutes(
+                    eta = loop.estimateRemainingMinutes(
                         BoostContext(
                             ProfileStore(c).resolve(Prefs.activeProfile(c)),
                             AndroidExecutor(c),
@@ -397,9 +399,9 @@ object AppStore {
             adaptiveUi.postValue(
                 AdaptiveUi(
                     enabled = Prefs.getBool(ctx(), Prefs.KEY_ADAPTIVE_ON, true),
-                    running = loop2?.isRunning == true,
-                    phase = loop2?.phase ?: "idle",
-                    pausedReason = loop2?.pausedReason,
+                    running = loop?.isRunning == true,
+                    phase = loop?.phase ?: "idle",
+                    pausedReason = loop?.pausedReason,
                     bottleneck = BottleneckDetector.detect(frame),
                     effectiveThermal = effectiveThermalStatus(),
                     osThermal = s.thermalStatus,
@@ -427,8 +429,6 @@ object AppStore {
     }
 
     fun executor(): AndroidExecutor = AndroidExecutor(ctx())
-
-
 
     /** Currently boosted game package (set by BoosterService). */
     @Volatile
@@ -489,8 +489,10 @@ object AppStore {
                 // v1.5: level gate — 1 = basics, 2 = standard, 3 = max.
                 val maxLevel = Prefs.getInt(c, Prefs.KEY_BOOST_LEVEL, 2)
                 val report = engine.boost(bctx, exclude = reserved, maxLevel = maxLevel)
-                sessApplied = report.appliedCount + report.noChangeCount
-                sessFailed = report.failedCount
+                synchronized(sessionStateLock) {
+                    sessApplied = report.appliedCount + report.noChangeCount
+                    sessFailed = report.failedCount
+                }
                 setGamePackage(profile.packageName)
                 currentTargetFps = profile.fpsCap
                     .takeIf { it > 0 }
@@ -612,7 +614,9 @@ object AppStore {
                 ) { line -> appendLog(line) }
                 engine.restoreAll(bctx)
                 setGamePackage(null)
-                finishSessionMeasurement()
+                synchronized(sessionStateLock) {
+                    finishSessionMeasurement()
+                }
                 refreshTaskStates()
                 postScore(
                     ProfileStore(ctx()).resolve(Prefs.activeProfile(ctx()))
