@@ -1,4 +1,14 @@
 # Changelog
+
+## v1.10.0 — Adaptive evidence and restoration safety
+- **Version code 13**; release workflow will publish APK artifacts after CI tests and build succeed.
+- Every baseline/candidate arm retains paired block observations and its own confidence interval; multi-arm decisions use Bonferroni family-wise correction before ranking eligible winners.
+- Documented a bounded normalized performance/thermal score; unavailable frame-time, energy, and other measurements are omitted rather than estimated.
+- Added real `gfxinfo framestats` frame-time summaries, adaptive-window quality gates, explicit `MORE_DATA` handling, and nominal-state predictive thermal escalation/invalidation.
+- Bound local ledger decisions to device/app/profile/boost/thermal context with TTL and known-good backup recovery.
+- Serialized task mutations and session teardown; failed restores remain journaled, are reported, and keep the foreground service retrying instead of silently declaring the session stopped.
+- Added deterministic JVM coverage for scoring, statistical correction, quality gates, cancellation/restore failure, ledger recovery, frame-time parsing, and task-lock serialization.
+
 ## v1.9.0 — Adaptive ledger and profile safety
 - **Atomic Adaptive ledger writes** with fsync-before-rename to protect trial decisions from interruption.
 - **Safe active-profile deletion**: deleting the selected custom profile automatically selects the first remaining profile.

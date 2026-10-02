@@ -6,6 +6,7 @@ import android.content.IntentFilter
 import android.app.usage.UsageStats
 import android.app.usage.UsageStatsManager
 import android.os.BatteryManager
+import android.os.Build
 import android.os.Environment
 import android.os.StatFs
 import androidx.lifecycle.MutableLiveData
@@ -18,12 +19,15 @@ import com.nitroboost.app.core.adaptive.Bottleneck
 import com.nitroboost.app.core.adaptive.BottleneckDetector
 import com.nitroboost.app.core.adaptive.DecisionLedger
 import com.nitroboost.app.core.adaptive.FrameMetrics
+import com.nitroboost.app.core.adaptive.FrameTimeAnalysis
 import com.nitroboost.app.core.adaptive.LedgerEntry
 import com.nitroboost.app.core.adaptive.ThermalTrend
+import com.nitroboost.app.core.adaptive.TrialContext
 import com.nitroboost.app.core.adaptive.TrialConfig
 import com.nitroboost.app.core.ScoreEngine
 import com.nitroboost.app.core.SessionReport
 import com.nitroboost.app.core.SessionReportBuilder
+import com.nitroboost.app.core.ThermalGuard
 import com.nitroboost.app.core.TaskState
 import com.nitroboost.app.core.AppProfile
 import com.nitroboost.app.core.tasks.AllTasks
@@ -45,6 +49,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.io.File
+import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.concurrent.Volatile
 
 sealed class SessionState {
@@ -73,6 +79,10 @@ object AppStore {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val monitorLock = Any()
     private val sessionStateLock = Any()
+    /** Serializes boost requests against session teardown and whole-journal restore. */
+    private val sessionLifecycleLock = Any()
+    /** Fences queued boost requests so an old request cannot run after a stop/restore. */
+    private val sessionLifecycleGeneration = AtomicLong(0L)
 
     val monitor = MutableLiveData<MonitorSnapshot>(MonitorSnapshot.EMPTY)
     val session = MutableLiveData<SessionState>(SessionState.Idle)
@@ -102,6 +112,10 @@ object AppStore {
     private var theJournal: Journal? = null
     private var theLedger: DecisionLedger? = null
     private var adaptiveLoop: AdaptiveLoop? = null
+    private val trialConfig = TrialConfig()
+    private val adaptiveContextLock = Any()
+    @Volatile private var cachedHardwareKeys: Pair<String, String>? = null
+    @Volatile private var cachedProfileKey: Pair<String, String>? = null
 
     private val trend = ThermalTrend()
     @Volatile
@@ -136,20 +150,117 @@ object AppStore {
     /** OS thermal status escalated by the predictive trend (never below OS). */
     fun effectiveThermalStatus(): Int {
         val s = monitor.value ?: return 0
-        return maxOf(s.thermalStatus, trend.effectiveStatus(s.thermalStatus))
+        val predictive = trend.effectiveStatus(s.thermalStatus)
+        // The raw thermistor floor is independent of the optional thermal
+        // override and must outrank every adaptive/profile preference.
+        val rawFloor = ThermalGuard.rawStatusFor(s.tempC)
+        return maxOf(s.thermalStatus, predictive, rawFloor)
     }
 
     /**
-     * Loop-side view of the monitor: [poll] returns one FRESH aligned
-     * (fps, thermal) pair per monitor tick (ts-deduped) so the adaptive
-     * engine's baseline/arm windows stay sample-aligned.
+     * Local-only cache key. Hardware identity is hashed and no context or
+     * measurements leave the device. App version/capabilities invalidate old
+     * task results when behavior or platform support may have changed.
+     */
+    private fun makeTrialContext(bctx: BoostContext, thermalTier: Int): TrialContext {
+        val sdk = Build.VERSION.SDK_INT
+        val staticKeys = cachedHardwareKeys ?: synchronized(adaptiveContextLock) {
+            cachedHardwareKeys ?: run {
+                val soc = if (sdk >= Build.VERSION_CODES.S) Build.SOC_MODEL else Build.HARDWARE
+                val appVersionCode = try {
+                    val info = ctx().packageManager.getPackageInfo(ctx().packageName, 0)
+                    if (sdk >= 28) info.longVersionCode else {
+                        @Suppress("DEPRECATION")
+                        val legacyCode = info.versionCode
+                        legacyCode.toLong()
+                    }
+                } catch (_: Exception) {
+                    0L
+                }
+                val deviceSeed = listOf(Build.MANUFACTURER, Build.MODEL, Build.BOARD, Build.HARDWARE, soc)
+                    .joinToString("|")
+                val capabilitySeed = listOf(
+                    sdk.toString(), Build.VERSION.RELEASE, soc,
+                    Build.SUPPORTED_ABIS.joinToString(","), appVersionCode.toString(),
+                    TrialContext.TASK_REVISION.toString()
+                ).joinToString("|")
+                (stableLocalHash(deviceSeed) to stableLocalHash(capabilitySeed))
+                    .also { cachedHardwareKeys = it }
+            }
+        }
+        val profile = bctx.profile
+        val profileSeed = listOf(
+            profile.enabledModules.map { it.key }.sorted().joinToString(","),
+            profile.fpsCap.toString(), profile.refreshRate.toString(), profile.dpi.toString(),
+            profile.gameMode.toString(), profile.thermalOverride.toString()
+        ).joinToString("|")
+        val profileKey = cachedProfileKey?.takeIf { it.first == profileSeed }?.second
+            ?: synchronized(adaptiveContextLock) {
+                cachedProfileKey?.takeIf { it.first == profileSeed }?.second
+                    ?: stableLocalHash(profileSeed).also { cachedProfileKey = profileSeed to it }
+            }
+        val currentTemp = monitor.value?.tempC
+        val temperatureBand = when {
+            currentTemp == null -> "unknown"
+            currentTemp < 36.0 -> "cool"
+            currentTemp < 40.0 -> "warm"
+            currentTemp < 42.0 -> "hot"
+            else -> "near-floor"
+        }
+        val slope = trend.slopePerMin()
+        val slopeBand = when {
+            slope >= ThermalGuard.STRONG_HEAT_SLOPE_PER_MIN -> "rapid-rise"
+            slope >= ThermalGuard.EARLY_WARNING_SLOPE_PER_MIN -> "rising"
+            slope <= -0.3 -> "cooling"
+            else -> "flat"
+        }
+        return TrialContext(
+            deviceKey = staticKeys.first,
+            androidVersion = "$sdk:${Build.VERSION.RELEASE}",
+            gamePackage = profile.packageName,
+            boostLevel = Prefs.getInt(ctx(), Prefs.KEY_BOOST_LEVEL, 2),
+            thermalTier = thermalTier,
+            capabilityKey = staticKeys.second,
+            profileKey = profileKey,
+            thermalSignature = "$temperatureBand:$slopeBand"
+        )
+    }
+
+    private fun stableLocalHash(value: String): String =
+        MessageDigest.getInstance("SHA-256").digest(value.toByteArray(Charsets.UTF_8))
+            .take(16).joinToString("") { "%02x".format(it) }
+
+    /**
+     * Loop-side view of the monitor: poll returns one FRESH aligned snapshot
+     * per monitor tick (timestamp-deduped), carrying only actually measured
+     * frame times and the raw temperature/tier context.
      */
     private val sampler = object : AdaptiveSampler {
         override fun poll(): com.nitroboost.app.core.adaptive.AdaptiveSample? {
             val s = monitor.value ?: return null
-            if (s.ts == lastFpsTs) return null
+            if (s.ts == 0L || s.ts == lastFpsTs) return null
             lastFpsTs = s.ts
-            return com.nitroboost.app.core.adaptive.AdaptiveSample(s.fps, s.thermalStatus)
+            val thermal = maxOf(
+                s.thermalStatus,
+                trend.effectiveStatus(s.thermalStatus),
+                ThermalGuard.rawStatusFor(s.tempC)
+            )
+            val now = android.os.SystemClock.elapsedRealtime()
+            return com.nitroboost.app.core.adaptive.AdaptiveSample(
+                fps = s.fps,
+                thermal = thermal,
+                timestampMs = s.ts,
+                tempC = s.tempC,
+                thermalSlopeCPerMin = trend.slopePerMin(),
+                ramPct = s.ramPct,
+                frameTimesMs = s.frameTimesMs,
+                energyMah = s.energyMah,
+                gamePackage = s.gamePackage,
+                processEpoch = s.processEpoch,
+                thermalValid = s.thermalSampleAvailable || s.tempC != null,
+                monitorAgeMs = (now - s.ts).coerceAtLeast(0L),
+                targetFps = currentTargetFps
+            )
         }
         override fun fps(): Int? = monitor.value?.fps
         override fun metrics(): FrameMetrics? = lastFrame
@@ -282,10 +393,11 @@ object AppStore {
             },
             ledger = ledger(),
             sampler = sampler,
-            cfg = TrialConfig(),
+            cfg = trialConfig,
             effectiveThermal = { effectiveThermalStatus() },
             log = { line -> appendLog("adaptive: $line") },
-            maxLevel = { Prefs.getInt(ctx(), Prefs.KEY_BOOST_LEVEL, 2) }
+            maxLevel = { Prefs.getInt(ctx(), Prefs.KEY_BOOST_LEVEL, 2) },
+            trialContextFactory = { bctx, tier -> makeTrialContext(bctx, tier) }
         )
         // Self-healing monitor: if the sampling hub ever dies (process
         // pressure, ANR recovery), restart it so the UI and the adaptive
@@ -333,19 +445,20 @@ object AppStore {
                 delay(10_000)
                 try {
                     val j = journal()
-                    if (j.entries.isEmpty()) continue // no stale work yet; keep watching future sessions
+                    if (j.isEmpty()) continue // no stale work yet; keep watching future sessions
                     if (BoosterService.active) continue
                     val c = ctx()
                     val ex = AndroidExecutor(c)
                     val profile = ProfileStore(c).resolve(Prefs.activeProfile(c))
-                    val before = j.entries.size
+                    val before = j.snapshot().size
                     // Re-check right before the destructive step: a boost
                     // started in the gap owns the journal and wins.
                     if (BoosterService.active) continue
                     engine.restoreAll(BoostContext(profile, ex, j) { line -> appendLog(line) })
-                    if (j.entries.size < before) {
+                    val remaining = j.snapshot().size
+                    if (remaining < before) {
                         appendLog(
-                            "stale-journal guard: reverted ${before - j.entries.size} " +
+                            "stale-journal guard: reverted ${before - remaining} " +
                                 "entr(ies) left by a dead session"
                         )
                     }
@@ -368,7 +481,10 @@ object AppStore {
             pingMs = s.pingMs,
             retransPerSec = s.retransPerSec,
             thermalStatus = s.thermalStatus,
-            tempC = s.tempC
+            tempC = s.tempC,
+            frameTime = FrameTimeAnalysis.summarize(s.frameTimesMs, currentTargetFps),
+            monitorTimestampMs = s.ts,
+            gamePackage = s.gamePackage
         )
         postAdaptiveUi()
         synchronized(sessionStateLock) {
@@ -408,7 +524,7 @@ object AppStore {
                     bottleneck = BottleneckDetector.detect(frame),
                     effectiveThermal = effectiveThermalStatus(),
                     osThermal = s.thermalStatus,
-                    decisions = ledger().entries.values.toList()
+                    decisions = ledger().snapshotEntries()
                         .sortedByDescending { it.pairs }
                         .take(5),
                     etaMinutes = eta
@@ -476,12 +592,36 @@ object AppStore {
     fun boost(profilePkg: String? = null) {
         val c = ctx()
         val profile = ProfileStore(c).resolve(profilePkg ?: Prefs.activeProfile(c))
-        session.postValue(SessionState.Boosting(profile.name))
-        beginSessionMeasurement()
+        val requestGeneration = sessionLifecycleGeneration.get()
         scope.launch(Dispatchers.IO) {
+            synchronized(sessionLifecycleLock) {
+            if (requestGeneration != sessionLifecycleGeneration.get() || BoosterService.isEnding() ||
+                !sessionLifecycleGeneration.compareAndSet(requestGeneration, requestGeneration + 1L)
+            ) return@synchronized
+            val previousSessionState = session.value ?: SessionState.Idle
+            session.postValue(SessionState.Boosting(profile.name))
             try {
                 val journal = journal()
                 val executor = AndroidExecutor(c)
+                val previousPackage = gamePackage()
+                val switchingProfile = !previousPackage.isNullOrBlank() && previousPackage != profile.packageName
+                val adaptive = adaptiveLoop
+                if (adaptive?.isRunning == true) adaptive.stopAndJoinBlocking()
+                val mustRestorePriorSession = switchingProfile ||
+                    (!BoosterService.active && !journal.isEmpty())
+                if (mustRestorePriorSession && !journal.isEmpty()) {
+                    val oldProfile = ProfileStore(c).resolve(previousPackage ?: Prefs.activeProfile(c))
+                    val restore = engine.restoreAll(
+                        BoostContext(oldProfile, executor, journal) { line -> appendLog(line) }
+                    )
+                    if (restore.failedCount > 0 || !journal.isEmpty()) {
+                        appendLog("profile boost cancelled: prior session restore incomplete; journal retained")
+                        session.postValue(previousSessionState)
+                        return@launch
+                    }
+                }
+                if (switchingProfile) finishSessionMeasurement()
+                beginSessionMeasurement()
                 wireRamKill(profile, executor)
                 val bctx = BoostContext(profile, executor, journal) { line -> appendLog(line) }
                 // Never re-apply the candidate the adaptive engine is
@@ -492,11 +632,18 @@ object AppStore {
                 // v1.5: level gate — 1 = basics, 2 = standard, 3 = max.
                 val maxLevel = Prefs.getInt(c, Prefs.KEY_BOOST_LEVEL, 2)
                 val report = engine.boost(bctx, exclude = reserved, maxLevel = maxLevel)
+                // Apply the non-disableable thermal floor immediately after
+                // initial tasks; the service watchdog remains a second line.
+                val thermalFloor = effectiveThermalStatus()
+                if (thermalFloor >= ThermalGuard.STATUS_MODERATE) {
+                    engine.deescalate(bctx, ThermalGuard.modulesToDrop(thermalFloor))
+                }
                 synchronized(sessionStateLock) {
                     sessApplied = report.appliedCount + report.noChangeCount
                     sessFailed = report.failedCount
                 }
                 setGamePackage(profile.packageName)
+                BoosterService.updateActiveGame(profile.packageName)
                 currentTargetFps = profile.fpsCap
                     .takeIf { it > 0 }
                     ?: profile.refreshRate.takeIf { it > 0 }
@@ -537,6 +684,7 @@ object AppStore {
                 appendLog("boost crashed: ${e.message}")
                 session.postValue(SessionState.Boosting(profile.name))
             }
+            }
         }
     }
 
@@ -556,20 +704,32 @@ object AppStore {
         skip: Set<String> = emptySet(),
         maxLevel: Int = 3
     ) {
+        // Context and expiry are part of the cache key: a result from another
+        // device, OS, game, profile, thermal tier or app/task revision is not
+        // applied blindly. The ledger remains private to filesDir.
+        val decisions = ledger()
+        val currentContext = makeTrialContext(ctx, effectiveThermalStatus())
+        val now = System.currentTimeMillis()
         // v1.5: the user's level valve wins over the ledger — a level-1
         // session must not re-apply a level-2/3 "winner".
-        for (entry in ledger().entries.values) {
+        for (entry in decisions.snapshotEntries()) {
+            if (!decisions.isCurrent(entry, currentContext, now, trialConfig.decisionTtlMs)) continue
             if (entry.taskId in skip) continue
             val task = com.nitroboost.app.core.tasks.AllTasks.byId[entry.taskId]
             if (task != null && task.boostLevel > maxLevel) continue
-            val entries = ctx.journal.entries.filter { it.taskId == entry.taskId }
+            val entries = ctx.journal.snapshot().filter { it.taskId == entry.taskId }
             when (entry.decision) {
                 com.nitroboost.app.core.adaptive.Decision.DROP -> {
                     if (entries.isEmpty()) continue
-                    val ok = entries.filter { com.nitroboost.app.core.Journal.restore(it, ctx.executor) }
-                    if (ok.isNotEmpty()) {
-                        ctx.journal.remove(ok)
-                        appendLog("adaptive: reverted dropped task ${entry.taskId}")
+                    engine.withTaskLock(entry.taskId) {
+                        val ok = entries.filter { com.nitroboost.app.core.Journal.restore(it, ctx.executor) }
+                        if (ok.isNotEmpty()) {
+                            ctx.journal.remove(ok)
+                            appendLog("adaptive: reverted dropped task ${entry.taskId}")
+                        }
+                        if (ok.size != entries.size) {
+                            appendLog("adaptive: restore failed for dropped task ${entry.taskId}; journal retained")
+                        }
                     }
                 }
                 com.nitroboost.app.core.adaptive.Decision.KEEP -> {
@@ -589,16 +749,25 @@ object AppStore {
                         }
                         else -> continue
                     }
-                    val ok = entries.filter { com.nitroboost.app.core.Journal.restore(it, ctx.executor) }
-                    if (ok.isNotEmpty()) ctx.journal.remove(ok)
-                    val r = try {
-                        winner.first.apply(ctx)
-                    } catch (e: Exception) {
-                        null
-                    }
-                    if (r != null && r.entries.isNotEmpty() && r.status.success) {
-                        ctx.journal.add(r.entries)
-                        appendLog("adaptive: restored winning ${winner.second}")
+                    engine.withTaskLock(entry.taskId) {
+                        val ok = entries.filter { com.nitroboost.app.core.Journal.restore(it, ctx.executor) }
+                        if (ok.size != entries.size) {
+                            if (ok.isNotEmpty()) ctx.journal.remove(ok)
+                            appendLog("adaptive: restore failed before ${winner.second}; journal retained")
+                            return@withTaskLock
+                        }
+                        if (ok.isNotEmpty()) ctx.journal.remove(ok)
+                        val r = try {
+                            winner.first.apply(ctx)
+                        } catch (e: Exception) {
+                            null
+                        }
+                        if (r != null && r.entries.isNotEmpty() && r.status.success) {
+                            ctx.journal.add(r.entries)
+                            appendLog("adaptive: restored winning ${winner.second}")
+                        } else {
+                            appendLog("adaptive: failed to apply winning ${winner.second}")
+                        }
                     }
                 }
                 else -> Unit
@@ -607,31 +776,39 @@ object AppStore {
     }
 
     fun stopSession() {
-        scope.launch(Dispatchers.IO) {
-            try {
-                adaptiveLoop?.stop()
-                val executor = AndroidExecutor(ctx())
-                val bctx = BoostContext(
-                    ProfileStore(ctx()).resolve(Prefs.activeProfile(ctx())),
-                    executor, journal()
-                ) { line -> appendLog(line) }
-                engine.restoreAll(bctx)
-                setGamePackage(null)
-                synchronized(sessionStateLock) {
-                    finishSessionMeasurement()
-                }
-                refreshTaskStates()
-                postScore(
-                    ProfileStore(ctx()).resolve(Prefs.activeProfile(ctx()))
-                )
-                session.postValue(SessionState.Idle)
-                try {
-                    WidgetProvider.update(ctx())
-                } catch (e: Exception) {
-                }
-            } catch (e: Exception) {
-                appendLog("stop failed: ${e.message}")
+        sessionLifecycleGeneration.incrementAndGet()
+        scope.launch(Dispatchers.IO) { stopSessionBlockingInternal() }
+    }
+
+    /** Synchronous service-stop path; waits for adaptive cleanup before restoring the full journal. */
+    fun stopSessionBlocking(): BoostEngine.Report? = stopSessionBlockingInternal()
+
+    private fun stopSessionBlockingInternal(): BoostEngine.Report? = synchronized(sessionLifecycleLock) {
+        sessionLifecycleGeneration.incrementAndGet()
+        try {
+            adaptiveLoop?.stopAndJoinBlocking()
+            val c = ctx()
+            val profile = ProfileStore(c).resolve(Prefs.activeProfile(c))
+            val activeJournal = journal()
+            val bctx = BoostContext(profile, AndroidExecutor(c), activeJournal) { line -> appendLog(line) }
+            val restore = engine.restoreAll(bctx)
+            if (restore.failedCount > 0 || !activeJournal.isEmpty()) {
+                appendLog("session restore incomplete: ${restore.failedCount} change(s) failed; journal retained")
+                return@synchronized restore
             }
+            setGamePackage(null)
+            finishSessionMeasurement()
+            refreshTaskStates()
+            postScore(profile)
+            session.postValue(SessionState.Idle)
+            try {
+                WidgetProvider.update(c)
+            } catch (_: Exception) {
+            }
+            restore
+        } catch (e: Exception) {
+            appendLog("stop failed: ${e.message}")
+            null
         }
     }
 
@@ -643,23 +820,30 @@ object AppStore {
      * process — this path runs on the caller's thread so `onDestroy`
      * actually reverts leftover tweaks.
      */
-    fun restoreAllBlocking() {
+    fun restoreAllBlocking(): BoostEngine.Report? = synchronized(sessionLifecycleLock) {
+        sessionLifecycleGeneration.incrementAndGet()
         try {
-            adaptiveLoop?.stop()
+            adaptiveLoop?.stopAndJoinBlocking()
             val c = ctx()
-            val executor = AndroidExecutor(c)
+            val activeJournal = journal()
             val bctx = BoostContext(
                 ProfileStore(c).resolve(Prefs.activeProfile(c)),
-                executor, journal()
+                AndroidExecutor(c), activeJournal
             ) { line -> appendLog(line) }
-            engine.restoreAll(bctx)
+            val restore = engine.restoreAll(bctx)
+            if (restore.failedCount > 0 || !activeJournal.isEmpty()) {
+                appendLog("blocking restore incomplete: ${restore.failedCount} change(s) failed; journal retained")
+                return@synchronized restore
+            }
             setGamePackage(null)
             session.postValue(SessionState.Idle)
+            restore
         } catch (e: Exception) {
             try {
                 appendLog("blocking restore failed: ${e.message}")
             } catch (_: Exception) {
             }
+            null
         }
     }
 

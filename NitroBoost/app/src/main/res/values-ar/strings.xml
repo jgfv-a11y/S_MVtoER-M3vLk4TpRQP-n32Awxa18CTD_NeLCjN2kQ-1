@@ -7,7 +7,8 @@
     <string name="tab_dashboard">الرئيسية</string>
     <string name="tab_boost">التحسين</string>
     <string name="tab_profiles">الالعاب</string>    <!-- v1.5.0 redesign -->
-    <string name="app_brand">نيترو</string>
+    <string name="app_brand">نيتروبوست</string>
+    <string name="home_version">الإصدار %1$s</string>
     <string name="tab_home">الرئيسية</string>
     <string name="btn_boost_all">تحسين الكل</string>
     <string name="btn_restore_all">استعادة الكل</string>
@@ -173,7 +174,7 @@
     <string name="restore">استعادة</string>
     <string name="clear_log">مسح السجل</string>
     <string name="about_title">عن نيترو بوست</string>
-    <string name="about_text">الإصدار 1.9.0 — مسرّع ألعاب نظيف يعتمد على الدفتر. كل تغيير يُسجّل ويمكن إرجاعه بضغطة واحدة. الأمان الحراري فوق الأداء. الإصدار 1.9 يقوّي الاستعادة (دفتر ذرّي، إرجاع الجلسات الميتة، إعادة ربط شيزوكو) حتى لا تبقى تعديلات مطبّقة بعد قتل العملية.</string>
+    <string name="about_text">الإصدار 1.10.0 — مسرّع ألعاب يعتمد على دفتر التغييرات وتجارب تكيفية مزدوجة وقياسات حقيقية فقط وقرارات محلية بفواصل ثقة. كل تعديل نظامي مسجّل وقابل للاستعادة. الأمان الحراري فوق الأداء؛ وتبقى الاستعادات الفاشلة في الدفتر مع إعادة المحاولة.</string>
 
     <!-- Session report -->
     <string name="report_title">تقرير آخر جلسة</string>

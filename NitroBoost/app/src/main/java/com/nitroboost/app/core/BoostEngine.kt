@@ -1,5 +1,7 @@
 package com.nitroboost.app.core
 
+import java.util.concurrent.ConcurrentHashMap
+
 /**
  * Orchestrates boost tasks: applies only profile-enabled tasks, journals
  * every successful change, and restores everything from the journal.
@@ -11,6 +13,14 @@ package com.nitroboost.app.core
  *  - the journal is only cleared when every entry was restored.
  */
 class BoostEngine(private val tasks: List<BoostTask>) {
+
+    private val taskMutationLocks = ConcurrentHashMap<String, Any>()
+
+    /** Serialize a task's apply/restore across normal boost and adaptive paths. */
+    fun <T> withTaskLock(taskId: String, block: () -> T): T {
+        val lock = taskMutationLocks.computeIfAbsent(taskId) { Any() }
+        return synchronized(lock) { block() }
+    }
 
     data class Report(
         val results: Map<String, TaskResult>,
@@ -33,27 +43,31 @@ class BoostEngine(private val tasks: List<BoostTask>) {
      * right now (e.g. the candidate the adaptive engine is currently
      * measuring — a re-apply mid-trial would corrupt its arm window).
      */
+    @Synchronized
     fun boost(ctx: BoostContext, exclude: Set<String> = emptySet(), maxLevel: Int = 3): Report {
         val results = linkedMapOf<String, TaskResult>()
         for (task in tasks) {
-            val r = try {
-                if (task.id in exclude) {
-                    TaskResult(task.id, TaskStatus.Skipped, "reserved by adaptive trial")
-                } else if (task.boostLevel > maxLevel) {
-                    TaskResult(task.id, TaskStatus.Skipped,
-                        "boost level too low (needs ${task.boostLevel})")
-                } else if (!ctx.profile.isEnabled(task)) {
-                    TaskResult(task.id, TaskStatus.Skipped, "disabled in profile")
-                } else {
-                    task.apply(ctx)
+            val r = withTaskLock(task.id) {
+                try {
+                    if (task.id in exclude) {
+                        TaskResult(task.id, TaskStatus.Skipped, "reserved by adaptive trial")
+                    } else if (task.boostLevel > maxLevel) {
+                        TaskResult(task.id, TaskStatus.Skipped,
+                            "boost level too low (needs ${task.boostLevel})")
+                    } else if (!ctx.profile.isEnabled(task)) {
+                        TaskResult(task.id, TaskStatus.Skipped, "disabled in profile")
+                    } else {
+                        task.apply(ctx)
+                    }
+                } catch (e: Exception) {
+                    TaskResult(task.id, TaskStatus.Failed("unexpected: ${e.message}"))
+                }.also { result ->
+                    if (result.entries.isNotEmpty() && result.status.success) {
+                        ctx.journal.add(result.entries)
+                    }
                 }
-            } catch (e: Exception) {
-                TaskResult(task.id, TaskStatus.Failed("unexpected: ${e.message}"))
             }
             results[task.id] = r
-            if (r.entries.isNotEmpty() && r.status.success) {
-                ctx.journal.add(r.entries)
-            }
             ctx.log("${task.id} -> ${describe(r.status)} ${r.detail}")
         }
         return summarize(results)
@@ -64,12 +78,14 @@ class BoostEngine(private val tasks: List<BoostTask>) {
      * Entries that fail to restore are kept in the journal so a later retry
      * can finish the job — nothing is lost.
      */
+    @Synchronized
     fun restoreAll(ctx: BoostContext): Report {
-        val pending = ctx.journal.entries.toList().asReversed()
+        val pending = ctx.journal.snapshot().asReversed()
         val restored = mutableListOf<JournalEntry>()
         val failed = mutableListOf<JournalEntry>()
         for (e in pending) {
-            if (Journal.restore(e, ctx.executor)) restored.add(e) else failed.add(e)
+            val ok = withTaskLock(e.taskId) { Journal.restore(e, ctx.executor) }
+            if (ok) restored.add(e) else failed.add(e)
         }
         if (restored.isNotEmpty()) ctx.journal.remove(restored)
         for (e in failed) ctx.log("restore failed: ${e.taskId}/${e.key}")
@@ -86,16 +102,18 @@ class BoostEngine(private val tasks: List<BoostTask>) {
      * Thermal guard: drop the given modules' optimizations (reverting their
      * journal entries) when the device runs too hot.
      */
+    @Synchronized
     fun deescalate(ctx: BoostContext, modules: Set<Module>): Int {
         if (modules.isEmpty()) return 0
-        val toRemove = ctx.journal.entries.filter { entry ->
+        val toRemove = ctx.journal.snapshot().filter { entry ->
             taskFor(entry.taskId)?.module in modules
         }
         if (toRemove.isEmpty()) return 0
         val restored = mutableListOf<JournalEntry>()
         val failed = mutableListOf<JournalEntry>()
         for (e in toRemove.asReversed()) {
-            if (Journal.restore(e, ctx.executor)) restored.add(e) else failed.add(e)
+            val ok = withTaskLock(e.taskId) { Journal.restore(e, ctx.executor) }
+            if (ok) restored.add(e) else failed.add(e)
         }
         if (restored.isNotEmpty()) ctx.journal.remove(restored)
         for (e in failed) ctx.log("thermal de-escalate failed: ${e.taskId}/${e.key}")
@@ -104,29 +122,32 @@ class BoostEngine(private val tasks: List<BoostTask>) {
     }
 
     /** Live per-task state for the UI. */
-    fun states(ctx: BoostContext): List<TaskState> = tasks.map { t ->
-        val applied = try {
-            ctx.journal.entries.any { it.taskId == t.id } || t.isApplied(ctx)
-        } catch (e: Exception) {
-            false
+    fun states(ctx: BoostContext): List<TaskState> {
+        val journalEntries = ctx.journal.snapshot()
+        return tasks.map { t ->
+            val applied = try {
+                journalEntries.any { it.taskId == t.id } || t.isApplied(ctx)
+            } catch (e: Exception) {
+                false
+            }
+            val supported = try {
+                t.isSupported(ctx)
+            } catch (e: Exception) {
+                false
+            }
+            TaskState(
+                id = t.id,
+                titleAr = t.titleAr,
+                titleEn = t.titleEn,
+                descAr = t.descAr,
+                descEn = t.descEn,
+                module = t.module,
+                applied = applied,
+                supported = supported,
+                requiresPrivilege = t.requiresPrivilege,
+                pending = t.requiresPrivilege && !supported && !ctx.executor.privileged
+            )
         }
-        val supported = try {
-            t.isSupported(ctx)
-        } catch (e: Exception) {
-            false
-        }
-        TaskState(
-            id = t.id,
-            titleAr = t.titleAr,
-            titleEn = t.titleEn,
-            descAr = t.descAr,
-            descEn = t.descEn,
-            module = t.module,
-            applied = applied,
-            supported = supported,
-            requiresPrivilege = t.requiresPrivilege,
-            pending = t.requiresPrivilege && !supported && !ctx.executor.privileged
-        )
     }
 
     private fun summarize(results: Map<String, TaskResult>): Report {

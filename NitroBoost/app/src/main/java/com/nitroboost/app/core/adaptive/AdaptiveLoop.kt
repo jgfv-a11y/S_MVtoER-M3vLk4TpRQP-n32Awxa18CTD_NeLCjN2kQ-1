@@ -10,81 +10,75 @@ import com.nitroboost.app.core.TaskResult
 import com.nitroboost.app.core.TaskStatus
 import com.nitroboost.app.core.tasks.GameApiTask
 import com.nitroboost.app.core.tasks.GovernorTask
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.concurrent.Volatile
+import kotlin.math.ceil
+import kotlin.math.min
 
-/** One aligned observation (FPS + thermal tier) of the running game. */
-data class AdaptiveSample(val fps: Int?, val thermal: Int)
+/** A fresh, aligned observation copied from one monitor snapshot. */
+data class AdaptiveSample(
+    val fps: Int?,
+    val thermal: Int,
+    val timestampMs: Long = System.nanoTime() / 1_000_000L,
+    val tempC: Double? = null,
+    val thermalSlopeCPerMin: Double? = null,
+    val ramPct: Int? = null,
+    /** Actual FrameCompleted - IntendedVsync values only; empty means unavailable. */
+    val frameTimesMs: List<Double> = emptyList(),
+    val energyMah: Double? = null,
+    val gamePackage: String? = null,
+    /** Increments when gfxinfo's cumulative frame counter resets for this package. */
+    val processEpoch: Long = 0L,
+    val thermalValid: Boolean = true,
+    val monitorAgeMs: Long = 0L,
+    val targetFps: Int = 60
+)
 
-/** One measured arm of a variant sweep. */
+/** Legacy summary of one variant arm. Kept for callers; sweeps no longer select on this alone. */
 data class SweepArm(val level: String, val deltas: List<Double>) {
     val mean: Double
         get() = if (deltas.isEmpty()) Double.NEGATIVE_INFINITY else deltas.average()
 }
 
-/** Pure: best arm = highest mean delta; null when nothing measured. */
+/** Legacy pure helper. The adaptive sweep does not use a preselected arm for inference. */
+@Deprecated("Sweeps compare each arm independently with multiplicity correction")
 fun pickBestArm(arms: List<SweepArm>): SweepArm? = arms.maxByOrNull { it.mean }
 
-/** A measurable variant of a candidate task (e.g. downscale 0.8, governor schedutil). */
+/** A measurable variant of a candidate task (e.g. downscale 0.8 or schedutil). */
 data class Variant(val detail: String, val apply: (BoostContext) -> TaskResult)
 
-/**
- * What the loop can observe. Implemented by AppStore over the monitor
- * snapshots; the loop itself never touches Android classes, which is what
- * keeps the decision pipeline unit-testable.
- */
+/** Android-independent input to the trial loop. */
 interface AdaptiveSampler {
-    /**
-     * Next FRESH aligned sample (null while the monitor has not produced a
-     * new snapshot). One call per loop tick — FPS and thermal stay paired.
-     */
+    /** Next fresh monitor snapshot, null when no newer sample is available. */
     fun poll(): AdaptiveSample?
     /** Latest known FPS (may be stale). */
     fun fps(): Int?
-    /** Latest frame metrics, or null before the first sample. */
+    /** Latest display metrics for UI/diagnostics. */
     fun metrics(): FrameMetrics?
     fun privileged(): Boolean
 }
 
 /**
- * The adaptive engine (v2 — faster, more precise, stronger).
- *
- * During a boost session it A/B tests every profile-enabled performance
- * tweak on the real device:
- *
- *   1. revert the candidate -> settle -> baseline window
- *   2. apply the candidate  -> settle -> arm window
- *   3. paired, outlier-trimmed deltas -> DecisionLedger
- *   4. verdict: KEEP / DROP / NEUTRAL / NEEDS_MORE
- *
- * Speed:
- *  - the FIRST candidate of a session measures the baseline; every later
- *    candidate REUSES it (device unchanged) — saving a full window per task;
- *  - the baseline is re-measured only after 5 minutes or a thermal change.
- *
- * Precision:
- *  - deltas are outlier-trimmed (top/bottom 10%) before the paired 95% CI;
- *  - thermal-aware: an FPS "win" that heats the SoC a full tier is
- *    downgraded to NEUTRAL — a win you pay for with throttling is not a win.
- *
- * Strength:
- *  - variant sweeps: downscale 0.9/0.8/0.7 and governor performance/schedutil
- *    are tested against each other; the winner (with its exact variant) is
- *    persisted and restored by AppStore on every later session.
- *
- * Safety (non-negotiable):
- *  - never runs without a privileged shell and a real FPS source;
- *  - pauses while the effective thermal status is >= MODERATE (the
- *    predictive trend can escalate one tier early);
- *  - every applied candidate lives in the main journal, so "restore all"
- *    and the game-exit watcher revert it like any other modification;
- *  - any exception inside a step is logged and the loop keeps going.
+ * Session-oriented A/B engine. Each candidate gets a fresh nearby baseline;
+ * every sweep arm is paired and assessed separately, with family-wise
+ * multiplicity correction. Only quality-gated block observations reach the
+ * ledger. Candidate changes are journaled immediately and restored in a
+ * NonCancellable finally path unless a verified KEEP is finalized.
  */
 class AdaptiveLoop(
     private val engine: BoostEngine,
@@ -94,27 +88,39 @@ class AdaptiveLoop(
     private val cfg: TrialConfig,
     private val effectiveThermal: () -> Int,
     private val log: (String) -> Unit = {},
-    /** v1.5: user-selected boost level — trials above it must not run. */
-    private val maxLevel: () -> Int = { 3 }
+    /** User-selected boost level — trials above it must not run. */
+    private val maxLevel: () -> Int = { 3 },
+    private val trialContextFactory: (BoostContext, Int) -> TrialContext = { ctx, tier ->
+        TrialContext(
+            deviceKey = "unknown-device",
+            androidVersion = "unknown-android",
+            gamePackage = ctx.profile.packageName,
+            boostLevel = maxLevel(),
+            thermalTier = tier,
+            capabilityKey = ctx.executor.javaClass.name,
+            profileKey = ctx.profile.enabledModules.map { it.key }.sorted().joinToString(",") +
+                ":${ctx.profile.fpsCap}:${ctx.profile.refreshRate}:${ctx.profile.gameMode}"
+        )
+    },
+    /** Monotonic clock and wait strategy are injectable for deterministic JVM tests. */
+    private val clockMs: () -> Long = { System.nanoTime() / 1_000_000L },
+    private val wallClockMs: () -> Long = { System.currentTimeMillis() },
+    private val wait: suspend (Long) -> Unit = { delay(it) },
+    private val sessionIdFactory: () -> String = { UUID.randomUUID().toString() }
 ) {
 
     companion object {
-        /** Only performance-relevant modules are worth an A/B trial. */
-        val TRIAL_MODULES = setOf(
-            Module.CPU, Module.GPU, Module.TWEAKS, Module.NETWORK
-        )
-
-        /** Legal AOSP downscale ratios, mildest first. */
+        val TRIAL_MODULES = setOf(Module.CPU, Module.GPU, Module.TWEAKS, Module.NETWORK)
         val SWEEP_LEVELS = listOf("0.9", "0.8", "0.7")
-
-        /** Governor variants tested against each other. */
         val GOVERNOR_VARIANTS = listOf("performance", "schedutil")
-
-        /** A session baseline is valid for at most this long. */
-        const val BASELINE_MAX_AGE_MS = 5 * 60_000L
-
-        /** Arm heats one full thermal tier vs baseline -> not a real win. */
         const val THERMAL_REGRESSION_TIERS = 1
+        const val BLOCK_SAMPLE_COUNT = 3
+        const val MIN_BLOCK_PAIRS_PER_WINDOW = 2
+        const val DEFAULT_VARIANT_ID = "default"
+        const val LOOP_INTERVAL_MS = 1_500L
+        const val IDLE_RETRY_MS = 15_000L
+        const val MATERIAL_THERMAL_RISE_C = 2.0
+        const val SEVERE_THERMAL_RISE_C = 3.0
     }
 
     @Volatile var phase: String = "idle"
@@ -126,52 +132,84 @@ class AdaptiveLoop(
 
     private var scope: CoroutineScope? = null
     private var job: Job? = null
-    @Volatile
-    private var running = false
-
-    // Session-wide baseline (shared by all candidates, see class docs).
-    @Volatile
-    private var sessBaseline: List<Int>? = null
-    @Volatile
-    private var sessBaselineThermal = -1
-    @Volatile
-    private var sessBaselineAt = 0L
+    @Volatile private var running = false
+    @Volatile private var generation = 0L
+    private var activeSessionId = "not-started"
+    private val attemptedThisSession: MutableSet<String> = ConcurrentHashMap.newKeySet<String>()
 
     val isRunning: Boolean get() = running
 
+    @Synchronized
     fun start() {
-        if (running) return
+        if (running || job?.isActive == true) return
         running = true
-        sessBaseline = null
-        sessBaselineAt = 0L
+        generation += 1L
+        val token = generation
+        activeSessionId = sessionIdFactory()
+        attemptedThisSession.clear()
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        job = scope?.launch { loop() }
-        log("adaptive engine started")
+        job = scope?.launch { loop(token) }
+        log("adaptive engine started session=$activeSessionId")
     }
 
+    /** Request cancellation; use [stopAndJoin] before a session-wide restore. */
+    @Synchronized
     fun stop() {
-        if (!running) return
+        if (!running && job == null) return
         running = false
+        generation += 1L
         job?.cancel()
         scope?.cancel()
-        job = null
-        scope = null
         phase = "idle"
         candidateId = null
         pausedReason = null
-        sessBaseline = null
-        sessBaselineAt = 0L
-        log("adaptive engine stopped")
+        attemptedThisSession.clear()
+        log("adaptive engine stop requested")
     }
 
-    private suspend fun loop() {
-        while (running) {
-            try {
-                step()
-            } catch (e: Exception) {
-                log("adaptive step failed: ${e.message}")
+    /** Wait until the in-flight trial's NonCancellable restore has completed. */
+    suspend fun stopAndJoin() {
+        val oldJob = synchronized(this) { job }
+        stop()
+        oldJob?.join()
+        synchronized(this) {
+            if (job === oldJob) {
+                job = null
+                scope = null
             }
-            delay(1_500)
+        }
+    }
+
+    /** Used only by synchronous service/process teardown paths. */
+    fun stopAndJoinBlocking() {
+        runBlocking { stopAndJoin() }
+    }
+
+    private suspend fun loop(token: Long) {
+        try {
+            while (running && currentCoroutineContext().isActive && token == generation) {
+                step()
+                when {
+                    phase == "done" -> return
+                    phase == "more-data" -> wait(IDLE_RETRY_MS)
+                    else -> wait(LOOP_INTERVAL_MS)
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log("adaptive loop failed: ${e.message}")
+        } finally {
+            synchronized(this) {
+                if (token == generation) {
+                    running = false
+                    if (phase != "done") phase = "idle"
+                    candidateId = null
+                    pausedReason = null
+                    job = null
+                    scope = null
+                }
+            }
         }
     }
 
@@ -185,264 +223,516 @@ class AdaptiveLoop(
         val ctx = context()
         val task = nextCandidate(ctx)
         if (task == null) {
-            phase = "done"
+            val trialContext = makeTrialContext(ctx, effectiveThermal())
+            val now = wallClockMs()
+            val eligibleUnresolved = engine.tasks().any { t ->
+                t.module in TRIAL_MODULES && t.requiresPrivilege && ctx.profile.isEnabled(t) &&
+                    withinLevel(t) && !ledger.isResolved(
+                        t.id, trialContext, now, cfg.decisionTtlMs
+                    )
+            }
+            phase = if (eligibleUnresolved) "more-data" else "done"
             candidateId = null
             return
         }
         candidateId = task.id
+        attemptedThisSession += task.id
         phase = "trial:${task.id}"
         runTrial(task, ctx)
     }
 
-    /** Returns a human reason when the engine must stand down, else null. */
     fun pauseReason(): String? {
         if (!sampler.privileged()) return "needs-shizuku"
-        val eff = effectiveThermal()
-        if (eff >= ThermalGuard.STATUS_MODERATE) return "thermal:$eff"
+        val thermal = effectiveThermal()
+        if (thermal >= ThermalGuard.STATUS_MODERATE) return "thermal:$thermal"
         return null
     }
 
-    /** v1.5: candidate must be at or below the user-selected boost level. */
-    private fun withinLevel(t: BoostTask): Boolean = t.boostLevel <= maxLevel()
+    private fun withinLevel(task: BoostTask): Boolean = task.boostLevel <= maxLevel()
 
-    /** Next profile-enabled, unresolved trial candidate, in task order. */
-    fun nextCandidate(ctx: BoostContext): BoostTask? =
-        engine.tasks().firstOrNull { t ->
-            t.module in TRIAL_MODULES &&
-                t.requiresPrivilege &&
-                ctx.profile.isEnabled(t) &&
-                withinLevel(t) &&
-                !ledger.isResolved(t.id)
+    fun nextCandidate(ctx: BoostContext): BoostTask? {
+        val now = wallClockMs()
+        val contextTier = effectiveThermal()
+        val trialContext = makeTrialContext(ctx, contextTier)
+        return engine.tasks().firstOrNull { task ->
+            task.id !in attemptedThisSession &&
+                task.module in TRIAL_MODULES &&
+                task.requiresPrivilege &&
+                ctx.profile.isEnabled(task) &&
+                withinLevel(task) &&
+                !ledger.isResolved(task.id, trialContext, now, cfg.decisionTtlMs)
         }
+    }
 
-    /** Human-friendly estimate of the remaining work, in minutes. */
     fun estimateRemainingMinutes(ctx: BoostContext): Int {
-        val pending = engine.tasks().count { t ->
-            t.module in TRIAL_MODULES &&
-                t.requiresPrivilege &&
-                ctx.profile.isEnabled(t) &&
-                withinLevel(t) &&
-                !ledger.isResolved(t.id)
+        val trialContext = makeTrialContext(ctx, effectiveThermal())
+        val now = wallClockMs()
+        val pending = engine.tasks().filter { task ->
+            task.id !in attemptedThisSession && task.module in TRIAL_MODULES &&
+                task.requiresPrivilege && ctx.profile.isEnabled(task) && withinLevel(task) &&
+                !ledger.isResolved(task.id, trialContext, now, cfg.decisionTtlMs)
         }
-        var ms = pending.toLong() * (cfg.windowMs + 2 * cfg.settleMs)
-        if (sessBaseline == null) ms += cfg.windowMs
-        return ((ms + 59_999L) / 60_000L).toInt().coerceAtLeast(0)
+        val windowsPerArm = 2L * (cfg.windowMs + cfg.settleMs)
+        val totalMs = pending.sumOf { task ->
+            val variants = if (task.id == "game_api_downscale") SWEEP_LEVELS.size
+                else if (task.id == "cpu_governor") GOVERNOR_VARIANTS.size else 1
+            variants * windowsPerArm + cfg.settleMs
+        }
+        return ((totalMs + 59_999L) / 60_000L).toInt().coerceAtLeast(if (pending.isNotEmpty()) 1 else 0)
     }
 
-    private data class Window(val fps: List<Int>, val thermalMean: Int)
+    private data class CollectedWindow(
+        val samples: List<AdaptiveSample>,
+        val complete: Boolean,
+        val abortedReason: String? = null
+    )
 
-    /**
-     * Acquire the session baseline: reuse the cached one when still valid
-     * (same thermal tier, < 5 minutes old), otherwise measure it fresh with
-     * the candidate reverted.
-     */
-    private suspend fun acquireBaseline(ctx: BoostContext, candidateId: String): Window? {
-        val cached = sessBaseline
-        if (
-            cached != null &&
-            cached.size >= 2 &&
-            System.currentTimeMillis() - sessBaselineAt < BASELINE_MAX_AGE_MS &&
-            effectiveThermal() == sessBaselineThermal
-        ) {
-            return Window(cached, sessBaselineThermal)
-        }
-        revertTask(candidateId, ctx)
-        delay(cfg.settleMs)
-        val w = collectWindow(cfg.windowMs)
-        if (w.fps.size < 2) return null
-        sessBaseline = w.fps
-        sessBaselineThermal = w.thermalMean
-        sessBaselineAt = System.currentTimeMillis()
-        return w
-    }
-
-    private suspend fun collectWindow(windowMs: Long): Window {
-        val fps = mutableListOf<Int>()
-        val temps = mutableListOf<Int>()
-        val end = System.currentTimeMillis() + windowMs
-        while (running && System.currentTimeMillis() < end) {
-            sampler.poll()?.let {
-                if (it.fps != null) fps.add(it.fps)
-                temps.add(it.thermal)
+    private suspend fun collectWindow(windowMs: Long): CollectedWindow {
+        val samples = ArrayList<AdaptiveSample>(
+            (windowMs / cfg.sampleIntervalMs.coerceAtLeast(1L)).toInt().coerceIn(1, 32)
+        )
+        val start = clockMs()
+        val end = start + windowMs.coerceAtLeast(0L)
+        var lastTs = Long.MIN_VALUE
+        while (clockMs() < end) {
+            currentCoroutineContext().ensureActive()
+            if (job != null && !running) return CollectedWindow(samples, false, "session cancelled")
+            val status = effectiveThermal()
+            if (status >= ThermalGuard.STATUS_MODERATE) {
+                return CollectedWindow(samples, false, "thermal safety floor reached ($status)")
             }
-            delay(1_000)
+            val sample = sampler.poll()
+            if (sample != null && sample.timestampMs != lastTs) {
+                lastTs = sample.timestampMs
+                samples += sample
+                if (sample.thermalValid && sample.thermal >= ThermalGuard.STATUS_MODERATE) {
+                    return CollectedWindow(samples, false, "thermal status changed during window")
+                }
+            }
+            val remaining = end - clockMs()
+            if (remaining > 0L) wait(min(cfg.sampleIntervalMs.coerceAtLeast(1L), remaining))
         }
-        return Window(fps, if (temps.isEmpty()) 0 else temps.average().toInt())
+        return CollectedWindow(samples, clockMs() >= end)
     }
 
-    private suspend fun runTrial(task: BoostTask, ctx: BoostContext) {
+    private fun summarize(
+        samples: List<AdaptiveSample>,
+        complete: Boolean,
+        requestedWindowMs: Long
+    ): WindowMetrics {
+        val fps = samples.mapNotNull { it.fps?.takeIf { v -> v > 0 }?.toDouble() }
+        val sortedFps = fps.sorted()
+        val thermalSamples = samples.filter { it.thermalValid }
+        val tiers = thermalSamples.map { it.thermal }
+        val temperatures = samples.mapNotNull { it.tempC?.takeIf { v -> v.isFinite() } }
+        val slopes = samples.mapNotNull { it.thermalSlopeCPerMin?.takeIf { v -> v.isFinite() } }
+        val memory = samples.mapNotNull { it.ramPct?.takeIf { v -> v in 0..100 }?.toDouble() }
+        val energy = samples.mapNotNull { it.energyMah?.takeIf { v -> v.isFinite() && v >= 0.0 } }
+        val times = samples.map { it.timestampMs }.sorted()
+        val maxGap = times.zipWithNext().maxOfOrNull { (a, b) -> (b - a).coerceAtLeast(0L) } ?: 0L
+        val packages = samples.map { it.gamePackage }.distinct()
+        val epochs = samples.map { it.processEpoch }.distinct()
+        val targetFps = samples.map { it.targetFps }.firstOrNull { it > 0 } ?: 60
+        val frameTimes = samples.flatMap { it.frameTimesMs }
+        return WindowMetrics(
+            fpsMean = if (sortedFps.isEmpty()) Double.NaN else sortedFps.average(),
+            lowFps = if (sortedFps.isEmpty()) Double.NaN else percentile(sortedFps, 0.10),
+            fpsSampleCount = sortedFps.size,
+            sampleCount = samples.size,
+            thermalSampleCount = thermalSamples.size,
+            thermalTier = tiers.maxOrNull() ?: -1,
+            minThermalTier = tiers.minOrNull() ?: -1,
+            maxThermalTier = tiers.maxOrNull() ?: -1,
+            tempMeanC = temperatures.takeIf { it.isNotEmpty() }?.average(),
+            tempMaxC = temperatures.maxOrNull(),
+            thermalSlopeCPerMin = slopes.takeIf { it.isNotEmpty() }?.average(),
+            ramMeanPct = memory.takeIf { it.isNotEmpty() }?.average(),
+            energyMeanMah = energy.takeIf { it.isNotEmpty() }?.average(),
+            frameTime = FrameTimeAnalysis.summarize(frameTimes, targetFps),
+            firstTimestampMs = times.firstOrNull() ?: 0L,
+            lastTimestampMs = times.lastOrNull() ?: 0L,
+            windowComplete = complete,
+            requestedWindowMs = requestedWindowMs,
+            maxSampleGapMs = maxGap,
+            maxMonitorAgeMs = samples.maxOfOrNull { it.monitorAgeMs.coerceAtLeast(0L) } ?: Long.MAX_VALUE,
+            gamePackage = packages.singleOrNull(),
+            processEpoch = epochs.singleOrNull() ?: -1L,
+            targetFps = targetFps
+        )
+    }
+
+    private fun percentile(sorted: List<Double>, p: Double): Double =
+        sorted[((ceil(p * sorted.size).toInt() - 1).coerceIn(0, sorted.lastIndex))]
+
+    private fun makeTrialContext(ctx: BoostContext, thermalTier: Int): TrialContext =
+        trialContextFactory(ctx, thermalTier).copy(
+            gamePackage = ctx.profile.packageName,
+            boostLevel = maxLevel(),
+            thermalTier = thermalTier
+        )
+
+    private fun sessionQuality(
+        base: WindowMetrics,
+        candidate: WindowMetrics,
+        gamePackage: String
+    ): QualityResult = SessionQualityGate.compare(base, candidate, gamePackage, cfg)
+
+    /** Package-visible for deterministic JVM lifecycle tests; production calls this from the loop. */
+    internal suspend fun runTrial(task: BoostTask, ctx: BoostContext) {
         when (task.id) {
             "game_api_downscale" -> runVariantSweep(
                 task, ctx,
-                SWEEP_LEVELS.map { lvl ->
-                    Variant("level=$lvl") { GameApiTask(level = lvl).apply(it) }
+                SWEEP_LEVELS.map { level ->
+                    Variant("level=$level") { GameApiTask(level = level).apply(it) }
                 }
             )
             "cpu_governor" -> runVariantSweep(
                 task, ctx,
-                GOVERNOR_VARIANTS.map { g ->
-                    Variant("governor=$g") { GovernorTask(g).apply(it) }
+                GOVERNOR_VARIANTS.map { governor ->
+                    Variant("governor=$governor") { GovernorTask(governor).apply(it) }
                 }
             )
             else -> runSingle(task, ctx)
         }
     }
 
-    /** Plain single-variant trial. */
     private suspend fun runSingle(task: BoostTask, ctx: BoostContext) {
-        val baseline = acquireBaseline(ctx, task.id)
-        if (baseline == null) {
-            recordNoData(task, ctx)
-            return
-        }
-        val r = try {
-            task.apply(ctx)
-        } catch (e: Exception) {
-            TaskResult(task.id, TaskStatus.Failed("adaptive trial: ${e.message}"))
-        }
-        when {
-            r.entries.isNotEmpty() && r.status.success -> ctx.journal.add(r.entries)
-            // The candidate cannot run on this device at all. Do NOT
-            // measure: an "off vs off" window would accumulate fake
-            // zero-pairs and eventually mark a fine task NEUTRAL.
-            r.status == TaskStatus.Skipped || r.status is TaskStatus.Failed -> {
-                ledger.record(
-                    task.id, task.titleEn, emptyList(),
-                    TrialOutcome(Decision.NEEDS_MORE, null, null, null,
-                        ledger.entries[task.id]?.pairs ?: 0,
-                        "cannot apply on this device (${r.detail})"),
-                    System.currentTimeMillis(), cfg
-                )
-                ledger.save()
-                log("adaptive ${task.id}: not applicable on this device — not measured")
+        var trialContext = makeTrialContext(ctx, effectiveThermal())
+        var keepApplied = false
+        try {
+            if (!revertTask(task.id, ctx)) {
+                ledger.markMoreData(task.id, task.titleEn, trialContext,
+                    "baseline restore failed; comparison rejected", wallClockMs(), DEFAULT_VARIANT_ID)
                 return
             }
-            // NoChange: already applied from a previous session — the arm
-            // window below still measures the real on-state. Fine.
-            else -> Unit
-        }
-        delay(cfg.settleMs)
-        val arm = collectWindow(cfg.windowMs)
-        if (arm.fps.size < 2) {
-            revertTask(task.id, ctx)
-            return
-        }
-        val deltas = AdaptivePolicy.deltasOf(baseline.fps, arm.fps)
-        val baseDeltas = ledger.entries[task.id]?.deltas ?: emptyList()
-        val outcome = withThermalGuard(
-            AdaptivePolicy.assess(baseDeltas + deltas, cfg),
-            baseline.thermalMean, arm.thermalMean
-        )
-        val merged = ledger.record(task.id, task.titleEn, deltas,
-            outcome, System.currentTimeMillis(), cfg)
-        ledger.save()
-        log(
-            "adaptive ${task.id}: ${merged.decision} " +
-                "mean=${merged.meanDelta?.let { String.format("%.2f", it) }} " +
-                "pairs=${merged.pairs} sessions=${merged.sessions}"
-        )
-        when (merged.decision) {
-            Decision.KEEP -> Unit
-            else -> revertTask(task.id, ctx)
-        }
-    }
+            wait(cfg.settleMs.coerceAtLeast(0L))
+            val baselineWindow = collectWindow(cfg.windowMs)
+            val baseline = summarize(baselineWindow.samples, baselineWindow.complete, cfg.windowMs)
+            trialContext = makeTrialContext(ctx, baseline.thermalTier)
+            val baseQuality = if (baselineWindow.abortedReason != null) {
+                QualityResult.reject(baselineWindow.abortedReason)
+            } else SessionQualityGate.validateWindow(baseline, ctx.profile.packageName, cfg)
+            if (!baseQuality.accepted) {
+                ledger.markMoreData(task.id, task.titleEn, trialContext, baseQuality.reason,
+                    wallClockMs(), DEFAULT_VARIANT_ID)
+                log("adaptive ${task.id}: MORE_DATA (${baseQuality.reason})")
+                return
+            }
 
-    /**
-     * Variant sweep: one shared session baseline, then each variant measured
-     * against it (device reset to default between arms). The best variant —
-     * statistically — wins; its detail string (e.g. "level=0.8") persists in
-     * the ledger and AppStore restores the winner on later sessions.
-     */
-    private suspend fun runVariantSweep(task: BoostTask, ctx: BoostContext, variants: List<Variant>) {
-        val baseline = acquireBaseline(ctx, task.id)
-        if (baseline == null) {
-            recordNoData(task, ctx)
-            return
-        }
-        val arms = mutableListOf<SweepArm>()
-        val armThermals = mutableMapOf<String, Int>()
-        for (v in variants) {
-            if (!running) return
-            revertTask(task.id, ctx)
-            delay(cfg.settleMs)
-            val r = try {
-                v.apply(ctx)
-            } catch (e: Exception) {
-                TaskResult(task.id, TaskStatus.Failed("sweep ${v.detail}: ${e.message}"))
+            val applyResult = applyAndJournal(task.id, task.titleEn, ctx) { task.apply(ctx) }
+            if (!applyResult.status.success || applyResult.entries.isEmpty()) {
+                ledger.markMoreData(task.id, task.titleEn, trialContext,
+                    "candidate not safely applicable (${applyResult.detail})", wallClockMs(), DEFAULT_VARIANT_ID)
+                log("adaptive ${task.id}: candidate not measurable (${applyResult.detail})")
+                return
             }
-            if (!(r.entries.isNotEmpty() && r.status.success)) continue
-            delay(cfg.settleMs)
-            val arm = collectWindow(cfg.windowMs)
-            if (arm.fps.size < 2) {
-                // never leave a variant applied while unmeasured
-                revertTask(task.id, ctx)
-                if (arms.isEmpty()) return
-                break
+            wait(cfg.settleMs.coerceAtLeast(0L))
+            val candidateWindow = collectWindow(cfg.windowMs)
+            val candidate = summarize(candidateWindow.samples, candidateWindow.complete, cfg.windowMs)
+            val quality = if (candidateWindow.abortedReason != null) {
+                QualityResult.reject(candidateWindow.abortedReason)
+            } else sessionQuality(baseline, candidate, ctx.profile.packageName)
+            if (!quality.accepted) {
+                ledger.markMoreData(task.id, task.titleEn, trialContext, quality.reason,
+                    wallClockMs(), DEFAULT_VARIANT_ID)
+                log("adaptive ${task.id}: MORE_DATA (${quality.reason})")
+                return
             }
-            arms += SweepArm(v.detail, AdaptivePolicy.deltasOf(baseline.fps, arm.fps))
-            armThermals[v.detail] = arm.thermalMean
-        }
-        val best = pickBestArm(arms) ?: return
-        val raw = AdaptivePolicy.assess(best.deltas, cfg)
-        val outcome = withThermalGuard(
-            raw, baseline.thermalMean, armThermals[best.level] ?: baseline.thermalMean
-        )
-        val merged = ledger.record(
-            task.id, task.titleEn, best.deltas, outcome,
-            System.currentTimeMillis(), cfg, detail = best.level
-        )
-        ledger.save()
-        log(
-            "adaptive sweep ${task.id}: winner=${best.level} " +
-                "mean=${merged.meanDelta?.let { String.format("%.2f", it) }} " +
-                "decision=${merged.decision} pairs=${merged.pairs}"
-        )
-        when (merged.decision) {
-            Decision.KEEP -> {
-                val winner = variants.firstOrNull { it.detail == best.level }
-                if (winner != null) {
-                    val r = try {
-                        winner.apply(ctx)
-                    } catch (e: Exception) {
-                        null
-                    }
-                    if (r != null && r.entries.isNotEmpty() && r.status.success) {
-                        ctx.journal.add(r.entries)
-                    }
+            val observations = pairedObservations(
+                task.id, DEFAULT_VARIANT_ID, baselineWindow.samples, candidateWindow.samples,
+                baseline, candidate
+            )
+            if (observations.size < MIN_BLOCK_PAIRS_PER_WINDOW) {
+                ledger.markMoreData(task.id, task.titleEn, trialContext,
+                    "not enough synchronized blocks", wallClockMs(), DEFAULT_VARIANT_ID)
+                return
+            }
+            val safetyLimit = thermalSafetyLimit(observations)
+            val variant = ledger.recordVariant(
+                taskId = task.id,
+                taskTitle = task.titleEn,
+                variantId = DEFAULT_VARIANT_ID,
+                detail = DEFAULT_VARIANT_ID,
+                newObservations = observations,
+                comparisonCount = 1,
+                context = trialContext,
+                nowMs = wallClockMs(),
+                cfg = cfg,
+                safetyLimit = safetyLimit
+            )
+            if (variant.decision != Decision.KEEP && !revertTask(task.id, ctx)) {
+                ledger.markMoreData(task.id, task.titleEn, trialContext,
+                    "restore failed after candidate measurement", wallClockMs(), DEFAULT_VARIANT_ID)
+                return
+            }
+            val final = ledger.finalizeSingle(
+                task.id, task.titleEn, DEFAULT_VARIANT_ID, trialContext, wallClockMs()
+            )
+            keepApplied = final.decision == Decision.KEEP
+            log("adaptive ${task.id}: ${final.decision} score=${final.score} pairs=${final.pairs}")
+        } catch (e: CancellationException) {
+            ledger.markMoreData(task.id, task.titleEn, trialContext,
+                "adaptive session cancelled", wallClockMs(), DEFAULT_VARIANT_ID)
+            throw e
+        } catch (e: Exception) {
+            ledger.markMoreData(task.id, task.titleEn, trialContext,
+                "candidate exception: ${e.message ?: e.javaClass.simpleName}", wallClockMs(), DEFAULT_VARIANT_ID)
+            log("adaptive ${task.id}: candidate exception: ${e.message}")
+        } finally {
+            if (!keepApplied) withContext(NonCancellable) {
+                if (!revertTask(task.id, ctx)) {
+                    ledger.markMoreData(task.id, task.titleEn, trialContext,
+                        "restore failed; journal retained for retry", wallClockMs(), DEFAULT_VARIANT_ID)
+                    log("adaptive ${task.id}: restore failed; journal retained")
                 }
             }
-            else -> revertTask(task.id, ctx)
         }
     }
 
-    /** A "win" that costs a full thermal tier is not a win. */
-    private fun withThermalGuard(
-        outcome: TrialOutcome,
-        baselineThermal: Int,
-        armThermal: Int
-    ): TrialOutcome {
-        if (outcome.decision == Decision.KEEP &&
-            armThermal >= baselineThermal + THERMAL_REGRESSION_TIERS
-        ) {
-            return outcome.copy(decision = Decision.NEUTRAL, reason = "fps up but thermal regression")
+    private suspend fun runVariantSweep(task: BoostTask, ctx: BoostContext, variants: List<Variant>) {
+        if (variants.isEmpty()) return
+        var trialContext = makeTrialContext(ctx, effectiveThermal())
+        var keepApplied = false
+        var allPairsQualityChecked = true
+        var testedCount = 0
+        try {
+            for (variant in variants) {
+                currentCoroutineContext().ensureActive()
+                val previouslyResolved = ledger.entries[task.id]
+                    ?.takeIf { it.context == trialContext }
+                    ?.variants?.get(variant.detail)?.decision?.resolved == true
+                if (previouslyResolved) {
+                    testedCount++
+                    continue
+                }
+                if (!revertTask(task.id, ctx)) {
+                    allPairsQualityChecked = false
+                    ledger.markMoreData(task.id, task.titleEn, trialContext,
+                        "restore failed before variant ${variant.detail}", wallClockMs(), variant.detail)
+                    break
+                }
+                wait(cfg.settleMs.coerceAtLeast(0L))
+                val baselineWindow = collectWindow(cfg.windowMs)
+                val baseline = summarize(baselineWindow.samples, baselineWindow.complete, cfg.windowMs)
+                val baseQuality = if (baselineWindow.abortedReason != null) {
+                    QualityResult.reject(baselineWindow.abortedReason)
+                } else SessionQualityGate.validateWindow(baseline, ctx.profile.packageName, cfg)
+                if (!baseQuality.accepted) {
+                    allPairsQualityChecked = false
+                    trialContext = makeTrialContext(ctx, baseline.thermalTier)
+                    ledger.markMoreData(task.id, task.titleEn, trialContext,
+                        baseQuality.reason, wallClockMs(), variant.detail)
+                    log("adaptive sweep ${task.id}/${variant.detail}: MORE_DATA (${baseQuality.reason})")
+                    break
+                }
+                val thisContext = makeTrialContext(ctx, baseline.thermalTier)
+                if (testedCount > 0 && thisContext != trialContext) {
+                    allPairsQualityChecked = false
+                    ledger.markMoreData(task.id, task.titleEn, trialContext,
+                        "thermal/device context changed between variants", wallClockMs(), variant.detail)
+                    break
+                }
+                trialContext = thisContext
+
+                val applyResult = applyAndJournal(task.id, task.titleEn, ctx) { variant.apply(ctx) }
+                if (!applyResult.status.success || applyResult.entries.isEmpty()) {
+                    allPairsQualityChecked = false
+                    ledger.markMoreData(task.id, task.titleEn, trialContext,
+                        "variant not safely applicable (${applyResult.detail})", wallClockMs(), variant.detail)
+                    break
+                }
+                wait(cfg.settleMs.coerceAtLeast(0L))
+                val candidateWindow = collectWindow(cfg.windowMs)
+                val candidate = summarize(candidateWindow.samples, candidateWindow.complete, cfg.windowMs)
+                val quality = if (candidateWindow.abortedReason != null) {
+                    QualityResult.reject(candidateWindow.abortedReason)
+                } else sessionQuality(baseline, candidate, ctx.profile.packageName)
+                if (!quality.accepted) {
+                    allPairsQualityChecked = false
+                    ledger.markMoreData(task.id, task.titleEn, trialContext,
+                        quality.reason, wallClockMs(), variant.detail)
+                    log("adaptive sweep ${task.id}/${variant.detail}: MORE_DATA (${quality.reason})")
+                    break
+                }
+                val observations = pairedObservations(
+                    task.id, variant.detail, baselineWindow.samples, candidateWindow.samples,
+                    baseline, candidate
+                )
+                if (observations.size < MIN_BLOCK_PAIRS_PER_WINDOW) {
+                    allPairsQualityChecked = false
+                    ledger.markMoreData(task.id, task.titleEn, trialContext,
+                        "not enough synchronized blocks", wallClockMs(), variant.detail)
+                    break
+                }
+                ledger.recordVariant(
+                    taskId = task.id,
+                    taskTitle = task.titleEn,
+                    variantId = variant.detail,
+                    detail = variant.detail,
+                    newObservations = observations,
+                    comparisonCount = variants.size,
+                    context = trialContext,
+                    nowMs = wallClockMs(),
+                    cfg = cfg,
+                    safetyLimit = thermalSafetyLimit(observations)
+                )
+                testedCount++
+                if (!revertTask(task.id, ctx)) {
+                    allPairsQualityChecked = false
+                    ledger.markMoreData(task.id, task.titleEn, trialContext,
+                        "restore failed after variant ${variant.detail}", wallClockMs(), variant.detail)
+                    break
+                }
+            }
+
+            if (testedCount != variants.size) allPairsQualityChecked = false
+            val current = ledger.entries[task.id]?.takeIf { it.context == trialContext }
+            val armRecords = variants.mapNotNull { current?.variants?.get(it.detail) }
+            val allResolved = armRecords.size == variants.size && armRecords.all { it.decision.resolved }
+            val provisionalWinner = if (allResolved) {
+                armRecords.filter { it.decision == Decision.KEEP }
+                    .maxByOrNull { it.meanScore ?: Double.NEGATIVE_INFINITY }
+            } else null
+
+            if (allPairsQualityChecked && allResolved && provisionalWinner != null) {
+                val selected = variants.firstOrNull { it.detail == provisionalWinner.variantId }
+                val appliedWinner = selected?.let {
+                    applyAndJournal(task.id, task.titleEn, ctx) { it.apply(ctx) }
+                }
+                if (appliedWinner == null || !appliedWinner.status.success || appliedWinner.entries.isEmpty()) {
+                    allPairsQualityChecked = false
+                    ledger.markMoreData(task.id, task.titleEn, trialContext,
+                        "selected variant failed to re-apply safely", wallClockMs(), provisionalWinner.variantId)
+                } else {
+                    val final = ledger.finalizeSweep(
+                        task.id, task.titleEn, variants.map { it.detail }, trialContext,
+                        wallClockMs(), completeSweep = true
+                    )
+                    keepApplied = final.decision == Decision.KEEP
+                }
+            }
+            if (!keepApplied) {
+                ledger.finalizeSweep(
+                    task.id, task.titleEn, variants.map { it.detail }, trialContext,
+                    wallClockMs(), completeSweep = allPairsQualityChecked
+                )
+            }
+            val finalEntry = ledger.entries[task.id]
+            log("adaptive sweep ${task.id}: ${finalEntry?.decision} score=${finalEntry?.score} pairs=${finalEntry?.pairs}")
+        } catch (e: CancellationException) {
+            ledger.markMoreData(task.id, task.titleEn, trialContext,
+                "adaptive sweep cancelled", wallClockMs())
+            throw e
+        } catch (e: Exception) {
+            ledger.markMoreData(task.id, task.titleEn, trialContext,
+                "sweep exception: ${e.message ?: e.javaClass.simpleName}", wallClockMs())
+            log("adaptive sweep ${task.id} failed: ${e.message}")
+        } finally {
+            if (!keepApplied) withContext(NonCancellable) {
+                if (!revertTask(task.id, ctx)) {
+                    ledger.markMoreData(task.id, task.titleEn, trialContext,
+                        "restore failed; journal retained for retry", wallClockMs())
+                    log("adaptive sweep ${task.id}: restore failed; journal retained")
+                }
+            }
         }
-        return outcome
     }
 
-    private fun recordNoData(task: BoostTask, ctx: BoostContext) {
-        ledger.record(
-            task.id, task.titleEn, emptyList(),
-            AdaptivePolicy.assess(emptyList(), cfg),
-            System.currentTimeMillis(), cfg
-        )
-        ledger.save()
-        log("adaptive ${task.id}: no FPS data to measure")
+    private fun applyAndJournal(
+        taskId: String,
+        title: String,
+        ctx: BoostContext,
+        apply: () -> TaskResult
+    ): TaskResult {
+        return engine.withTaskLock(taskId) {
+            val result = try {
+                apply()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // A well-behaved task returns its reversible entries. Any
+                // partial entries already appended by a task remain restorable.
+                TaskResult(taskId, TaskStatus.Failed("adaptive candidate: ${e.message}"))
+            }
+            if (result.entries.isNotEmpty() && result.status.success) {
+                ctx.journal.add(result.entries)
+                ctx.log("adaptive journaled $taskId: ${result.entries.size} change(s)")
+            }
+            result
+        }
     }
 
-    /** Revert all journal entries belonging to one task. */
-    fun revertTask(taskId: String, ctx: BoostContext) {
-        val entries = ctx.journal.entries.filter { it.taskId == taskId }
-        val ok = entries.filter { Journal.restore(it, ctx.executor) }
-        if (ok.isNotEmpty()) ctx.journal.remove(ok)
+    private fun pairedObservations(
+        taskId: String,
+        variantId: String,
+        baselineSamples: List<AdaptiveSample>,
+        candidateSamples: List<AdaptiveSample>,
+        baseline: WindowMetrics,
+        candidate: WindowMetrics
+    ): List<PairObservation> {
+        // Matching blocks avoids treating each autocorrelated 1Hz tick as an
+        // independent experiment. Full windows are quality-gated above.
+        val common = min(baselineSamples.size, candidateSamples.size)
+        val blockCount = common / BLOCK_SAMPLE_COUNT
+        if (blockCount < MIN_BLOCK_PAIRS_PER_WINDOW) return emptyList()
+        val observations = ArrayList<PairObservation>(blockCount)
+        for (block in 0 until blockCount) {
+            val start = block * BLOCK_SAMPLE_COUNT
+            val end = start + BLOCK_SAMPLE_COUNT
+            val baseBlock = summarize(
+                baselineSamples.subList(start, end), complete = true, requestedWindowMs = 0L
+            )
+            val candidateBlock = summarize(
+                candidateSamples.subList(start, end), complete = true, requestedWindowMs = 0L
+            )
+            if (baseBlock.fpsSampleCount == 0 || candidateBlock.fpsSampleCount == 0 ||
+                baseBlock.thermalSampleCount == 0 || candidateBlock.thermalSampleCount == 0
+            ) continue
+            val comparison = AdaptivePolicy.scoreComparison(baseBlock, candidateBlock)
+            observations += PairObservation(
+                sampleId = "$activeSessionId|$taskId|$variantId|$block",
+                sessionId = activeSessionId,
+                observedAtMs = wallClockMs(),
+                baseline = baseBlock,
+                candidate = candidateBlock,
+                score = comparison
+            )
+        }
+        return observations
     }
+
+    /** Thermal risks may downgrade statistical KEEP, never upgrade MORE_DATA/DROP. */
+    private fun thermalSafetyLimit(observations: List<PairObservation>): Decision? {
+        if (observations.isEmpty()) return null
+        val rises = observations.mapNotNull { observation ->
+            val b = observation.baseline.tempMaxC ?: observation.baseline.tempMeanC
+            val c = observation.candidate.tempMaxC ?: observation.candidate.tempMeanC
+            if (b == null || c == null) null else c - b
+        }
+        val slopeIncreases = observations.mapNotNull { observation ->
+            val b = observation.baseline.thermalSlopeCPerMin
+            val c = observation.candidate.thermalSlopeCPerMin
+            if (b == null || c == null) null else c - b
+        }
+        val maxRise = rises.maxOrNull() ?: 0.0
+        val maxSlopeRise = slopeIncreases.maxOrNull() ?: 0.0
+        return when {
+            maxRise >= SEVERE_THERMAL_RISE_C || maxSlopeRise >= ThermalGuard.STRONG_HEAT_SLOPE_PER_MIN -> Decision.DROP
+            maxRise >= MATERIAL_THERMAL_RISE_C || maxSlopeRise >= ThermalGuard.EARLY_WARNING_SLOPE_PER_MIN -> Decision.NEUTRAL
+            else -> null
+        }
+    }
+
+    /** Restore all recorded entries for one task, retaining any failed restores. */
+    fun revertTask(taskId: String, ctx: BoostContext): Boolean = engine.withTaskLock(taskId) {
+        val entries = ctx.journal.snapshot().filter { it.taskId == taskId }.asReversed()
+        val restored = mutableListOf<com.nitroboost.app.core.JournalEntry>()
+        var allRestored = true
+        for (entry in entries) {
+            if (Journal.restore(entry, ctx.executor)) restored += entry else allRestored = false
+        }
+        if (restored.isNotEmpty()) ctx.journal.remove(restored)
+        allRestored
+    }
+
 }

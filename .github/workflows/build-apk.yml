@@ -64,7 +64,7 @@ jobs:
       - name: Run unit tests + build debug APK
         working-directory: NitroBoost
         run: |
-          ./gradlew test assembleDebug --no-daemon --stacktrace > nitroboost-build.log 2>&1
+          ./gradlew test lintDebug assembleDebug --no-daemon --stacktrace > nitroboost-build.log 2>&1
           rc=$?
           tail -150 nitroboost-build.log
           exit $rc
@@ -187,6 +187,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           name: NitroBoost v${{ steps.ver.outputs.name }}
           body: |
             NitroBoost v${{ steps.ver.outputs.name }} (versionCode ${{ steps.ver.outputs.code }})
@@ -198,12 +199,12 @@ jobs:
             automatically once the signing secrets are configured — see
             `NitroBoost/docs/DISTRIBUTION.md`.
 
-            ## v1.9.0 — adaptive ledger and profile safety
-            - **Atomic Adaptive ledger writes** with fsync-before-rename.
-            - **Safe active-profile deletion** selects a remaining profile automatically.
-            - **Profile persistence** remains atomic and interruption-safe.
-            Previous notes: see NitroBoost/CHANGELOG.md and earlier GitHub
-            releases (v1.5.1 hardening, v1.5.0 Turbo Kit, v1.4.0 UI).
+            ## v1.10.0 — adaptive evidence and restoration safety
+            - Paired baseline/candidate comparisons retain per-variant evidence and use Bonferroni family-wise confidence intervals before ranking.
+            - Normalized multi-objective score uses only measured frame-time, memory, or energy data; unavailable metrics are omitted.
+            - Thermal prediction, session-quality gates, contextual local ledger, and explicit MORE_DATA handling.
+            - Task mutations are serialized; incomplete restores remain journaled and are retried before service teardown.
+            Previous notes: see NitroBoost/CHANGELOG.md and earlier GitHub releases.
           files: ${{ steps.collect.outputs.paths }}
           prerelease: false
         env:

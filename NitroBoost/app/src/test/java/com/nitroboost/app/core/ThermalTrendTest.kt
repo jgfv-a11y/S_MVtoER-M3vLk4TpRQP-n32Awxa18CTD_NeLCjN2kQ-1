@@ -33,6 +33,18 @@ class ThermalTrendTest {
         assertEquals(3, t.effectiveStatus(3))
     }
 
+    @Test fun `predictive slope escalates even from nominal OS status`() {
+        val early = ThermalTrend()
+        early.record(0, 39.0)
+        early.record(60_000, 40.5)
+        assertEquals(1, early.effectiveStatus(0))
+
+        val strong = ThermalTrend()
+        strong.record(0, 39.0)
+        strong.record(60_000, 41.1)
+        assertEquals(2, strong.effectiveStatus(0))
+    }
+
     @Test fun `flat or cooling slope never escalates`() {
         val t = ThermalTrend()
         t.record(0, 45.0)

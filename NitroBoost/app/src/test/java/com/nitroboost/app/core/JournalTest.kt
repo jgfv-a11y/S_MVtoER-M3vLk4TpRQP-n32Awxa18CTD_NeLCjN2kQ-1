@@ -43,6 +43,20 @@ class JournalTest {
     }
 
     @Test
+    fun `corrupt journal recovers the last durable backup without losing reversals`() {
+        val tmpDir = createTempDirectory().toFile()
+        val journalFile = File(tmpDir, "recover_journal.json")
+        val first = Journal(journalFile)
+        first.add(listOf(JournalEntry("first", JournalEntry.Kind.SYS_SETTING, "one", "0", "1")))
+        first.add(listOf(JournalEntry("second", JournalEntry.Kind.SYS_SETTING, "two", "0", "1")))
+        journalFile.writeText("{truncated")
+
+        val recovered = Journal(journalFile)
+        assertEquals(listOf("first"), recovered.entries.map { it.taskId })
+        assertTrue(File(tmpDir, "recover_journal.json.corrupt").exists())
+    }
+
+    @Test
     fun testJournalCorruptionRecovery() {
         val tmpDir = createTempDirectory().toFile()
         val journalFile = File(tmpDir, "corrupt_journal.json")

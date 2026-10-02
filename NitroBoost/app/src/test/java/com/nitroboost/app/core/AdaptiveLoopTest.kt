@@ -7,7 +7,9 @@ import com.nitroboost.app.core.adaptive.AdaptivePolicy
 import com.nitroboost.app.core.adaptive.DecisionLedger
 import com.nitroboost.app.core.adaptive.FrameMetrics
 import com.nitroboost.app.core.adaptive.SweepArm
+import com.nitroboost.app.core.adaptive.TrialContext
 import com.nitroboost.app.core.adaptive.TrialConfig
+import com.nitroboost.app.core.adaptive.LedgerEntry
 import com.nitroboost.app.core.adaptive.pickBestArm
 import com.nitroboost.app.core.tasks.AllTasks
 import org.junit.Assert.assertEquals
@@ -85,10 +87,18 @@ class AdaptiveLoopTest {
 
     @Test fun `resolved candidates are never retried`() {
         val (loop, ctx) = makeLoop(StubSampler())
-        // mark game_mode resolved as kept
-        val deltas = List(10) { 5.0 }
-        loop.ledger.record("game_mode", "Game Mode", deltas,
-            AdaptivePolicy.assess(deltas, TrialConfig()), 1L, TrialConfig())
+        // A context-free v1 ledger record must not be reused by the v2 cache.
+        val profileKey = "cpu,gpu,network,tweaks:0:0:4"
+        val context = TrialContext(
+            "unknown-device", "unknown-android", "com.test.game", 3, 0,
+            FakeExecutor::class.java.name, profileKey
+        )
+        val now = System.currentTimeMillis()
+        loop.ledger.entries["game_mode"] = LedgerEntry(
+            taskId = "game_mode", taskTitle = "Game Mode", decision = com.nitroboost.app.core.adaptive.Decision.KEEP,
+            deltas = List(10) { 5.0 }, meanDelta = 5.0, ciLow = 5.0, ciHigh = 5.0,
+            pairs = 10, sessions = 1, evaluatedAt = now, context = context
+        )
         val next = loop.nextCandidate(ctx())
         assertEquals("cpu_governor", next!!.id)
     }

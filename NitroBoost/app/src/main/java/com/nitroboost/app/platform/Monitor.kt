@@ -18,7 +18,14 @@ data class MonitorSnapshot(
     val pingMs: Int? = null,
     val retransPerSec: Int? = null,
     val thermalStatus: Int = 0,
-    val ts: Long = 0
+    val ts: Long = 0,
+    /** New frame durations from gfxinfo, empty when framestats is unavailable. */
+    val frameTimesMs: List<Double> = emptyList(),
+    val gamePackage: String? = null,
+    val processEpoch: Long = 0L,
+    val thermalSampleAvailable: Boolean = true,
+    /** Null until a real energy counter is wired by a platform source. */
+    val energyMah: Double? = null
 ) {
     companion object {
         val EMPTY = MonitorSnapshot()
@@ -96,14 +103,17 @@ class ThermalSampler(private val ctx: Context) {
     }
 
     @Suppress("DEPRECATION")
-    fun status(): Int {
+    fun statusOrNull(): Int? {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return null
         return try {
             val pm = ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
             pm.currentThermalStatus
-        } catch (e: Exception) {
-            0
+        } catch (_: Exception) {
+            null
         }
     }
+
+    fun status(): Int = statusOrNull() ?: 0
 }
 
 class BatterySampler(private val ctx: Context) {

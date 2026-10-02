@@ -33,7 +33,7 @@ class AdaptivePolicyTest {
     @Test fun `noisy data below min pairs needs more`() {
         val d = (1..5).map { (it % 3 - 1).toDouble() } // 5 noisy pairs
         val o = AdaptivePolicy.assess(d, cfg)
-        assertEquals(Decision.NEEDS_MORE, o.decision)
+        assertEquals(Decision.MORE_DATA, o.decision)
         assertEquals(5, o.pairs)
     }
 
@@ -46,10 +46,10 @@ class AdaptivePolicyTest {
 
     @Test fun `fewer than two pairs is needs more`() {
         val o = AdaptivePolicy.assess(emptyList(), cfg)
-        assertEquals(Decision.NEEDS_MORE, o.decision)
+        assertEquals(Decision.MORE_DATA, o.decision)
         assertEquals(0, o.pairs)
         val o2 = AdaptivePolicy.assess(listOf(1.0), cfg)
-        assertEquals(Decision.NEEDS_MORE, o2.decision)
+        assertEquals(Decision.MORE_DATA, o2.decision)
     }
 
     @Test fun `t table sanity`() {

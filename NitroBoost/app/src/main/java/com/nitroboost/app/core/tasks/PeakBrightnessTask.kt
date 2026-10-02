@@ -41,7 +41,7 @@ class PeakBrightnessTask : BoostTask {
     override fun isSupported(ctx: BoostContext): Boolean = true
 
     override fun isApplied(ctx: BoostContext): Boolean =
-        ctx.journal.entries.any { it.taskId == id }
+        ctx.journal.containsTask(id)
 
     override fun apply(ctx: BoostContext): TaskResult {
         if (isApplied(ctx)) return TaskResult(id, TaskStatus.NoChange, "already locked")

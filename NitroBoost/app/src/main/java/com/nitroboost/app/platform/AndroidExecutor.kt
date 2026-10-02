@@ -220,10 +220,11 @@ class AndroidExecutor(private val context: Context) : SystemExecutor {
 
     @Suppress("DEPRECATION")
     fun thermalStatus(): Int {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return 0
         return try {
             val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
             pm.currentThermalStatus
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             0
         }
     }

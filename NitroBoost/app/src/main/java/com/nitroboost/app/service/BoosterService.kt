@@ -27,6 +27,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.concurrent.Volatile
 
 /**
@@ -44,12 +45,23 @@ class BoosterService : Service() {
         const val ACTION_STOP = "com.nitroboost.app.action.BOOST_STOP"
         const val EXTRA_PROFILE = "profile"
         private const val CHANNEL_SESSION = "boost_session"
+        private const val RESTORE_RETRY_DELAY_MS = 10_000L
 
         @Volatile
         var active: Boolean = false
 
         @Volatile
         var lastScore: Int = 0
+
+        @Volatile
+        private var serviceInstance: BoosterService? = null
+
+        /** Keep the foreground service's game-exit watcher aligned with profile switches. */
+        fun updateActiveGame(packageName: String) {
+            serviceInstance?.updateWatchedPackage(packageName)
+        }
+
+        fun isEnding(): Boolean = serviceInstance?.ending == true
 
         fun start(ctx: Context, profilePkg: String?) {
             if (active) return
@@ -82,12 +94,16 @@ class BoosterService : Service() {
 
     private var scope: CoroutineScope? = null
     private val jobs = mutableListOf<Job>()
-    private var gamePackage: String? = null
+    private val watchJobsLock = Any()
+    private var restoreRetryJob: Job? = null
+    @Volatile private var gamePackage: String? = null
+    @Volatile private var ending = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
+        serviceInstance = this
         createChannel()
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     }
@@ -105,14 +121,36 @@ class BoosterService : Service() {
             startForeground(1001, n)
         }
         val profilePkg = intent?.getStringExtra(EXTRA_PROFILE)
+        active = true
+        ending = false
         scope?.launch {
             startSession(profilePkg)
         }
         return START_STICKY
     }
 
+    private fun updateWatchedPackage(packageName: String) {
+        scope?.launch {
+            val accepted = synchronized(watchJobsLock) {
+                if (!active || ending || gamePackage == packageName) {
+                    false
+                } else {
+                    gamePackage = packageName
+                    jobs.forEach { it.cancel() }
+                    jobs.clear()
+                    true
+                }
+            }
+            if (!accepted) return@launch
+            launchThermalWatch()
+            if (Prefs.getBool(this@BoosterService, Prefs.KEY_AUTO_RESTORE, true)) {
+                launchGameWatch(packageName)
+            }
+        }
+    }
+
     private fun startSession(profilePkg: String?) {
-        active = true
+        if (ending) return
         val profile = ProfileStore(this).resolve(profilePkg ?: Prefs.activeProfile(this))
         gamePackage = profile.packageName
         AppStore.setGamePackage(gamePackage)
@@ -129,20 +167,55 @@ class BoosterService : Service() {
     }
 
     private fun endSession() {
-        if (!active) return
-        active = false
-        gamePackage = null
-        AppStore.setGamePackage(null)
-        SessionLog.log(this, "session_stop")
-        jobs.forEach { it.cancel() }
-        jobs.clear()
-        AppStore.restoreAll()
-        try {
-            WidgetProvider.update(this)
-        } catch (e: Exception) {
+        if (!active || ending) return
+        ending = true
+        synchronized(watchJobsLock) {
+            jobs.forEach { it.cancel() }
+            jobs.clear()
         }
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        // Keep the service alive until the adaptive cancellation/finally path
+        // and the durable Journal restore have both completed. Work is off the
+        // main thread, so Shizuku binding callbacks cannot deadlock teardown.
+        restoreRetryJob?.cancel()
+        scope?.launch(Dispatchers.IO) {
+            val restore = AppStore.stopSessionBlocking()
+            val journalStillPending = try {
+                !AppStore.journal().isEmpty()
+            } catch (_: Exception) {
+                true
+            }
+            if (restore == null || restore.failedCount > 0 || journalStillPending) {
+                SessionLog.log(
+                    this@BoosterService,
+                    "session_restore_pending",
+                    "failed=${restore?.failedCount ?: -1}; journalPending=$journalStillPending"
+                )
+                withContext(Dispatchers.Main) {
+                    // Do not tear down the only retry/thermal-safety owner while
+                    // reversible changes remain in the durable Journal.
+                    ending = false
+                    if (active) launchThermalWatch()
+                }
+                restoreRetryJob = scope?.launch {
+                    delay(RESTORE_RETRY_DELAY_MS)
+                    if (active && !ending) endSession()
+                }
+                return@launch
+            }
+            SessionLog.log(this@BoosterService, "session_stop")
+            withContext(Dispatchers.Main) {
+                active = false
+                ending = false
+                gamePackage = null
+                AppStore.setGamePackage(null)
+                try {
+                    WidgetProvider.update(this@BoosterService)
+                } catch (_: Exception) {
+                }
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+        }
     }
 
     /**
@@ -187,7 +260,9 @@ class BoosterService : Service() {
                 }
             }
         }
-        if (job != null) jobs.add(job)
+        if (job != null) synchronized(watchJobsLock) {
+            if (ending) job.cancel() else jobs.add(job)
+        }
     }
 
     /**
@@ -218,7 +293,9 @@ class BoosterService : Service() {
                 }
             }
         }
-        if (job != null) jobs.add(job)
+        if (job != null) synchronized(watchJobsLock) {
+            if (ending) job.cancel() else jobs.add(job)
+        }
     }
 
     private fun createChannel() {
@@ -267,6 +344,7 @@ class BoosterService : Service() {
         } catch (_: Exception) {
         }
         scope?.cancel()
+        if (serviceInstance === this) serviceInstance = null
         super.onDestroy()
     }
 }

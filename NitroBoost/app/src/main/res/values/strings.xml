@@ -7,7 +7,8 @@
     <string name="tab_dashboard">Home</string>
     <string name="tab_boost">Boost</string>
     <string name="tab_profiles">Games</string>    <!-- v1.5.0 redesign -->
-    <string name="app_brand">Nitro</string>
+    <string name="app_brand">NitroBoost</string>
+    <string name="home_version">v%1$s</string>
     <string name="tab_home">Home</string>
     <string name="btn_boost_all">Boost All</string>
     <string name="btn_restore_all">Restore All</string>
@@ -173,7 +174,7 @@ The app keeps checking by itself until connected. On rooted devices, Root is use
     <string name="restore">Restore</string>
     <string name="clear_log">Clear log</string>
     <string name="about_title">About NitroBoost</string>
-    <string name="about_text">Version 1.9.0 — a clean, journal-based game booster. Every change is recorded and can be reverted in one tap. Thermal safety outranks performance. v1.9 hardens recovery (atomic journal, stale-session rollback, Shizuku reconnect) so a killed session cannot leave tweaks applied.</string>
+    <string name="about_text">Version 1.10.0 — a journal-based game booster with paired adaptive trials, measured-only metrics, and local confidence-aware decisions. Every system change is recorded and reversible. Thermal safety outranks performance; failed restores stay journaled and are retried.</string>
 
     <!-- Session report -->
     <string name="report_title">Last session report</string>

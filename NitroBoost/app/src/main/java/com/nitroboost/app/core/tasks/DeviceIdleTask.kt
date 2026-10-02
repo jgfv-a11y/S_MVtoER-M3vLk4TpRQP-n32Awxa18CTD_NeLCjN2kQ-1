@@ -39,7 +39,7 @@ class DeviceIdleTask : BoostTask {
     }
 
     override fun isApplied(ctx: BoostContext): Boolean =
-        ctx.journal.entries.any { it.taskId == id }
+        ctx.journal.containsTask(id)
 
     override fun apply(ctx: BoostContext): TaskResult {
         val p = pkg(ctx)

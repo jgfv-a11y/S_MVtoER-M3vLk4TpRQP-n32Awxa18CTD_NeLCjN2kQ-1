@@ -23,12 +23,14 @@
 - **Game API (أندرويد 12+)**: تخفيف رسم اللعبة بنسبة 80% عبر Game Manager
   الرسمي (`cmd game`) — أبرد وجودة إطارات أكثر ثباتًا؛ يُسجَّل ويُستعاد
   تلقائيًا (`cmd game reset`).
-- **المحرك التكيفي A/B (v1.2 → v1.3.2)**: كل تعديل أداء يُختبر على جهازك
-  الحقيقي ويُحتفظ فقط بما ثبتت فائدته بفاصل ثقة إحصائي 95% (مع قصّ القيم
-  الشاذة وقرارات واعية بالحرارة) — مع كشف اختناق حي (CPU/GPU/ذاكرة/شبكة/
-  حرارة) وهامش حراري تنبؤي يخفض قبل ضياع الإطارات، baseline مشترك لكل
-  الجلسة (أسرع ~2×)، مسح الدقة (0.9/0.8/0.7) ومسح المحكّم
-  (performance/schedutil)، وتقدير متبقٍ حي (ETA).
+- **المحرك التكيفي A/B**: يقارن كل مرشح بخط أساس جديد قريب زمنيًا، يحتفظ
+  بأدلة كل متغيّر وفاصل ثقته، ويصحح تعدد المقارنات قبل اختيار أي فائز.
+  بوابة جودة الجلسة ترفض العينات القديمة أو المتغيرة حراريًا، والتجربة
+  غير الحاسمة تبقى MORE_DATA. لا تُستخدم أزمنة الإطارات أو الطاقة إلا من
+  مصدر قياس حقيقي؛ غياب المصدر يعني غياب ذلك المؤشر، لا تقديره من FPS.
+  يشمل كشف الاختناق (CPU/GPU/ذاكرة/شبكة/حرارة)، الحماية الحرارية
+  التنبؤية، ومسح الدقة (0.9/0.8/0.7) والمحكّم
+  (performance/schedutil) وتقديرًا متبقيًا (ETA).
 - **مستويات التضخيم (v1.5 Turbo Kit)**: 3 مستويات — أساسي (بدون
   صلاحيات) / قياسي / أقصى — مع 5 مهام تسريع جديدة: إبقاء كل الأنوية
   نشطة، جدول I/O منخفض التأخير، سطوع ذروة أثناء اللعب، إعفاء اللعبة من
@@ -48,6 +50,21 @@
 - **عربي + إنجليزي** كامل (RTL/LTR).
 
 ---
+
+## Adaptive measurement and scoring
+
+The adaptive engine uses paired baseline/candidate windows. Each 12-second window is quality-gated, then reduced into adjacent three-sample blocks; invalid or incomplete windows are recorded as `MORE_DATA` and add no statistical evidence. The game package, process epoch, thermal tier, monitor freshness, sample counts, and sampling gaps must remain acceptable. A candidate is reverted from the durable Journal after measurement unless a statistically supported `KEEP` is safely re-applied and finalized.
+
+Each measured sweep arm keeps its own baseline/candidate observations and confidence interval. The engine assesses every arm with a 95% family-wise confidence target using Bonferroni correction (`alpha / numberOfArms`) before ranking any eligible `KEEP` arms. It does not calculate an interval only for the post-hoc winner. Resolved local decisions expire after 30 days and are bound to a local hashed device/capability key, Android/app revision, game/profile, boost level, and coarse thermal-temperature/slope bands.
+
+The normalized block score is bounded to `[-1, 1]`:
+
+- Performance gain is the equal-weight mean of normalized average-FPS and lower-tail-FPS gains, plus any available real frame-time stability/hitch, system-memory-pressure, or energy-measurement gains. Each gain is clipped to `[-1, 1]`; an unavailable metric is omitted, never synthesized.
+- Performance contributes `0.60 × gain × thermal-headroom-factor`. The factor is clipped to `[0, 1]` over a six-degree headroom range below the 44 °C raw safety floor.
+- Thermal costs are subtracted: temperature `0.15`, temperature slope `0.15`, and thermal tier `0.10`. Temperature/slope terms are omitted when unavailable; the final score is divided by the sum of the applicable weights.
+- A positive result is not enough by itself: the corrected confidence interval must clear the configured useful-effect threshold (`0.015`) and the sample-quality/thermal-safety gates.
+
+Frame times are read only from `dumpsys gfxinfo ... framestats` when exposed by the device. Energy remains absent until a real platform counter is available. No FPS gain, benchmark result, or device measurement is assumed by the model.
 
 ## 📦 المتطلبات
 
@@ -91,7 +108,7 @@ gradle wrapper --gradle-version 8.7   # إذا كان Gradle 8.7 مثبتًا
 
 APK الناتج في `app/build/outputs/apk/debug/`.
 
-> 📲 **APK جاهز للتنزيل (v1.9.0)**: [nitroboost-debug.apk](../dist/nitroboost-debug.apk)
+> 📲 **APK الإصدار v1.10.0**: [nitroboost-debug.apk](../dist/nitroboost-debug.apk) — يُحدّثه CI بعد نجاح الاختبارات والبناء.
 > (أو من صفحة [Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) —
 > يُعاد بناؤه تلقائيًا عبر GitHub Actions عند كل تغيير).
 

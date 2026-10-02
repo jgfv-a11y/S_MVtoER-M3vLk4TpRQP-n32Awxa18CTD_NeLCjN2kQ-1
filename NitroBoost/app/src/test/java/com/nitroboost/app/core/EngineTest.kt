@@ -7,6 +7,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class EngineTest {
 
@@ -153,6 +156,39 @@ class EngineTest {
 
         // Whatever the fake device supports, the engine must finish cleanly.
         assertTrue(report.results.isNotEmpty())
+    }
+
+    @Test
+    fun `task mutation lock serializes competing adaptive and regular writes`() {
+        val engine = BoostEngine(emptyList())
+        val pool = Executors.newFixedThreadPool(2)
+        val firstEntered = CountDownLatch(1)
+        val secondStarted = CountDownLatch(1)
+        val secondEntered = CountDownLatch(1)
+        val releaseFirst = CountDownLatch(1)
+        try {
+            val first = pool.submit {
+                engine.withTaskLock("shared-task") {
+                    firstEntered.countDown()
+                    check(releaseFirst.await(5, TimeUnit.SECONDS))
+                }
+            }
+            assertTrue(firstEntered.await(2, TimeUnit.SECONDS))
+            val second = pool.submit {
+                secondStarted.countDown()
+                engine.withTaskLock("shared-task") { secondEntered.countDown() }
+            }
+            assertTrue(secondStarted.await(2, TimeUnit.SECONDS))
+            assertFalse("second mutation must wait for the active task lock",
+                secondEntered.await(100, TimeUnit.MILLISECONDS))
+            releaseFirst.countDown()
+            first.get(2, TimeUnit.SECONDS)
+            second.get(2, TimeUnit.SECONDS)
+            assertTrue(secondEntered.await(0, TimeUnit.MILLISECONDS))
+        } finally {
+            releaseFirst.countDown()
+            pool.shutdownNow()
+        }
     }
 
     @Test

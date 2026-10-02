@@ -54,7 +54,7 @@ class GamePerfModeTask(
 
     override fun isApplied(ctx: BoostContext): Boolean {
         val p = pkg(ctx)
-        return ctx.journal.entries.any { it.taskId == id && it.key == "game_mode_api:$p" }
+        return ctx.journal.containsTaskKey(id, "game_mode_api:$p")
     }
 
     override fun apply(ctx: BoostContext): TaskResult {

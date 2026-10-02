@@ -16,6 +16,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.Observer
 import com.google.android.material.button.MaterialButton
 import com.nitroboost.app.AppStore
+import com.nitroboost.app.BuildConfig
 import com.nitroboost.app.R
 import com.nitroboost.app.SessionState
 import com.nitroboost.app.core.AppProfile
@@ -77,6 +78,8 @@ class HomeFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         val c = requireContext()
+        view.findViewById<TextView>(R.id.home_version).text =
+            getString(R.string.home_version, BuildConfig.VERSION_NAME)
 
         chips = view.findViewById(R.id.chips_container)
         scoreValue = view.findViewById(R.id.score_value)
@@ -387,7 +390,7 @@ class HomeFragment : Fragment() {
                         d.meanDelta?.let { String.format("%.1f", it) } ?: "--", d.pairs)
                 )
                 Decision.NEUTRAL -> sb.append(getString(R.string.decision_neutral, d.pairs))
-                Decision.NEEDS_MORE -> sb.append(getString(R.string.decision_pending, d.pairs, 8))
+                Decision.MORE_DATA, Decision.NEEDS_MORE -> sb.append(getString(R.string.decision_pending, d.pairs, 8))
             }
             sb.append('\n')
         }
