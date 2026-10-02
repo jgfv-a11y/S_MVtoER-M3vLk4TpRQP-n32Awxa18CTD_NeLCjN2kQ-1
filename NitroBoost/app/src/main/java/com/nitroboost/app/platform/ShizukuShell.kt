@@ -26,6 +26,7 @@ object ShizukuShell {
 
     private const val REQUEST_CODE = 1
     const val SHIZUKU_PKG = "moe.shizuku.manager"
+    private const val MAX_RECONNECT_ATTEMPTS = 3
 
     /** Where the Shizuku setup stands — drives the in-app guidance card. */
     enum class ShizukuState {
@@ -123,13 +124,48 @@ object ShizukuShell {
     }
 
     /**
+     * Try to re-establish the user service binding after a disconnect.
+     * Falls back gracefully to root/safe-mode if the service is unavailable.
+     */
+    fun reconnect(ctx: Context, maxAttempts: Int = MAX_RECONNECT_ATTEMPTS): Boolean {
+        if (!isInstalled(ctx)) return false
+        if (!isReady()) return false
+        if (!isPermissionGranted()) {
+            requestPermission()
+            return false
+        }
+        var attempt = 0
+        while (attempt < maxAttempts) {
+            try {
+                unbind()
+                if (ensureBound(ctx)) return true
+            } catch (e: Exception) {
+                // ignore and retry
+            }
+            attempt += 1
+            if (attempt < maxAttempts) {
+                try {
+                    Thread.sleep((1000L shl attempt).coerceAtMost(8_000L))
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    break
+                }
+            }
+        }
+        return false
+    }
+
+    /**
      * Make sure the user service is bound. Call on a background thread
      * (binding can take a moment). Returns true when the service is usable.
      */
     fun ensureBound(ctx: Context): Boolean {
         appCtx = ctx.applicationContext
-        if (service != null) return true
-        if (!isReady()) return false
+        if (service != null && isReady()) return true
+        if (!isReady()) {
+            unbind()
+            return false
+        }
         if (!isPermissionGranted()) {
             requestPermission()
             return false
