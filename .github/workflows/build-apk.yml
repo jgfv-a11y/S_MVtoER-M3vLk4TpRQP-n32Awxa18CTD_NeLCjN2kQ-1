@@ -19,6 +19,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Read app version
+        id: ver
+        working-directory: NitroBoost
+        run: |
+          python3 - <<'PY'
+          import os, re
+          text = open("app/build.gradle.kts").read()
+          name = re.search(r'versionName\s*=\s*"([^"]+)"', text).group(1)
+          code = re.search(r'versionCode\s*=\s*(\d+)', text).group(1)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"name={name}\n")
+              fh.write(f"code={code}\n")
+              fh.write(f"tag=nitroboost-v{name}\n")
+          print(f"NitroBoost {name} ({code})")
+          PY
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -52,6 +68,9 @@ jobs:
 
       - name: Capture build log on failure
         if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set +e
           LOG=NitroBoost/nitroboost-build.log
@@ -164,148 +183,40 @@ jobs:
       - name: Publish release with APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: nitroboost-v1.5.1
-          name: NitroBoost v1.5.1
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: NitroBoost v${{ steps.ver.outputs.name }}
           body: |
-            NitroBoost — journal-based game booster with a full adaptive A/B
-            engine. Install on a real device (Shizuku required for the full
-            feature set; the app degrades gracefully without it).
-            Debug-signed build for direct install; a signed release APK is
-            published automatically once the signing secrets are configured
-            — see `NitroBoost/docs/DISTRIBUTION.md`.
+            NitroBoost v${{ steps.ver.outputs.name }} (versionCode ${{ steps.ver.outputs.code }})
+            — journal-based game booster with a full adaptive A/B engine.
 
-            ## v1.5.1 — Hardening: rollback guaranteed, heat limit that
-            nothing can disable, least-privilege surface
-            - **Crash/reboot rollback**: a dead session (reboot, process
-              kill, service stop) can no longer leave tweaks applied — a
-              stale-journal guard reverts leftovers at app start and keeps
-              retrying until Shizuku is bound; journal writes are atomic.
-            - **Hard thermal floor**: the opt-in thermal override used to
-              blind the OS status the safety guard reads. The guard now
-              also maps raw thermistor temperature (44/48/52 °C floors)
-              and takes the max — a heat limit the UI, profiles and the
-              override itself can never disable.
-            - **Fewer permissions**: unused `WAKE_LOCK` and
-              `ACCESS_NETWORK_STATE` removed. `INTERNET` is used only by
-              the ping sampler; no telemetry, no cloud, profiles are local.
-            - **Release pipeline**: optional signed release build via
-              GitHub secrets + a CI guard that fails the build if a release
-              APK is ever debuggable.
-            - **Repo hygiene**: the decompiled reference app (RevBoost
-              1.8.1-debug) moved to `reference/` — it no longer sits at the
-              repo root where it could be mistaken for NitroBoost.
+            Install on a real device (Shizuku required for the full feature
+            set; the app degrades gracefully without it). Debug-signed build
+            for direct install; a signed release APK is published
+            automatically once the signing secrets are configured — see
+            `NitroBoost/docs/DISTRIBUTION.md`.
 
-            ## v1.5.0 — Turbo Kit: boost levels + 5 new acceleration tasks
-            - **Boost level selector (1/2/3)**: choose how hard the engine
-              pushes — 1 = safe basics (no privileges), 2 = standard
-              performance (default), 3 = aggressive. "Max" is now opt-in,
-              and level 3 is clearly separated from everyday boosts.
-            - **Keep all CPU cores online**: stops core hot-plug during the
-              session — removes the 1–3 frame wake-up hitches games hit
-              when the scheduler parks a big core mid-burst.
-            - **Low-latency I/O scheduler**: switches the data block device
-              to `none` (mq direct dispatch) while gaming — small random
-              reads (textures, level streaming) come back faster; previous
-              scheduler restored on exit.
-            - **Peak brightness in game**: locks the panel to max and
-              disables auto-dim for the session — no readability dips in
-              dark scenes. Works even without Shizuku when WRITE_SETTINGS
-              is granted.
-            - **Doze exemption**: whitelists the game in Android's device
-              idle subsystem — no background throttling of network or jobs
-              while the game is the focus.
-            - **Game Manager performance mode (Android 12+)**: asks the
-              platform scheduler/thermal policy to give the game full
-              performance priority via the official `cmd game` API.
-            - **Bug fix**: built-in profiles never enabled the GPU module,
-              so the Game API downscale + the adaptive sweep behind it
-              were silently off for built-in games. Now on by default —
-              80% render is the designed standard and the adaptive engine
-              refines it per SoC.
-            - Every new task is journaled, idempotent and revertible;
-              blocked-on-ROM = Skipped, never Failed.
+            ## v1.6.0 — Stability, thermal safety, recovery hardening
+            - **CI unblocked**: journal rotation archives as
+              `{filename}_{timestamp}` (the test that kept the last three
+              builds red).
+            - **Kill/reboot rollback**: `onDestroy` + stale-journal guard
+              revert leftover tweaks so a dead session cannot leave
+              governors / DND / DPI applied.
+            - **Shizuku reconnect wired**: `AndroidExecutor` retries the
+              user service before falling back to root / safe mode.
+            - **Monitor self-heal**: hub restarts if samples go stale
+              (>20s), not only when the last snapshot was empty.
+            - **Journal durability**: fsync-before-rename, `.bak` of last
+              known-good, skip unknown kinds instead of wiping the file.
+            - **Hard thermal floor + predictive slope**: 44/48/52 °C plus
+              an early-warning slope so boosts back off before throttling.
+            - **More game profiles**: Genshin Global, Star Rail, COD
+              Mobile Global, Free Fire MAX, Wild Rift, Roblox, Minecraft.
+            - `allowBackup=false` so a backup restore cannot replay a
+              journal that no longer matches the device.
 
-            ## v1.4.0 — New UI + Shizuku/Root auto-connect
-            - **Brand-new UI**: 4 simple tabs (Home / Boost / Profiles /
-              Settings), one big boost button, live stats, everything one
-              tap away.
-            - **Shizuku state machine**: the app now knows exactly where
-              the setup stands (installed / started / granted / bound) and
-              shows a guidance card on Home with the right action.
-            - **Root fallback**: rooted devices without Shizuku work
-              automatically via `su` (conservative probe, cached, all
-              writes still journaled + revertible).
-            - **Honest task states**: "Waiting for Shizuku" instead of
-              "not supported" for hardware that can't be verified yet.
-            - **Floating monitor**: auto-starts with the session; one-tap
-              permission prompt when missing; safe no-permission guard.
-            - **Score "current / potential"**: the home score shows what
-              the device can reach, not a mysterious 0.
-            - **Profiles deduped**: a custom profile replaces (shadows)
-              the built-in of the same game — no more duplicates.
-            - Lighter: privileged checks cached (2s TTL) — no more binder
-              polling on every UI refresh.
-
-            ## v1.3.2 — Faster, more precise, stronger engine
-            - **~2x faster adaptive sessions**: 12s windows, 2s settles,
-              baseline measured ONCE per session and reused for every
-              candidate (re-measured only after 5 min or a thermal change).
-            - **More precise statistics**: outlier trimming (top/bottom 10%)
-              before the 95% CI; FPS + thermal strictly aligned per tick.
-            - **Thermal-aware verdicts**: an FPS win that heats the SoC a
-              full tier is downgraded to NEUTRAL — no wins paid in throttling.
-            - **Governor A/B**: `performance` vs `schedutil` tested against
-              each other; the winning variant is restored automatically.
-            - 1Hz sampling, self-healing monitor hub, live ETA in the UI.
-            - **First-run permissions popup** (real POST_NOTIFICATIONS
-              request) and **fully automatic Shizuku** (open -> grant ->
-              bind, on launch and after every resume).
-            - **Settings journal fixed**: live entry list with old->new
-              values, auto-refresh on every visit.
-            - **Enriched session report**: min FPS, peak RAM, main
-              bottleneck at session end.
-            - **Overlay fixed**: stats wrap instead of clipping; `--` for a
-              missing temperature sensor.
-            - **Honest task statuses**: ROM-blocked writes are now
-              "Skipped — this device blocks it", not "Failed".
-
-            ## v1.3.0 — Dynamic resolution sweep
-            - **Downscale sweep (0.9 / 0.8 / 0.7)**: the adaptive engine
-              measures EVERY legal render-downscale level on your device
-              against one shared baseline and keeps the winner — real
-              dynamic-resolution control for a userland booster.
-            - The winning level persists in the decision ledger and is
-              restored automatically on every later session.
-            - **Stable release** (no longer prerelease).
-            - Store distribution prep: optional CI release signing
-              (keystore via GitHub secrets) + `docs/DISTRIBUTION.md`
-              (Play Store / F-Droid roadmap).
-            - +5 JVM unit tests (67 total).
-
-            ## v1.2.0 — Adaptive Engine
-            - **A/B adaptive engine**: every performance tweak is tested on
-              your device (baseline vs applied, real FPS from gfxinfo) and
-              only statistically significant tweaks are kept (paired 95%
-              confidence interval). Verdicts persist across sessions in the
-              decision ledger; DROPped tweaks are never re-applied.
-            - **Bottleneck detector**: live classification of where frames
-              are lost (CPU / GPU / memory / network / thermal).
-            - **Predictive thermal headroom**: temperature trend can
-              de-escalate one tier BEFORE the OS thermal status flips.
-            - Dashboard engine card + settings toggle.
-            - +32 JVM unit tests (62 total).
-
-            ## v1.1.0
-            - **Game API (Android 12+)**: official `cmd game` render downscale
-              (80%) via the platform Game Manager — cooler, steadier frames;
-              fully journaled, reverted with `cmd game reset`.
-            - **OEM game-space detection**: OPlus / ColorOS / MI Game Turbo /
-              Samsung / HONOR / vivo / HeyTap are detected and the user is
-              advised to enable their game mode too.
-            - **Session report**: after every session the app reports measured
-              avg/min FPS (gfxinfo), peak temperature, min ping, RAM peak and
-              the FPS delta vs the previous session.
-            - 16 boost tasks (was 15): +game_api_downscale.
+            Previous notes: see NitroBoost/CHANGELOG.md and earlier GitHub
+            releases (v1.5.1 hardening, v1.5.0 Turbo Kit, v1.4.0 UI).
           files: ${{ steps.collect.outputs.paths }}
           prerelease: false
         env:

@@ -54,7 +54,13 @@ class MonitorHub(private val ctx: Context) {
                         ts = android.os.SystemClock.elapsedRealtime()
                     )
                 } catch (e: Exception) {
-                    MonitorSnapshot.EMPTY
+                    null
+                }
+                if (snap == null) {
+                    // Skip a broken tick instead of posting EMPTY (ts=0),
+                    // which used to look like a dead hub to the self-healer.
+                    delay(1000)
+                    continue
                 }
                 try {
                     listener(snap)

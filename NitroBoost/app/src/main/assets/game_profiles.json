@@ -212,5 +212,154 @@
     "thermalOverride": false,
     "gameMode": 4,
     "extraProtected": []
+  },
+  {
+    "packageName": "com.miHoYo.GenshinImpact",
+    "name": "Genshin Impact (Global)",
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "dnd",
+      "power",
+      "tweaks",
+      "gpu"
+    ],
+    "dpi": 0,
+    "refreshRate": 0,
+    "fpsCap": 0,
+    "dnd": true,
+    "killAnimations": true,
+    "aggressiveRamClean": false,
+    "thermalOverride": false,
+    "gameMode": 4,
+    "extraProtected": []
+  },
+  {
+    "packageName": "com.miHoYo.hkrpg",
+    "name": "Honkai: Star Rail",
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "dnd",
+      "power",
+      "tweaks",
+      "gpu"
+    ],
+    "dpi": 0,
+    "refreshRate": 0,
+    "fpsCap": 0,
+    "dnd": true,
+    "killAnimations": true,
+    "aggressiveRamClean": false,
+    "thermalOverride": false,
+    "gameMode": 4,
+    "extraProtected": []
+  },
+  {
+    "packageName": "com.activision.callofduty.shooter",
+    "name": "Call of Duty: Mobile (Global)",
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "display",
+      "dnd",
+      "power",
+      "tweaks",
+      "gpu"
+    ],
+    "dpi": 0,
+    "refreshRate": 0,
+    "fpsCap": 0,
+    "dnd": true,
+    "killAnimations": true,
+    "aggressiveRamClean": false,
+    "thermalOverride": false,
+    "gameMode": 4,
+    "extraProtected": []
+  },
+  {
+    "packageName": "com.dts.freefiremax",
+    "name": "Free Fire MAX",
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "display",
+      "dnd",
+      "power",
+      "tweaks",
+      "gpu"
+    ],
+    "dpi": 0,
+    "refreshRate": 0,
+    "fpsCap": 0,
+    "dnd": true,
+    "killAnimations": true,
+    "aggressiveRamClean": false,
+    "thermalOverride": false,
+    "gameMode": 4,
+    "extraProtected": []
+  },
+  {
+    "packageName": "com.riotgames.league.wildrift",
+    "name": "League of Legends: Wild Rift",
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "display",
+      "dnd",
+      "power",
+      "network",
+      "tweaks",
+      "gpu"
+    ],
+    "dpi": 0,
+    "refreshRate": 0,
+    "fpsCap": 0,
+    "dnd": true,
+    "killAnimations": true,
+    "aggressiveRamClean": false,
+    "thermalOverride": false,
+    "gameMode": 4,
+    "extraProtected": []
+  },
+  {
+    "packageName": "com.roblox.client",
+    "name": "Roblox",
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "display",
+      "dnd",
+      "gpu"
+    ],
+    "dpi": 0,
+    "refreshRate": 0,
+    "fpsCap": 0,
+    "dnd": true,
+    "killAnimations": true,
+    "aggressiveRamClean": false,
+    "thermalOverride": false,
+    "gameMode": 4,
+    "extraProtected": []
+  },
+  {
+    "packageName": "com.mojang.minecraftpe",
+    "name": "Minecraft",
+    "enabledModules": [
+      "cpu",
+      "ram",
+      "display",
+      "dnd",
+      "gpu"
+    ],
+    "dpi": 0,
+    "refreshRate": 0,
+    "fpsCap": 0,
+    "dnd": true,
+    "killAnimations": true,
+    "aggressiveRamClean": false,
+    "thermalOverride": false,
+    "gameMode": 4,
+    "extraProtected": []
   }
 ]

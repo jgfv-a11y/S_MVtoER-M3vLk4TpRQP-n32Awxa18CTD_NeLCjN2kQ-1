@@ -1,23 +1,47 @@
 # Changelog
 
-## v1.6.0 — Release Candidate: Stability, thermal safety, and recovery hardening
+## v1.6.0 — Stability, thermal safety, and recovery hardening
+
+First stable 1.6 release. Unblocks CI (red since the journal-rotation test)
+and ships the recovery work that had been sitting as a release candidate.
 
 ### Highlights
-- Fixed monitor/session race conditions that could lead to duplicated or inconsistent boost state.
-- Hardened Journal persistence against corruption and oversized growth.
-- Added automatic Shizuku reconnect and safe fallback when the privileged channel is temporarily unavailable.
-- Added predictive thermal escalation before the device reaches throttling.
-- Added JVM unit tests covering journal corruption, rotation, and basic restore flows.
+- **CI is green again**: journal rotation now archives as `{filename}_{timestamp}`,
+  matching the unit test and the files-dir audit convention.
+- **Crash/kill rollback**: a dead session (reboot, process kill, service destroy)
+  reverts leftover journal entries — `onDestroy` restore + stale-journal guard.
+- **Shizuku reconnect is actually used**: `AndroidExecutor` retries the user
+  service once before falling back to root / safe mode.
+- **Monitor self-heal on stale samples**: the hub restarts if snapshots stop
+  arriving, not only when the last value was empty.
+- **Session samples are race-free**: FPS/temp/ping/RAM collection shares the
+  session lock with begin/finish, so a stop cannot interleave with a tick.
+- **Journal durability**: fsync-before-rename, `.bak` of last known-good,
+  skip unknown kinds instead of wiping the whole file.
+- **Hard thermal floor + predictive slope**: 44/48/52 °C floors plus an early
+  warning slope so boosts back off before the OS flips to throttling.
+- **More game profiles**: Genshin Global, Star Rail, COD Mobile Global,
+  Free Fire MAX, Wild Rift, Roblox, Minecraft.
+- **Least privilege**: `allowBackup=false` so a backup restore cannot replay
+  a journal that no longer matches the device.
 
 ### Stability and safety
-- `AppStore`: synchronized session state updates and safer monitor restarts.
-- `Journal`: atomic-ish safe write sequence, backup retention, archive rotation, and corruption protection.
-- `ShizukuShell`: retry/backoff reconnect logic with graceful degradation.
-- `ThermalGuard`: predictive thermal escalation to de-escalate early before frames collapse.
+- `Journal`: atomic write + fsync, backup retention, `{filename}_{timestamp}`
+  archive rotation, per-entry parse resilience.
+- `AppStore`: synchronized session samples; monitor restart on stale ts (>20s).
+- `BoosterService`: restore leftover tweaks in `onDestroy`.
+- `AndroidExecutor`: Shizuku reconnect/backoff before degrading.
+- `MonitorHub`: skip a broken tick instead of posting EMPTY (which looked like
+  a dead hub).
+- `ThermalGuard`: predictive escalation unit-tested.
 
 ### Validation
-- Added `JournalTest.kt` for reliability checks around persistence, recovery, and rotation.
+- Journal tests cover round-trip, `.bak`, corruption, rotation naming,
+  unknown-kind skip, empty/missing files.
+- Thermal guard tests cover raw floors + predictive slope.
+- 118 JVM unit tests in the CI line (was 113, 1 failing).
 
 ### Notes
-- This is a release-candidate milestone prepared for local / CI packaging.
-- Signed APK production still requires Android SDK + keystore configuration in CI or local environment.
+- Debug APK is published on every green build. A signed release APK is
+  produced when the `NITRO_*` keystore secrets are configured — see
+  `docs/DISTRIBUTION.md`.
