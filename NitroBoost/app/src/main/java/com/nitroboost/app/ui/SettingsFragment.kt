@@ -116,19 +116,12 @@ class SettingsFragment : Fragment() {
             // About
             root.findViewById<TextView>(R.id.about_version).text =
                 getString(R.string.about_version_format, versionString())
-
-            updateJournal()
         }
-    }
-
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-        refreshShizuku()
-        refreshSystem()
     }
 
     override fun onResume() {
         super.onResume()
+        if (isHidden) return
         updateJournal()
         refreshShizuku()
         refreshSystem()

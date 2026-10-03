@@ -221,7 +221,9 @@
     <string name="report_peak_ram">ذروة RAM: %1$dGB</string>
     <string name="report_end_bottleneck">الاختناق الرئيسي نهاية الجلسة: %1$s</string>
     <string name="onboarding_title">إعداد سريع — اختياري لكنه يفتح كامل القوة</string>
-    <string name="onboarding_msg">اضغط على أي بند للسماح له (يمكنك ذلك لاحقًا من الإعدادات). كل شيء اختياري، والتطبيق يعمل بمجموعة مزايا أقل بدونه.</string>
+    <string name="onboarding_msg">اضغط على أي بند لمنحه. يمكنك العودة إلى القائمة لاحقًا من زر الصلاحيات في الرئيسية. كل شيء اختياري، والتطبيق يعمل بمجموعة مزايا أقل بدونه.</string>
+    <string name="onboarding_incomplete_title">ما زالت هناك صلاحيات ناقصة</string>
+    <string name="onboarding_incomplete_message">ما زالت هذه الصلاحيات غير مفعّلة: %1$s. لتفعيلها لاحقًا، افتح NitroBoost واضغط «الصلاحيات» في الرئيسية، ثم اختر البند وامنحه من إعدادات Android.</string>
 
     <!-- Common -->
     <string name="save">حفظ</string>

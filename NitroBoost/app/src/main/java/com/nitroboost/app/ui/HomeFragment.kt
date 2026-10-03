@@ -149,7 +149,26 @@ class HomeFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
+        if (isHidden) return
+        shizukuPoller.run()
+    }
+
+    override fun onHiddenChanged(hidden: Boolean) {
+        super.onHiddenChanged(hidden)
+        if (hidden) {
+            view?.removeCallbacks(shizukuPoller)
+        } else if (isResumed) {
+            refreshVisibleHome()
+        }
+    }
+
+    private fun refreshVisibleHome() {
+        val chipScroll = chips?.parent as? android.widget.HorizontalScrollView
+        val chipScrollX = chipScroll?.scrollX ?: 0
         buildChips()
+        if (chipScroll != null && chipScrollX > 0) {
+            chipScroll.post { chipScroll.scrollTo(chipScrollX, 0) }
+        }
         renderLevelChips()
         shizukuPoller.run()
     }

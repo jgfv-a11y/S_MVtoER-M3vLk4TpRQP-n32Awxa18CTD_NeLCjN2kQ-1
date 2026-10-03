@@ -221,7 +221,9 @@ The app keeps checking by itself until connected. On rooted devices, Root is use
     <string name="report_peak_ram">Peak RAM: %1$dGB</string>
     <string name="report_end_bottleneck">Main bottleneck at session end: %1$s</string>
     <string name="onboarding_title">Quick setup — optional but unlocks the full power</string>
-    <string name="onboarding_msg">Tap an item to grant it (you can also do this later in Settings). Everything is optional; the app works with a reduced feature set without each one.</string>
+    <string name="onboarding_msg">Tap an item to grant it. You can return to the checklist later with Permissions on Home. Everything is optional; the app works with a reduced feature set without each one.</string>
+    <string name="onboarding_incomplete_title">Permissions still missing</string>
+    <string name="onboarding_incomplete_message">Still disabled: %1$s. To enable them later, open NitroBoost, tap Permissions on Home, choose an item, and grant it in Android Settings.</string>
 
     <!-- Common -->
     <string name="save">Save</string>
