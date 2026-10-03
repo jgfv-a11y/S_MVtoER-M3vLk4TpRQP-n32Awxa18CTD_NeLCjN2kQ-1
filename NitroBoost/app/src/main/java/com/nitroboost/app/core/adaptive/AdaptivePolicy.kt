@@ -8,15 +8,93 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
 
+/** Explicit weights for the four existing top-level objectives. */
+data class ObjectiveWeights(
+    val performance: Double,
+    val temperature: Double,
+    val thermalSlope: Double,
+    val thermalTier: Double
+)
+
+/** Named, code-declared policy; not a learned estimate. */
+data class ObjectiveWeightProfile(val id: String, val weights: ObjectiveWeights)
+
+data class ResolvedObjectiveWeights(val profileId: String, val weights: ObjectiveWeights)
+
+/**
+ * Validates and resolves deterministic objective-weight policies. Any context
+ * override is a declared policy; it is not estimated from a small sample.
+ */
+object ObjectiveWeightResolver {
+    val DEFAULT_WEIGHTS = ObjectiveWeights(0.60, 0.15, 0.15, 0.10)
+    val DEFAULT_PROFILE = ObjectiveWeightProfile("balanced-v1", DEFAULT_WEIGHTS)
+    /** A conservative, explicit policy for measured LIGHT thermal pressure. */
+    val THERMAL_CONTEXT_PROFILE = ObjectiveWeightProfile(
+        "thermal-cautious-v1", ObjectiveWeights(0.50, 0.20, 0.20, 0.10)
+    )
+    const val MIN_CONTEXT_EVIDENCE_PAIRS = 8
+
+    /** Weight set bound to an objective-profile cache identity; unknown IDs cannot add evidence. */
+    fun weightsForProfile(profileId: String): ObjectiveWeights? = when (profileId) {
+        DEFAULT_PROFILE.id -> DEFAULT_WEIGHTS
+        THERMAL_CONTEXT_PROFILE.id -> THERMAL_CONTEXT_PROFILE.weights
+        else -> null
+    }
+
+    /** Returns normalized weights, or null when the input is not safe to use. */
+    fun normalize(weights: ObjectiveWeights?): ObjectiveWeights? {
+        if (weights == null) return null
+        val values = listOf(weights.performance, weights.temperature, weights.thermalSlope, weights.thermalTier)
+        if (values.any { !it.isFinite() || it < 0.0 || it > 1.0 }) return null
+        val total = values.sum()
+        if (!total.isFinite() || total <= 0.0) return null
+        return ObjectiveWeights(
+            performance = weights.performance / total,
+            temperature = weights.temperature / total,
+            thermalSlope = weights.thermalSlope / total,
+            thermalTier = weights.thermalTier / total
+        )
+    }
+
+    /** Invalid or absent configuration always falls back to the shipped v1.10 weights. */
+    fun normalizeOrDefault(weights: ObjectiveWeights?): ObjectiveWeights =
+        normalize(weights) ?: DEFAULT_WEIGHTS
+
+    fun resolve(
+        context: TrialContext,
+        priorValidPairs: Int,
+        minEvidencePairs: Int = MIN_CONTEXT_EVIDENCE_PAIRS,
+        defaultProfile: ObjectiveWeightProfile = DEFAULT_PROFILE,
+        thermalProfile: ObjectiveWeightProfile = THERMAL_CONTEXT_PROFILE
+    ): ResolvedObjectiveWeights {
+        val safeDefault = normalize(defaultProfile.weights)
+        val default = if (safeDefault == null || defaultProfile.id.isBlank()) {
+            ResolvedObjectiveWeights(DEFAULT_PROFILE.id, DEFAULT_WEIGHTS)
+        } else ResolvedObjectiveWeights(defaultProfile.id, safeDefault)
+
+        val requiredEvidence = minEvidencePairs
+        if (context.thermalTier < ThermalGuard.STATUS_LIGHT ||
+            requiredEvidence <= 0 || priorValidPairs < requiredEvidence
+        ) return default
+
+        val safeThermal = normalize(thermalProfile.weights)
+        if (safeThermal == null || thermalProfile.id.isBlank() ||
+            thermalProfile.id == defaultProfile.id
+        ) return default
+        return ResolvedObjectiveWeights(thermalProfile.id, safeThermal)
+    }
+}
+
 /**
  * Statistical and objective model for adaptive trials.
  *
  * The v2 decision is based on bounded, normalized changes in average FPS,
  * lower-tail FPS, real frame-time stability, hitch rate, memory pressure and
  * energy (only if measured). Thermal temperature, slope and tier are explicit
- * costs. The weight budget is documented below: 60% performance objective,
- * 40% thermal risk; the available performance indicators share their budget
- * equally so no unnormalized unit can dominate.
+ * costs. The balanced profile assigns 60% to performance and 40% to thermal
+ * risk; the declared cautious thermal profile assigns 50% to each. Available
+ * performance indicators share their budget equally so no unnormalized unit
+ * can dominate.
  *
  * Multi-variant intervals use Bonferroni family-wise correction: each arm is
  * assessed against its own paired baseline with alpha / numberOfArms. No
@@ -90,7 +168,12 @@ object AdaptivePolicy {
      * Frame-time/hitch/energy dimensions are omitted if either side lacks an
      * actual source; FPS is never used to synthesize those values.
      */
-    fun scoreComparison(baseline: WindowMetrics, candidate: WindowMetrics): ScoreComponents {
+    fun scoreComparison(
+        baseline: WindowMetrics,
+        candidate: WindowMetrics,
+        weights: ObjectiveWeights = ObjectiveWeightResolver.DEFAULT_WEIGHTS
+    ): ScoreComponents {
+        val appliedWeights = ObjectiveWeightResolver.normalizeOrDefault(weights)
         val fpsGain = normalizedGain(candidate.fpsMean - baseline.fpsMean, baseline.fpsMean)
         val lowFpsGain = normalizedGain(candidate.lowFps - baseline.lowFps, baseline.lowFps)
 
@@ -155,16 +238,36 @@ object AdaptivePolicy {
                 .coerceIn(0.0, 1.0)
         }
 
-        var denominator = Weights.PERFORMANCE + Weights.THERMAL_TIER
-        var numerator = Weights.PERFORMANCE * performanceGain * headroom -
-            Weights.THERMAL_TIER * tierCost
+        var denominator = appliedWeights.performance + appliedWeights.thermalTier
+        var numerator = appliedWeights.performance * performanceGain * headroom -
+            appliedWeights.thermalTier * tierCost
         if (tempCost != null) {
-            denominator += Weights.THERMAL_TEMPERATURE
-            numerator -= Weights.THERMAL_TEMPERATURE * tempCost
+            denominator += appliedWeights.temperature
+            numerator -= appliedWeights.temperature * tempCost
         }
         if (slopeCost != null) {
-            denominator += Weights.THERMAL_SLOPE
-            numerator -= Weights.THERMAL_SLOPE * slopeCost
+            denominator += appliedWeights.thermalSlope
+            numerator -= appliedWeights.thermalSlope * slopeCost
+        }
+        // A valid profile can still put all its mass on unavailable objectives.
+        // Fall back rather than divide by zero or manufacture a score.
+        val finalWeights = if (denominator.isFinite() && denominator > 0.0 && numerator.isFinite()) {
+            appliedWeights
+        } else {
+            ObjectiveWeightResolver.DEFAULT_WEIGHTS
+        }
+        if (finalWeights !== appliedWeights) {
+            denominator = finalWeights.performance + finalWeights.thermalTier
+            numerator = finalWeights.performance * performanceGain * headroom -
+                finalWeights.thermalTier * tierCost
+            if (tempCost != null) {
+                denominator += finalWeights.temperature
+                numerator -= finalWeights.temperature * tempCost
+            }
+            if (slopeCost != null) {
+                denominator += finalWeights.thermalSlope
+                numerator -= finalWeights.thermalSlope * slopeCost
+            }
         }
         val score = (numerator / denominator).coerceIn(-1.0, 1.0)
         return ScoreComponents(
@@ -178,7 +281,8 @@ object AdaptivePolicy {
             thermalSlopeCost = slopeCost,
             thermalTierCost = tierCost,
             thermalHeadroomFactor = headroom,
-            score = score
+            score = score,
+            objectiveWeights = finalWeights
         )
     }
 

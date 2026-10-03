@@ -1,6 +1,9 @@
 package com.nitroboost.app.platform
 
 import com.nitroboost.app.core.ShellResult
+import java.io.InputStream
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import java.util.concurrent.TimeUnit
 
 /**
@@ -18,6 +21,13 @@ import java.util.concurrent.TimeUnit
 object RootShell {
 
     private const val PROBE_TIMEOUT_MS = 4_000L
+    private const val COMMAND_TIMEOUT_MS = 10_000L
+
+    // Drain stdout/stderr concurrently so a full pipe cannot block the command
+    // thread before its process timeout is checked.
+    private val outputReaders = Executors.newCachedThreadPool { runnable ->
+        Thread(runnable, "nitro-root-output").apply { isDaemon = true }
+    }
 
     @Volatile
     private var available: Boolean? = null
@@ -82,20 +92,26 @@ object RootShell {
         val escaped = cmd.replace("'", "'\\''")
         return try {
             val p = Runtime.getRuntime().exec(arrayOf("su", "-c", escaped))
-            val out = p.inputStream.bufferedReader().readText()
-            val err = try {
-                p.errorStream.bufferedReader().readText()
-            } catch (e: Exception) {
-                ""
-            }
+            val outFuture = readAsync(p.inputStream)
+            val errFuture = readAsync(p.errorStream)
             val done = try {
-                p.waitFor(10_000, TimeUnit.MILLISECONDS)
-            } catch (e: Exception) {
-                p.destroy()
+                p.waitFor(COMMAND_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
                 false
             }
             if (!done) {
                 p.destroy()
+                try {
+                    if (!p.waitFor(500, TimeUnit.MILLISECONDS)) p.destroyForcibly()
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    p.destroyForcibly()
+                }
+                closeQuietly(p.inputStream)
+                closeQuietly(p.errorStream)
+                outFuture.cancel(true)
+                errFuture.cancel(true)
                 invalidate()
                 return ShellResult.fail("root_timeout")
             }
@@ -104,11 +120,35 @@ object RootShell {
             } catch (e: Exception) {
                 -1
             }
+            val out = collectOutput(outFuture)
+            val err = collectOutput(errFuture)
             val ok = code == 0
             if (!ok) invalidate()
             ShellResult(ok, code, out, err)
         } catch (e: Exception) {
             ShellResult.fail("root_error: ${e.message}")
+        }
+    }
+
+    private fun readAsync(stream: InputStream): Future<String> = outputReaders.submit<String> {
+        stream.bufferedReader().use { it.readText() }
+    }
+
+    private fun collectOutput(future: Future<String>): String = try {
+        future.get(1_000, TimeUnit.MILLISECONDS)
+    } catch (e: InterruptedException) {
+        Thread.currentThread().interrupt()
+        future.cancel(true)
+        ""
+    } catch (_: Exception) {
+        future.cancel(true)
+        ""
+    }
+
+    private fun closeQuietly(stream: InputStream) {
+        try {
+            stream.close()
+        } catch (_: Exception) {
         }
     }
 

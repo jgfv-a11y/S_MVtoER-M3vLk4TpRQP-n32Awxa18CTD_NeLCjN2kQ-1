@@ -199,11 +199,12 @@ jobs:
             automatically once the signing secrets are configured — see
             `NitroBoost/docs/DISTRIBUTION.md`.
 
-            ## v1.10.0 — adaptive evidence and restoration safety
-            - Paired baseline/candidate comparisons retain per-variant evidence and use Bonferroni family-wise confidence intervals before ranking.
-            - Normalized multi-objective score uses only measured frame-time, memory, or energy data; unavailable metrics are omitted.
-            - Thermal prediction, session-quality gates, contextual local ledger, and explicit MORE_DATA handling.
-            - Task mutations are serialized; incomplete restores remain journaled and are retried before service teardown.
+            ## v1.11.0 — adaptive experiment hardening
+            - Quality-gated paired baseline/candidate windows alternate measurement order; incomplete, stale, unstable, or thermally contaminated blocks add no evidence.
+            - Bounded normalized objective weights and context-bound decisions; unavailable FPS, frame-time, energy, or other metrics are omitted rather than inferred.
+            - Session-lifecycle fixes use UsageEvents instead of last-use timestamps, retry transient adaptive-loop failures, and roll back failed boost starts through the journal.
+            - Privileged shell commands have bounded execution; thermal safety remains higher priority than performance.
+            - Paired interleaving reduces confounding but does not prove identical game workload; no device benchmark claims are made.
             Previous notes: see NitroBoost/CHANGELOG.md and earlier GitHub releases.
           files: ${{ steps.collect.outputs.paths }}
           prerelease: false

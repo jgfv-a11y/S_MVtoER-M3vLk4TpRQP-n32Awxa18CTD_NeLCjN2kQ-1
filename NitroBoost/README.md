@@ -53,15 +53,17 @@
 
 ## Adaptive measurement and scoring
 
-The adaptive engine uses paired baseline/candidate windows. Each 12-second window is quality-gated, then reduced into adjacent three-sample blocks; invalid or incomplete windows are recorded as `MORE_DATA` and add no statistical evidence. The game package, process epoch, thermal tier, monitor freshness, sample counts, and sampling gaps must remain acceptable. A candidate is reverted from the durable Journal after measurement unless a statistically supported `KEEP` is safely re-applied and finalized.
+The adaptive engine measures deterministic paired baseline/candidate blocks using full quality-gated windows, alternating order (`baseline → candidate`, then `candidate → baseline`). Each attempt's order is persisted before measurement; accepted observations retain their order, timestamps, duration, and temporal separation. Incomplete, stale, unstable, thermally contaminated, or otherwise invalid blocks request `MORE_DATA` and add no statistical evidence. The game package, process epoch, thermal tier, monitor freshness, sample counts, sampling gaps, and measured FPS coefficient of variation must pass the existing quality gates. A candidate is reverted from the durable Journal after measurement unless a statistically supported `KEEP` is safely re-applied and finalized.
 
-Each measured sweep arm keeps its own baseline/candidate observations and confidence interval. The engine assesses every arm with a 95% family-wise confidence target using Bonferroni correction (`alpha / numberOfArms`) before ranking any eligible `KEEP` arms. It does not calculate an interval only for the post-hoc winner. Resolved local decisions expire after 30 days and are bound to a local hashed device/capability key, Android/app revision, game/profile, boost level, and coarse thermal-temperature/slope bands.
+Paired interleaving reduces temporal and workload confounding, but it cannot prove that the game executed identical internal workload in both arms. It does not manufacture workload equivalence or claim device benchmark results.
 
-The normalized block score is bounded to `[-1, 1]`:
+Each measured sweep arm keeps its own baseline/candidate observations and confidence interval. The engine assesses every arm with a 95% family-wise confidence target using Bonferroni correction (`alpha / numberOfArms`) before ranking any eligible `KEEP` arms. It does not calculate an interval only for the post-hoc winner. Resolved local decisions expire after 30 days and are bound to a local hashed device/capability key, Android/app revision, game/profile, boost level, coarse thermal-temperature/slope bands, and objective-policy identity/revision.
+
+The normalized block score is bounded to `[-1, 1]`. Weight profiles are explicit and normalized: `balanced-v1` uses performance/temperature/slope/tier weights `0.60/0.15/0.15/0.10`; the declared `thermal-cautious-v1` profile uses `0.50/0.20/0.20/0.10`. The latter is selected only when the verified effective thermal tier is LIGHT or higher and at least eight valid prior pairs exist for the same task/context (for a sweep, for every required arm). This is fixed policy/configuration, not learning from small samples. Invalid, non-finite, negative, out-of-range, or zero-total weight inputs fall back to the balanced defaults; each policy identity is isolated in the ledger/cache.
 
 - Performance gain is the equal-weight mean of normalized average-FPS and lower-tail-FPS gains, plus any available real frame-time stability/hitch, system-memory-pressure, or energy-measurement gains. Each gain is clipped to `[-1, 1]`; an unavailable metric is omitted, never synthesized.
-- Performance contributes `0.60 × gain × thermal-headroom-factor`. The factor is clipped to `[0, 1]` over a six-degree headroom range below the 44 °C raw safety floor.
-- Thermal costs are subtracted: temperature `0.15`, temperature slope `0.15`, and thermal tier `0.10`. Temperature/slope terms are omitted when unavailable; the final score is divided by the sum of the applicable weights.
+- Performance contributes its configured weight times gain and the thermal-headroom factor. The factor is clipped to `[0, 1]` over a six-degree headroom range below the 44 °C raw safety floor.
+- Temperature, temperature-slope, and thermal-tier risks are subtracted using the active normalized profile. Missing temperature/slope metrics are omitted; the score is normalized over only applicable objective weights.
 - A positive result is not enough by itself: the corrected confidence interval must clear the configured useful-effect threshold (`0.015`) and the sample-quality/thermal-safety gates.
 
 Frame times are read only from `dumpsys gfxinfo ... framestats` when exposed by the device. Energy remains absent until a real platform counter is available. No FPS gain, benchmark result, or device measurement is assumed by the model.
@@ -108,13 +110,19 @@ gradle wrapper --gradle-version 8.7   # إذا كان Gradle 8.7 مثبتًا
 
 APK الناتج في `app/build/outputs/apk/debug/`.
 
-> 📲 **APK الإصدار v1.10.0**: [nitroboost-debug.apk](../dist/nitroboost-debug.apk) — يُحدّثه CI بعد نجاح الاختبارات والبناء.
+> 📲 **APK الإصدار v1.11.0**: [nitroboost-debug.apk](../dist/nitroboost-debug.apk) — يُحدّثه CI بعد نجاح الاختبارات والبناء.
 > (أو من صفحة [Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) —
 > يُعاد بناؤه تلقائيًا عبر GitHub Actions عند كل تغيير).
 
 ---
 
 ## 📜 سجل الإصدارات
+
+### v1.11.0 — تقوية التجارب التكيفية
+- **الإصدار 14**: أوزان أهداف معلنة ومطبّعة، وهوية سياسة تمنع خلط الأدلة بين ملفات الأوزان.
+- **قياس زوجي متداخل**: ترتيب حتمي متبادل بين baseline والمرشح، مع حفظ ترتيب المحاولة وبيانات الزمن والجودة؛ النوافذ غير الصالحة لا تضيف دليلًا.
+- **سياسة حرارية معلنة وليست تعلّمًا**: لا تُستخدم إلا مع سياق حراري موثّق وثمانية أزواج صالحة على الأقل لكل ذراع مطلوب.
+- التداخل يقلّل الالتباس الزمني وتغيّر workload لكنه **لا يثبت تطابق workload اللعبة داخليًا**؛ لا ندّعي نتائج benchmark على أجهزة.
 
 ### v1.9.0 — ثبات ملفات Adaptive وإدارة profiles
 - **حفظ ذري لدفتر Adaptive** مع `fsync` قبل الاستبدال، حتى لا تضيع قرارات التجارب عند انقطاع التطبيق.

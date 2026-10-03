@@ -80,6 +80,8 @@ data class TrialConfig(
     val minWindowThermalSamples: Int = 6,
     val maxMonitorAgeMs: Long = 2_500L,
     val maxSamplingGapMs: Long = 3_500L,
+    /** Reject clearly unstable per-window FPS workload variation; measured from actual samples. */
+    val maxFpsCoefficientOfVariation: Double = 0.75,
     val maximumThermalTierDrift: Int = 0,
     val decisionTtlMs: Long = 30L * 24L * 60L * 60L * 1_000L
 )

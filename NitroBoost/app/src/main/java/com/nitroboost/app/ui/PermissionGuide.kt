@@ -7,6 +7,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.appcompat.app.AlertDialog
 import com.nitroboost.app.R
+import com.nitroboost.app.platform.UsageEventPackageTracker
 
 /**
  * Human-friendly checklist of every special permission the app can use.
@@ -74,18 +75,8 @@ object PermissionGuide {
         }
     )
 
-    private fun usageGranted(ctx: Context): Boolean {
-        return try {
-            val usm = ctx.getSystemService(Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
-            val now = System.currentTimeMillis()
-            val stats = usm.queryUsageStats(
-                android.app.usage.UsageStatsManager.INTERVAL_DAILY, now - 24 * 3600 * 1000, now
-            )
-            stats.isNotEmpty()
-        } catch (e: Exception) {
-            false
-        }
-    }
+    private fun usageGranted(ctx: Context): Boolean =
+        UsageEventPackageTracker.hasUsageAccess(ctx)
 
     fun show(ctx: androidx.fragment.app.FragmentActivity) {
         val items = items(ctx)

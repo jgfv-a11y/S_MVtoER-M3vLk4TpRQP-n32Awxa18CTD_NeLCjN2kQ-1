@@ -29,6 +29,7 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.concurrent.Volatile
 import kotlin.math.ceil
 import kotlin.math.min
+import kotlin.math.sqrt
 
 /** A fresh, aligned observation copied from one monitor snapshot. */
 data class AdaptiveSample(
@@ -114,6 +115,10 @@ class AdaptiveLoop(
         val SWEEP_LEVELS = listOf("0.9", "0.8", "0.7")
         val GOVERNOR_VARIANTS = listOf("performance", "schedutil")
         const val THERMAL_REGRESSION_TIERS = 1
+        /** Two synchronized pairs per trial with opposite deterministic measurement order. */
+        const val PAIR_BLOCKS_PER_TRIAL = 2
+        /** Legacy constant retained for source compatibility; blocks are now full quality-gated windows. */
+        @Deprecated("Adaptive pairs now use full quality-gated windows")
         const val BLOCK_SAMPLE_COUNT = 3
         const val MIN_BLOCK_PAIRS_PER_WINDOW = 2
         const val DEFAULT_VARIANT_ID = "default"
@@ -188,7 +193,27 @@ class AdaptiveLoop(
     private suspend fun loop(token: Long) {
         try {
             while (running && currentCoroutineContext().isActive && token == generation) {
-                step()
+                try {
+                    step()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // A transient context/monitor/ledger failure must not kill
+                    // the adaptive engine for the rest of the boost session.
+                    // The candidate's own trial path restores in finally; if
+                    // failure occurred before that path began, make it eligible
+                    // again after the backoff rather than silently skipping it.
+                    candidateId?.let(attemptedThisSession::remove)
+                    candidateId = null
+                    pausedReason = null
+                    phase = "more-data"
+                    log(
+                        "adaptive step failed; retrying after ${IDLE_RETRY_MS}ms: " +
+                            (e.message ?: e.javaClass.simpleName)
+                    )
+                    wait(IDLE_RETRY_MS)
+                    continue
+                }
                 when {
                     phase == "done" -> return
                     phase == "more-data" -> wait(IDLE_RETRY_MS)
@@ -223,9 +248,10 @@ class AdaptiveLoop(
         val ctx = context()
         val task = nextCandidate(ctx)
         if (task == null) {
-            val trialContext = makeTrialContext(ctx, effectiveThermal())
+            val thermalTier = effectiveThermal()
             val now = wallClockMs()
             val eligibleUnresolved = engine.tasks().any { t ->
+                val trialContext = objectivePolicyFor(t.id, ctx, thermalTier).context
                 t.module in TRIAL_MODULES && t.requiresPrivilege && ctx.profile.isEnabled(t) &&
                     withinLevel(t) && !ledger.isResolved(
                         t.id, trialContext, now, cfg.decisionTtlMs
@@ -239,6 +265,7 @@ class AdaptiveLoop(
         attemptedThisSession += task.id
         phase = "trial:${task.id}"
         runTrial(task, ctx)
+        candidateId = null
     }
 
     fun pauseReason(): String? {
@@ -253,8 +280,8 @@ class AdaptiveLoop(
     fun nextCandidate(ctx: BoostContext): BoostTask? {
         val now = wallClockMs()
         val contextTier = effectiveThermal()
-        val trialContext = makeTrialContext(ctx, contextTier)
         return engine.tasks().firstOrNull { task ->
+            val trialContext = objectivePolicyFor(task.id, ctx, contextTier).context
             task.id !in attemptedThisSession &&
                 task.module in TRIAL_MODULES &&
                 task.requiresPrivilege &&
@@ -265,18 +292,20 @@ class AdaptiveLoop(
     }
 
     fun estimateRemainingMinutes(ctx: BoostContext): Int {
-        val trialContext = makeTrialContext(ctx, effectiveThermal())
+        val thermalTier = effectiveThermal()
         val now = wallClockMs()
         val pending = engine.tasks().filter { task ->
+            val trialContext = objectivePolicyFor(task.id, ctx, thermalTier).context
             task.id !in attemptedThisSession && task.module in TRIAL_MODULES &&
                 task.requiresPrivilege && ctx.profile.isEnabled(task) && withinLevel(task) &&
                 !ledger.isResolved(task.id, trialContext, now, cfg.decisionTtlMs)
         }
-        val windowsPerArm = 2L * (cfg.windowMs + cfg.settleMs)
+        // Each paired block has two full windows and up to three settle periods
+        // (before A/B transitions and before the next block).
+        val perPairMs = 2L * cfg.windowMs.coerceAtLeast(0L) +
+            3L * cfg.settleMs.coerceAtLeast(0L)
         val totalMs = pending.sumOf { task ->
-            val variants = if (task.id == "game_api_downscale") SWEEP_LEVELS.size
-                else if (task.id == "cpu_governor") GOVERNOR_VARIANTS.size else 1
-            variants * windowsPerArm + cfg.settleMs
+            expectedVariantIds(task.id).size.toLong() * PAIR_BLOCKS_PER_TRIAL * perPairMs + cfg.settleMs
         }
         return ((totalMs + 59_999L) / 60_000L).toInt().coerceAtLeast(if (pending.isNotEmpty()) 1 else 0)
     }
@@ -322,6 +351,12 @@ class AdaptiveLoop(
     ): WindowMetrics {
         val fps = samples.mapNotNull { it.fps?.takeIf { v -> v > 0 }?.toDouble() }
         val sortedFps = fps.sorted()
+        val fpsMean = sortedFps.takeIf { it.isNotEmpty() }?.average()
+        val fpsCoefficientOfVariation = if (sortedFps.size >= 2 && fpsMean != null && fpsMean > 0.0) {
+            val variance = sortedFps.sumOf { (it - fpsMean) * (it - fpsMean) } /
+                (sortedFps.size - 1)
+            sqrt(variance) / fpsMean
+        } else null
         val thermalSamples = samples.filter { it.thermalValid }
         val tiers = thermalSamples.map { it.thermal }
         val temperatures = samples.mapNotNull { it.tempC?.takeIf { v -> v.isFinite() } }
@@ -335,7 +370,7 @@ class AdaptiveLoop(
         val targetFps = samples.map { it.targetFps }.firstOrNull { it > 0 } ?: 60
         val frameTimes = samples.flatMap { it.frameTimesMs }
         return WindowMetrics(
-            fpsMean = if (sortedFps.isEmpty()) Double.NaN else sortedFps.average(),
+            fpsMean = fpsMean ?: Double.NaN,
             lowFps = if (sortedFps.isEmpty()) Double.NaN else percentile(sortedFps, 0.10),
             fpsSampleCount = sortedFps.size,
             sampleCount = samples.size,
@@ -357,7 +392,8 @@ class AdaptiveLoop(
             maxMonitorAgeMs = samples.maxOfOrNull { it.monitorAgeMs.coerceAtLeast(0L) } ?: Long.MAX_VALUE,
             gamePackage = packages.singleOrNull(),
             processEpoch = epochs.singleOrNull() ?: -1L,
-            targetFps = targetFps
+            targetFps = targetFps,
+            fpsCoefficientOfVariation = fpsCoefficientOfVariation
         )
     }
 
@@ -368,14 +404,153 @@ class AdaptiveLoop(
         trialContextFactory(ctx, thermalTier).copy(
             gamePackage = ctx.profile.packageName,
             boostLevel = maxLevel(),
-            thermalTier = thermalTier
+            thermalTier = thermalTier,
+            objectivePolicyRevision = TrialContext.OBJECTIVE_POLICY_REVISION,
+            objectivePolicyKey = TrialContext.DEFAULT_OBJECTIVE_POLICY_KEY
         )
+
+    private data class ObjectivePolicySelection(
+        val context: TrialContext,
+        val weights: ObjectiveWeights
+    )
+
+    internal fun trialContextForTask(taskId: String, ctx: BoostContext, thermalTier: Int): TrialContext =
+        objectivePolicyFor(taskId, ctx, thermalTier).context
+
+    private fun objectivePolicyFor(taskId: String, ctx: BoostContext, thermalTier: Int): ObjectivePolicySelection {
+        val baseContext = makeTrialContext(ctx, thermalTier)
+        val expectedVariants = expectedVariantIds(taskId)
+        val perVariantEvidence = ledger.validObservationCounts(taskId, baseContext)
+        val priorPairs = expectedVariants.map { perVariantEvidence[it] ?: 0 }.minOrNull() ?: 0
+        val resolved = ObjectiveWeightResolver.resolve(
+            context = baseContext,
+            priorValidPairs = priorPairs,
+            minEvidencePairs = maxOf(cfg.minPairs, ObjectiveWeightResolver.MIN_CONTEXT_EVIDENCE_PAIRS)
+        )
+        return ObjectivePolicySelection(
+            baseContext.copy(objectivePolicyKey = resolved.profileId),
+            resolved.weights
+        )
+    }
+
+    private fun expectedVariantIds(taskId: String): List<String> = when (taskId) {
+        "game_api_downscale" -> SWEEP_LEVELS.map { "level=$it" }
+        "cpu_governor" -> GOVERNOR_VARIANTS.map { "governor=$it" }
+        else -> listOf(DEFAULT_VARIANT_ID)
+    }
 
     private fun sessionQuality(
         base: WindowMetrics,
         candidate: WindowMetrics,
         gamePackage: String
     ): QualityResult = SessionQualityGate.compare(base, candidate, gamePackage, cfg)
+
+    private data class PairBlockResult(
+        val observation: PairObservation? = null,
+        val reason: String? = null
+    ) {
+        val accepted: Boolean get() = observation != null && reason == null
+    }
+
+    private fun validateCollectedWindow(
+        collected: CollectedWindow,
+        expectedContext: TrialContext
+    ): Pair<WindowMetrics?, String?> {
+        val window = summarize(collected.samples, collected.complete, cfg.windowMs)
+        val quality = if (collected.abortedReason != null) {
+            QualityResult.reject(collected.abortedReason)
+        } else SessionQualityGate.validateWindow(window, expectedContext.gamePackage, cfg)
+        if (!quality.accepted) return null to quality.reason
+        if (window.thermalTier != expectedContext.thermalTier) {
+            return null to "thermal context changed during paired block"
+        }
+        return window to null
+    }
+
+    private fun thermalAbortReason(): String? {
+        val status = effectiveThermal()
+        return if (status >= ThermalGuard.STATUS_MODERATE) {
+            "thermal safety floor reached ($status)"
+        } else null
+    }
+
+    /** One synchronized block pair. Every arm window passes the existing quality gate. */
+    private suspend fun collectPairedBlock(
+        taskId: String,
+        title: String,
+        variantId: String,
+        applyVariant: () -> TaskResult,
+        attempt: PairAttempt,
+        trialContext: TrialContext,
+        weights: ObjectiveWeights,
+        ctx: BoostContext
+    ): PairBlockResult {
+        if (!revertTask(taskId, ctx)) return PairBlockResult(reason = "baseline restore failed before paired block")
+        wait(cfg.settleMs.coerceAtLeast(0L))
+        thermalAbortReason()?.let { return PairBlockResult(reason = it) }
+
+        var baseline: WindowMetrics? = null
+        var candidate: WindowMetrics? = null
+        if (attempt.order == PairOrder.BASELINE_THEN_CANDIDATE) {
+            val baseResult = validateCollectedWindow(collectWindow(cfg.windowMs), trialContext)
+            baseline = baseResult.first
+            if (baseline == null) return PairBlockResult(reason = baseResult.second)
+            thermalAbortReason()?.let { return PairBlockResult(reason = it) }
+            val applied = applyAndJournal(taskId, title, ctx, applyVariant)
+            if (!isSafelyApplied(applied)) {
+                return PairBlockResult(reason = "candidate not safely applicable (${applied.detail})")
+            }
+            wait(cfg.settleMs.coerceAtLeast(0L))
+            val candidateResult = validateCollectedWindow(collectWindow(cfg.windowMs), trialContext)
+            candidate = candidateResult.first
+            if (candidate == null) return PairBlockResult(reason = candidateResult.second)
+        } else if (attempt.order == PairOrder.CANDIDATE_THEN_BASELINE) {
+            thermalAbortReason()?.let { return PairBlockResult(reason = it) }
+            val applied = applyAndJournal(taskId, title, ctx, applyVariant)
+            if (!isSafelyApplied(applied)) {
+                return PairBlockResult(reason = "candidate not safely applicable (${applied.detail})")
+            }
+            wait(cfg.settleMs.coerceAtLeast(0L))
+            val candidateResult = validateCollectedWindow(collectWindow(cfg.windowMs), trialContext)
+            candidate = candidateResult.first
+            if (candidate == null) return PairBlockResult(reason = candidateResult.second)
+            if (!revertTask(taskId, ctx)) {
+                return PairBlockResult(reason = "candidate restore failed between paired arms")
+            }
+            wait(cfg.settleMs.coerceAtLeast(0L))
+            val baseResult = validateCollectedWindow(collectWindow(cfg.windowMs), trialContext)
+            baseline = baseResult.first
+            if (baseline == null) return PairBlockResult(reason = baseResult.second)
+        } else {
+            return PairBlockResult(reason = "unsupported legacy measurement order")
+        }
+
+        val base = baseline ?: return PairBlockResult(reason = "baseline window unavailable")
+        val arm = candidate ?: return PairBlockResult(reason = "candidate window unavailable")
+        val quality = sessionQuality(base, arm, trialContext.gamePackage)
+        if (!quality.accepted) return PairBlockResult(reason = quality.reason)
+        val score = AdaptivePolicy.scoreComparison(base, arm, weights)
+        if (!score.score.isFinite()) return PairBlockResult(reason = "objective score invalid")
+        val baseMidpoint = base.firstTimestampMs + (base.lastTimestampMs - base.firstTimestampMs) / 2L
+        val candidateMidpoint = arm.firstTimestampMs + (arm.lastTimestampMs - arm.firstTimestampMs) / 2L
+        val firstTimestamp = minOf(base.firstTimestampMs, arm.firstTimestampMs)
+        val lastTimestamp = maxOf(base.lastTimestampMs, arm.lastTimestampMs)
+        val observation = PairObservation(
+            sampleId = "$activeSessionId|$taskId|$variantId|${attempt.blockIndex}",
+            sessionId = activeSessionId,
+            observedAtMs = wallClockMs(),
+            baseline = base,
+            candidate = arm,
+            score = score,
+            blockIndex = attempt.blockIndex,
+            order = attempt.order,
+            temporalDistanceMs = kotlin.math.abs(candidateMidpoint - baseMidpoint),
+            blockDurationMs = (lastTimestamp - firstTimestamp).coerceAtLeast(0L),
+            qualityValid = true,
+            invalidReason = null
+        )
+        return PairBlockResult(observation = observation)
+    }
 
     /** Package-visible for deterministic JVM lifecycle tests; production calls this from the loop. */
     internal suspend fun runTrial(task: BoostTask, ctx: BoostContext) {
@@ -397,92 +572,152 @@ class AdaptiveLoop(
     }
 
     private suspend fun runSingle(task: BoostTask, ctx: BoostContext) {
-        var trialContext = makeTrialContext(ctx, effectiveThermal())
+        val policy = objectivePolicyFor(task.id, ctx, effectiveThermal())
+        val trialContext = policy.context
         var keepApplied = false
         try {
-            if (!revertTask(task.id, ctx)) {
-                ledger.markMoreData(task.id, task.titleEn, trialContext,
-                    "baseline restore failed; comparison rejected", wallClockMs(), DEFAULT_VARIANT_ID)
+            val observations = ArrayList<PairObservation>(PAIR_BLOCKS_PER_TRIAL)
+            var invalidReason: String? = null
+            for (blockOrdinal in 0 until PAIR_BLOCKS_PER_TRIAL) {
+                currentCoroutineContext().ensureActive()
+                val attempt = ledger.beginPairAttempt(
+                    taskId = task.id,
+                    taskTitle = task.titleEn,
+                    variantId = DEFAULT_VARIANT_ID,
+                    detail = DEFAULT_VARIANT_ID,
+                    comparisonCount = 1,
+                    context = trialContext,
+                    nowMs = wallClockMs()
+                )
+                if (attempt == null) {
+                    invalidReason = "could not persist paired-block order"
+                    ledger.markMoreData(
+                        task.id, task.titleEn, trialContext, invalidReason!!,
+                        wallClockMs(), DEFAULT_VARIANT_ID, DEFAULT_VARIANT_ID
+                    )
+                    break
+                }
+                val result = collectPairedBlock(
+                    taskId = task.id,
+                    title = task.titleEn,
+                    variantId = DEFAULT_VARIANT_ID,
+                    applyVariant = { task.apply(ctx) },
+                    attempt = attempt,
+                    trialContext = trialContext,
+                    weights = policy.weights,
+                    ctx = ctx
+                )
+                if (!result.accepted) {
+                    invalidReason = result.reason ?: "paired block rejected"
+                    ledger.markMoreData(
+                        task.id, task.titleEn, trialContext, invalidReason!!,
+                        wallClockMs(), DEFAULT_VARIANT_ID, DEFAULT_VARIANT_ID
+                    )
+                    log("adaptive ${task.id} pair ${blockOrdinal + 1}/$PAIR_BLOCKS_PER_TRIAL index=${attempt.blockIndex} ${attempt.order}: MORE_DATA ($invalidReason)")
+                    break
+                }
+                result.observation?.let(observations::add)
+                log("adaptive ${task.id} pair ${blockOrdinal + 1}/$PAIR_BLOCKS_PER_TRIAL index=${attempt.blockIndex} ${attempt.order}: block accepted")
+            }
+
+            val priorObservations = ledger.entries[task.id]
+                ?.takeIf { it.context == trialContext }
+                ?.variants?.get(DEFAULT_VARIANT_ID)?.observations.orEmpty()
+            val safetyLimit = thermalSafetyLimit(priorObservations + observations, policy.weights)
+            val variant = if (observations.isNotEmpty()) {
+                ledger.recordVariant(
+                    taskId = task.id,
+                    taskTitle = task.titleEn,
+                    variantId = DEFAULT_VARIANT_ID,
+                    detail = DEFAULT_VARIANT_ID,
+                    newObservations = observations,
+                    comparisonCount = 1,
+                    context = trialContext,
+                    nowMs = wallClockMs(),
+                    cfg = cfg,
+                    safetyLimit = safetyLimit
+                )
+            } else null
+
+            if (invalidReason != null) return
+            if (variant == null) {
+                ledger.markMoreData(
+                    task.id, task.titleEn, trialContext,
+                    "no valid synchronized blocks", wallClockMs(), DEFAULT_VARIANT_ID
+                )
                 return
             }
-            wait(cfg.settleMs.coerceAtLeast(0L))
-            val baselineWindow = collectWindow(cfg.windowMs)
-            val baseline = summarize(baselineWindow.samples, baselineWindow.complete, cfg.windowMs)
-            trialContext = makeTrialContext(ctx, baseline.thermalTier)
-            val baseQuality = if (baselineWindow.abortedReason != null) {
-                QualityResult.reject(baselineWindow.abortedReason)
-            } else SessionQualityGate.validateWindow(baseline, ctx.profile.packageName, cfg)
-            if (!baseQuality.accepted) {
-                ledger.markMoreData(task.id, task.titleEn, trialContext, baseQuality.reason,
-                    wallClockMs(), DEFAULT_VARIANT_ID)
-                log("adaptive ${task.id}: MORE_DATA (${baseQuality.reason})")
+            if (variant.decision != Decision.KEEP) {
+                if (!revertTask(task.id, ctx)) {
+                    ledger.markMoreData(
+                        task.id, task.titleEn, trialContext,
+                        "restore failed after paired measurement", wallClockMs(), DEFAULT_VARIANT_ID
+                    )
+                    return
+                }
+                val final = ledger.finalizeSingle(
+                    task.id, task.titleEn, DEFAULT_VARIANT_ID, trialContext, wallClockMs()
+                )
+                log("adaptive ${task.id}: ${final.decision} score=${final.score} pairs=${final.pairs}")
                 return
             }
 
+            // A statistically supported KEEP is still subject to the hard thermal guard.
+            thermalAbortReason()?.let { reason ->
+                ledger.markMoreData(task.id, task.titleEn, trialContext, reason, wallClockMs(), DEFAULT_VARIANT_ID)
+                return
+            }
+            if (!revertTask(task.id, ctx)) {
+                ledger.markMoreData(
+                    task.id, task.titleEn, trialContext,
+                    "baseline restore failed before KEEP re-apply", wallClockMs(), DEFAULT_VARIANT_ID
+                )
+                return
+            }
             val applyResult = applyAndJournal(task.id, task.titleEn, ctx) { task.apply(ctx) }
-            if (!applyResult.status.success || applyResult.entries.isEmpty()) {
-                ledger.markMoreData(task.id, task.titleEn, trialContext,
-                    "candidate not safely applicable (${applyResult.detail})", wallClockMs(), DEFAULT_VARIANT_ID)
-                log("adaptive ${task.id}: candidate not measurable (${applyResult.detail})")
+            if (!isSafelyApplied(applyResult)) {
+                ledger.markMoreData(
+                    task.id, task.titleEn, trialContext,
+                    "measured KEEP could not be re-applied safely (${applyResult.detail})",
+                    wallClockMs(), DEFAULT_VARIANT_ID
+                )
                 return
             }
             wait(cfg.settleMs.coerceAtLeast(0L))
-            val candidateWindow = collectWindow(cfg.windowMs)
-            val candidate = summarize(candidateWindow.samples, candidateWindow.complete, cfg.windowMs)
-            val quality = if (candidateWindow.abortedReason != null) {
-                QualityResult.reject(candidateWindow.abortedReason)
-            } else sessionQuality(baseline, candidate, ctx.profile.packageName)
-            if (!quality.accepted) {
-                ledger.markMoreData(task.id, task.titleEn, trialContext, quality.reason,
-                    wallClockMs(), DEFAULT_VARIANT_ID)
-                log("adaptive ${task.id}: MORE_DATA (${quality.reason})")
-                return
-            }
-            val observations = pairedObservations(
-                task.id, DEFAULT_VARIANT_ID, baselineWindow.samples, candidateWindow.samples,
-                baseline, candidate
-            )
-            if (observations.size < MIN_BLOCK_PAIRS_PER_WINDOW) {
-                ledger.markMoreData(task.id, task.titleEn, trialContext,
-                    "not enough synchronized blocks", wallClockMs(), DEFAULT_VARIANT_ID)
-                return
-            }
-            val safetyLimit = thermalSafetyLimit(observations)
-            val variant = ledger.recordVariant(
-                taskId = task.id,
-                taskTitle = task.titleEn,
-                variantId = DEFAULT_VARIANT_ID,
-                detail = DEFAULT_VARIANT_ID,
-                newObservations = observations,
-                comparisonCount = 1,
-                context = trialContext,
-                nowMs = wallClockMs(),
-                cfg = cfg,
-                safetyLimit = safetyLimit
-            )
-            if (variant.decision != Decision.KEEP && !revertTask(task.id, ctx)) {
-                ledger.markMoreData(task.id, task.titleEn, trialContext,
-                    "restore failed after candidate measurement", wallClockMs(), DEFAULT_VARIANT_ID)
+            thermalAbortReason()?.let { reason ->
+                ledger.markMoreData(task.id, task.titleEn, trialContext, reason, wallClockMs(), DEFAULT_VARIANT_ID)
                 return
             }
             val final = ledger.finalizeSingle(
                 task.id, task.titleEn, DEFAULT_VARIANT_ID, trialContext, wallClockMs()
             )
             keepApplied = final.decision == Decision.KEEP
+            if (!keepApplied) {
+                ledger.markMoreData(
+                    task.id, task.titleEn, trialContext,
+                    "final objective verdict changed before commit", wallClockMs(), DEFAULT_VARIANT_ID
+                )
+            }
             log("adaptive ${task.id}: ${final.decision} score=${final.score} pairs=${final.pairs}")
         } catch (e: CancellationException) {
-            ledger.markMoreData(task.id, task.titleEn, trialContext,
-                "adaptive session cancelled", wallClockMs(), DEFAULT_VARIANT_ID)
+            ledger.markMoreData(
+                task.id, task.titleEn, trialContext,
+                "adaptive session cancelled", wallClockMs(), DEFAULT_VARIANT_ID
+            )
             throw e
         } catch (e: Exception) {
-            ledger.markMoreData(task.id, task.titleEn, trialContext,
-                "candidate exception: ${e.message ?: e.javaClass.simpleName}", wallClockMs(), DEFAULT_VARIANT_ID)
+            ledger.markMoreData(
+                task.id, task.titleEn, trialContext,
+                "candidate exception: ${e.message ?: e.javaClass.simpleName}", wallClockMs(), DEFAULT_VARIANT_ID
+            )
             log("adaptive ${task.id}: candidate exception: ${e.message}")
         } finally {
             if (!keepApplied) withContext(NonCancellable) {
                 if (!revertTask(task.id, ctx)) {
-                    ledger.markMoreData(task.id, task.titleEn, trialContext,
-                        "restore failed; journal retained for retry", wallClockMs(), DEFAULT_VARIANT_ID)
+                    ledger.markMoreData(
+                        task.id, task.titleEn, trialContext,
+                        "restore failed; journal retained for retry", wallClockMs(), DEFAULT_VARIANT_ID
+                    )
                     log("adaptive ${task.id}: restore failed; journal retained")
                 }
             }
@@ -491,124 +726,153 @@ class AdaptiveLoop(
 
     private suspend fun runVariantSweep(task: BoostTask, ctx: BoostContext, variants: List<Variant>) {
         if (variants.isEmpty()) return
-        var trialContext = makeTrialContext(ctx, effectiveThermal())
+        val policy = objectivePolicyFor(task.id, ctx, effectiveThermal())
+        val trialContext = policy.context
         var keepApplied = false
         var allPairsQualityChecked = true
         var testedCount = 0
         try {
             for (variant in variants) {
                 currentCoroutineContext().ensureActive()
-                val previouslyResolved = ledger.entries[task.id]
-                    ?.takeIf { it.context == trialContext }
-                    ?.variants?.get(variant.detail)?.decision?.resolved == true
+                val previousValidPairs = ledger.validObservationCounts(task.id, trialContext)
+                    .getOrDefault(variant.detail, 0)
+                val previouslyResolved = previousValidPairs >= cfg.minPairs &&
+                    ledger.entries[task.id]?.takeIf { it.context == trialContext }
+                        ?.variants?.get(variant.detail)?.decision?.resolved == true
                 if (previouslyResolved) {
                     testedCount++
                     continue
                 }
-                if (!revertTask(task.id, ctx)) {
-                    allPairsQualityChecked = false
-                    ledger.markMoreData(task.id, task.titleEn, trialContext,
-                        "restore failed before variant ${variant.detail}", wallClockMs(), variant.detail)
-                    break
-                }
-                wait(cfg.settleMs.coerceAtLeast(0L))
-                val baselineWindow = collectWindow(cfg.windowMs)
-                val baseline = summarize(baselineWindow.samples, baselineWindow.complete, cfg.windowMs)
-                val baseQuality = if (baselineWindow.abortedReason != null) {
-                    QualityResult.reject(baselineWindow.abortedReason)
-                } else SessionQualityGate.validateWindow(baseline, ctx.profile.packageName, cfg)
-                if (!baseQuality.accepted) {
-                    allPairsQualityChecked = false
-                    trialContext = makeTrialContext(ctx, baseline.thermalTier)
-                    ledger.markMoreData(task.id, task.titleEn, trialContext,
-                        baseQuality.reason, wallClockMs(), variant.detail)
-                    log("adaptive sweep ${task.id}/${variant.detail}: MORE_DATA (${baseQuality.reason})")
-                    break
-                }
-                val thisContext = makeTrialContext(ctx, baseline.thermalTier)
-                if (testedCount > 0 && thisContext != trialContext) {
-                    allPairsQualityChecked = false
-                    ledger.markMoreData(task.id, task.titleEn, trialContext,
-                        "thermal/device context changed between variants", wallClockMs(), variant.detail)
-                    break
-                }
-                trialContext = thisContext
 
-                val applyResult = applyAndJournal(task.id, task.titleEn, ctx) { variant.apply(ctx) }
-                if (!applyResult.status.success || applyResult.entries.isEmpty()) {
+                val observations = ArrayList<PairObservation>(PAIR_BLOCKS_PER_TRIAL)
+                var invalidReason: String? = null
+                for (blockOrdinal in 0 until PAIR_BLOCKS_PER_TRIAL) {
+                    currentCoroutineContext().ensureActive()
+                    val attempt = ledger.beginPairAttempt(
+                        taskId = task.id,
+                        taskTitle = task.titleEn,
+                        variantId = variant.detail,
+                        detail = variant.detail,
+                        comparisonCount = variants.size,
+                        context = trialContext,
+                        nowMs = wallClockMs()
+                    )
+                    if (attempt == null) {
+                        invalidReason = "could not persist paired-block order"
+                        ledger.markMoreData(
+                            task.id, task.titleEn, trialContext, invalidReason!!,
+                            wallClockMs(), variant.detail, variant.detail
+                        )
+                        break
+                    }
+                    val result = collectPairedBlock(
+                        taskId = task.id,
+                        title = task.titleEn,
+                        variantId = variant.detail,
+                        applyVariant = { variant.apply(ctx) },
+                        attempt = attempt,
+                        trialContext = trialContext,
+                        weights = policy.weights,
+                        ctx = ctx
+                    )
+                    if (!result.accepted) {
+                        invalidReason = result.reason ?: "paired block rejected"
+                        ledger.markMoreData(
+                            task.id, task.titleEn, trialContext, invalidReason!!,
+                            wallClockMs(), variant.detail, variant.detail
+                        )
+                        log("adaptive sweep ${task.id}/${variant.detail} pair ${blockOrdinal + 1}/$PAIR_BLOCKS_PER_TRIAL index=${attempt.blockIndex} ${attempt.order}: MORE_DATA ($invalidReason)")
+                        break
+                    }
+                    result.observation?.let(observations::add)
+                    log("adaptive sweep ${task.id}/${variant.detail} pair ${blockOrdinal + 1}/$PAIR_BLOCKS_PER_TRIAL index=${attempt.blockIndex} ${attempt.order}: block accepted")
+                }
+
+                if (observations.isNotEmpty()) {
+                    ledger.recordVariant(
+                        taskId = task.id,
+                        taskTitle = task.titleEn,
+                        variantId = variant.detail,
+                        detail = variant.detail,
+                        newObservations = observations,
+                        comparisonCount = variants.size,
+                        context = trialContext,
+                        nowMs = wallClockMs(),
+                        cfg = cfg,
+                        safetyLimit = thermalSafetyLimit(
+                            ledger.entries[task.id]?.takeIf { it.context == trialContext }
+                                ?.variants?.get(variant.detail)?.observations.orEmpty() + observations,
+                            policy.weights
+                        )
+                    )
+                }
+                if (invalidReason != null || observations.size < PAIR_BLOCKS_PER_TRIAL) {
                     allPairsQualityChecked = false
-                    ledger.markMoreData(task.id, task.titleEn, trialContext,
-                        "variant not safely applicable (${applyResult.detail})", wallClockMs(), variant.detail)
+                    if (invalidReason == null) {
+                        ledger.markMoreData(
+                            task.id, task.titleEn, trialContext,
+                            "not enough valid synchronized blocks for ${variant.detail}",
+                            wallClockMs(), variant.detail, variant.detail
+                        )
+                    }
                     break
                 }
-                wait(cfg.settleMs.coerceAtLeast(0L))
-                val candidateWindow = collectWindow(cfg.windowMs)
-                val candidate = summarize(candidateWindow.samples, candidateWindow.complete, cfg.windowMs)
-                val quality = if (candidateWindow.abortedReason != null) {
-                    QualityResult.reject(candidateWindow.abortedReason)
-                } else sessionQuality(baseline, candidate, ctx.profile.packageName)
-                if (!quality.accepted) {
-                    allPairsQualityChecked = false
-                    ledger.markMoreData(task.id, task.titleEn, trialContext,
-                        quality.reason, wallClockMs(), variant.detail)
-                    log("adaptive sweep ${task.id}/${variant.detail}: MORE_DATA (${quality.reason})")
-                    break
-                }
-                val observations = pairedObservations(
-                    task.id, variant.detail, baselineWindow.samples, candidateWindow.samples,
-                    baseline, candidate
-                )
-                if (observations.size < MIN_BLOCK_PAIRS_PER_WINDOW) {
-                    allPairsQualityChecked = false
-                    ledger.markMoreData(task.id, task.titleEn, trialContext,
-                        "not enough synchronized blocks", wallClockMs(), variant.detail)
-                    break
-                }
-                ledger.recordVariant(
-                    taskId = task.id,
-                    taskTitle = task.titleEn,
-                    variantId = variant.detail,
-                    detail = variant.detail,
-                    newObservations = observations,
-                    comparisonCount = variants.size,
-                    context = trialContext,
-                    nowMs = wallClockMs(),
-                    cfg = cfg,
-                    safetyLimit = thermalSafetyLimit(observations)
-                )
                 testedCount++
-                if (!revertTask(task.id, ctx)) {
-                    allPairsQualityChecked = false
-                    ledger.markMoreData(task.id, task.titleEn, trialContext,
-                        "restore failed after variant ${variant.detail}", wallClockMs(), variant.detail)
-                    break
-                }
             }
 
             if (testedCount != variants.size) allPairsQualityChecked = false
             val current = ledger.entries[task.id]?.takeIf { it.context == trialContext }
             val armRecords = variants.mapNotNull { current?.variants?.get(it.detail) }
-            val allResolved = armRecords.size == variants.size && armRecords.all { it.decision.resolved }
-            val provisionalWinner = if (allResolved) {
+            val validCounts = ledger.validObservationCounts(task.id, trialContext)
+            val allResolved = armRecords.size == variants.size && armRecords.all { arm ->
+                arm.decision.resolved && (validCounts[arm.variantId] ?: 0) >= cfg.minPairs
+            }
+            val provisionalWinner = if (allPairsQualityChecked && allResolved) {
                 armRecords.filter { it.decision == Decision.KEEP }
                     .maxByOrNull { it.meanScore ?: Double.NEGATIVE_INFINITY }
             } else null
 
             if (allPairsQualityChecked && allResolved && provisionalWinner != null) {
                 val selected = variants.firstOrNull { it.detail == provisionalWinner.variantId }
-                val appliedWinner = selected?.let {
-                    applyAndJournal(task.id, task.titleEn, ctx) { it.apply(ctx) }
-                }
-                if (appliedWinner == null || !appliedWinner.status.success || appliedWinner.entries.isEmpty()) {
+                val thermalReason = thermalAbortReason()
+                if (thermalReason != null) {
                     allPairsQualityChecked = false
-                    ledger.markMoreData(task.id, task.titleEn, trialContext,
-                        "selected variant failed to re-apply safely", wallClockMs(), provisionalWinner.variantId)
-                } else {
-                    val final = ledger.finalizeSweep(
-                        task.id, task.titleEn, variants.map { it.detail }, trialContext,
-                        wallClockMs(), completeSweep = true
+                    ledger.markMoreData(task.id, task.titleEn, trialContext, thermalReason, wallClockMs())
+                } else if (!revertTask(task.id, ctx)) {
+                    allPairsQualityChecked = false
+                    ledger.markMoreData(
+                        task.id, task.titleEn, trialContext,
+                        "baseline restore failed before winner re-apply", wallClockMs(),
+                        provisionalWinner.variantId, provisionalWinner.detail
                     )
-                    keepApplied = final.decision == Decision.KEEP
+                } else {
+                    val appliedWinner = selected?.let { variant ->
+                        applyAndJournal(task.id, task.titleEn, ctx) { variant.apply(ctx) }
+                    }
+                    if (appliedWinner == null || !isSafelyApplied(appliedWinner)) {
+                        allPairsQualityChecked = false
+                        ledger.markMoreData(
+                            task.id, task.titleEn, trialContext,
+                            "selected variant failed to re-apply safely", wallClockMs(),
+                            provisionalWinner.variantId, provisionalWinner.detail
+                        )
+                    } else {
+                        wait(cfg.settleMs.coerceAtLeast(0L))
+                        val postApplyThermal = thermalAbortReason()
+                        if (postApplyThermal != null) {
+                            allPairsQualityChecked = false
+                            ledger.markMoreData(
+                                task.id, task.titleEn, trialContext, postApplyThermal, wallClockMs(),
+                                provisionalWinner.variantId, provisionalWinner.detail
+                            )
+                        } else {
+                            val final = ledger.finalizeSweep(
+                                task.id, task.titleEn, variants.map { it.detail }, trialContext,
+                                wallClockMs(), completeSweep = true
+                            )
+                            keepApplied = final.decision == Decision.KEEP
+                        }
+                    }
                 }
             }
             if (!keepApplied) {
@@ -638,6 +902,9 @@ class AdaptiveLoop(
         }
     }
 
+    private fun isSafelyApplied(result: TaskResult): Boolean =
+        result.status.success && (result.entries.isNotEmpty() || result.status == TaskStatus.NoChange)
+
     private fun applyAndJournal(
         taskId: String,
         title: String,
@@ -662,54 +929,22 @@ class AdaptiveLoop(
         }
     }
 
-    private fun pairedObservations(
-        taskId: String,
-        variantId: String,
-        baselineSamples: List<AdaptiveSample>,
-        candidateSamples: List<AdaptiveSample>,
-        baseline: WindowMetrics,
-        candidate: WindowMetrics
-    ): List<PairObservation> {
-        // Matching blocks avoids treating each autocorrelated 1Hz tick as an
-        // independent experiment. Full windows are quality-gated above.
-        val common = min(baselineSamples.size, candidateSamples.size)
-        val blockCount = common / BLOCK_SAMPLE_COUNT
-        if (blockCount < MIN_BLOCK_PAIRS_PER_WINDOW) return emptyList()
-        val observations = ArrayList<PairObservation>(blockCount)
-        for (block in 0 until blockCount) {
-            val start = block * BLOCK_SAMPLE_COUNT
-            val end = start + BLOCK_SAMPLE_COUNT
-            val baseBlock = summarize(
-                baselineSamples.subList(start, end), complete = true, requestedWindowMs = 0L
-            )
-            val candidateBlock = summarize(
-                candidateSamples.subList(start, end), complete = true, requestedWindowMs = 0L
-            )
-            if (baseBlock.fpsSampleCount == 0 || candidateBlock.fpsSampleCount == 0 ||
-                baseBlock.thermalSampleCount == 0 || candidateBlock.thermalSampleCount == 0
-            ) continue
-            val comparison = AdaptivePolicy.scoreComparison(baseBlock, candidateBlock)
-            observations += PairObservation(
-                sampleId = "$activeSessionId|$taskId|$variantId|$block",
-                sessionId = activeSessionId,
-                observedAtMs = wallClockMs(),
-                baseline = baseBlock,
-                candidate = candidateBlock,
-                score = comparison
-            )
-        }
-        return observations
-    }
-
     /** Thermal risks may downgrade statistical KEEP, never upgrade MORE_DATA/DROP. */
-    private fun thermalSafetyLimit(observations: List<PairObservation>): Decision? {
-        if (observations.isEmpty()) return null
-        val rises = observations.mapNotNull { observation ->
+    private fun thermalSafetyLimit(
+        observations: List<PairObservation>,
+        weights: ObjectiveWeights
+    ): Decision? {
+        val validObservations = observations.filter {
+            it.qualityValid && it.invalidReason == null && it.score.score.isFinite() &&
+                it.score.objectiveWeights == weights
+        }
+        if (validObservations.isEmpty()) return null
+        val rises = validObservations.mapNotNull { observation ->
             val b = observation.baseline.tempMaxC ?: observation.baseline.tempMeanC
             val c = observation.candidate.tempMaxC ?: observation.candidate.tempMeanC
             if (b == null || c == null) null else c - b
         }
-        val slopeIncreases = observations.mapNotNull { observation ->
+        val slopeIncreases = validObservations.mapNotNull { observation ->
             val b = observation.baseline.thermalSlopeCPerMin
             val c = observation.candidate.thermalSlopeCPerMin
             if (b == null || c == null) null else c - b

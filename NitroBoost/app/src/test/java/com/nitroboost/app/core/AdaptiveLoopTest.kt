@@ -17,6 +17,10 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.concurrent.Volatile
 
 class AdaptiveLoopTest {
@@ -114,6 +118,41 @@ class AdaptiveLoopTest {
         loop.stop()
         assertEquals("idle", loop.phase)
         assertEquals(false, loop.isRunning)
+    }
+
+    @Test fun `transient step exception is retried instead of stopping the adaptive loop`() {
+        val executor = FakeExecutor().also { it.privileged = true }
+        val profile = testProfile(Module.CPU, Module.GPU, Module.TWEAKS, Module.NETWORK)
+        val ledger = DecisionLedger(tempFile("retry-ledger"), 40).also { it.load() }
+        val contextCalls = AtomicInteger()
+        val recovered = CountDownLatch(1)
+        val logs = CopyOnWriteArrayList<String>()
+        val context = {
+            if (contextCalls.incrementAndGet() == 1) {
+                throw IllegalStateException("temporary context failure")
+            }
+            recovered.countDown()
+            BoostContext(profile, executor, Journal(tempFile("retry-journal")))
+        }
+        val loop = AdaptiveLoop(
+            engine = BoostEngine(AllTasks.tasks),
+            context = context,
+            ledger = ledger,
+            sampler = StubSampler(),
+            cfg = TrialConfig(windowMs = 0L, settleMs = 0L),
+            effectiveThermal = { 0 },
+            log = { line -> logs.add(line) },
+            wait = { Thread.yield() }
+        )
+
+        loop.start()
+        try {
+            assertTrue("the loop should retry the failed context", recovered.await(3, TimeUnit.SECONDS))
+            assertTrue(logs.any { it.contains("adaptive step failed; retrying") })
+            assertTrue(loop.isRunning)
+        } finally {
+            loop.stopAndJoinBlocking()
+        }
     }
 
     @Test fun `sweep levels are legal AOSP ratios, mildest first`() {

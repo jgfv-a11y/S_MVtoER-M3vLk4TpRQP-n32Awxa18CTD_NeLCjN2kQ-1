@@ -9,6 +9,10 @@ import com.nitroboost.app.core.adaptive.DecisionLedger
 import com.nitroboost.app.core.adaptive.FrameMetrics
 import com.nitroboost.app.core.adaptive.FrameTimeMetrics
 import com.nitroboost.app.core.adaptive.LedgerEntry
+import com.nitroboost.app.core.adaptive.ObjectiveWeightResolver
+import com.nitroboost.app.core.adaptive.ObjectiveWeightProfile
+import com.nitroboost.app.core.adaptive.ObjectiveWeights
+import com.nitroboost.app.core.adaptive.PairOrder
 import com.nitroboost.app.core.adaptive.PairObservation
 import com.nitroboost.app.core.adaptive.ScoreComponents
 import com.nitroboost.app.core.adaptive.SessionQualityGate
@@ -24,6 +28,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.json.JSONArray
 import java.io.File
 
 class AdaptiveEngineV2Test {
@@ -42,6 +47,7 @@ class AdaptiveEngineV2Test {
         tier: Int = 0,
         ram: Double? = 50.0,
         frameTime: FrameTimeMetrics? = null,
+        fpsCv: Double? = 0.0,
         sampleCount: Int = 12,
         fpsSampleCount: Int = 8,
         thermalSamples: Int = 12,
@@ -73,7 +79,8 @@ class AdaptiveEngineV2Test {
         maxMonitorAgeMs = maxAge,
         gamePackage = gamePackage,
         processEpoch = processEpoch,
-        targetFps = 60
+        targetFps = 60,
+        fpsCoefficientOfVariation = fpsCv
     )
 
     private fun score(value: Double) = ScoreComponents(
@@ -103,7 +110,12 @@ class AdaptiveEngineV2Test {
         observedAtMs = 10_000L + index,
         baseline = baseline,
         candidate = candidate,
-        score = score(score)
+        score = score(score),
+        blockIndex = index,
+        order = if (index % 2 == 0) PairOrder.BASELINE_THEN_CANDIDATE
+            else PairOrder.CANDIDATE_THEN_BASELINE,
+        temporalDistanceMs = 14_000L,
+        blockDurationMs = 25_000L
     )
 
     private fun context(
@@ -145,6 +157,108 @@ class AdaptiveEngineV2Test {
         assertTrue(result.frameStabilityGain!! > 0.0)
         assertTrue(result.hitchGain!! > 0.0)
         assertEquals(null, AdaptivePolicy.scoreComparison(metrics(), metrics()).frameStabilityGain)
+    }
+
+    @Test fun `measured frame stability and hitch improvements affect score but missing data stays omitted`() {
+        val baselineFrames = FrameTimeMetrics(100, 30.0, 40.0, 60.0, 100.0, 10, 0.10, 33.3)
+        val improvedFrames = FrameTimeMetrics(100, 25.0, 30.0, 40.0, 20.0, 2, 0.02, 33.3)
+        val fpsOnly = AdaptivePolicy.scoreComparison(
+            metrics(fps = 60.0, lowFps = 45.0),
+            metrics(fps = 60.0, lowFps = 45.0)
+        )
+        val measured = AdaptivePolicy.scoreComparison(
+            metrics(fps = 60.0, lowFps = 45.0, frameTime = baselineFrames),
+            metrics(fps = 60.0, lowFps = 45.0, frameTime = improvedFrames)
+        )
+        assertEquals(null, fpsOnly.frameStabilityGain)
+        assertEquals(null, fpsOnly.hitchGain)
+        assertTrue(measured.frameStabilityGain!! > 0.0)
+        assertTrue(measured.hitchGain!! > 0.0)
+        assertTrue("real hitch/stability gains must influence the composite", measured.score > fpsOnly.score)
+    }
+
+    @Test fun `objective weights normalize and invalid values fall back safely`() {
+        val normalized = ObjectiveWeightResolver.normalize(ObjectiveWeights(0.2, 0.1, 0.1, 0.1))!!
+        assertEquals(0.4, normalized.performance, 1e-12)
+        assertEquals(0.2, normalized.temperature, 1e-12)
+        assertEquals(1.0, normalized.performance + normalized.temperature +
+            normalized.thermalSlope + normalized.thermalTier, 1e-12)
+
+        val invalid = listOf(
+            ObjectiveWeights(-0.1, 0.5, 0.3, 0.3),
+            ObjectiveWeights(Double.NaN, 0.0, 0.0, 0.0),
+            ObjectiveWeights(Double.POSITIVE_INFINITY, 0.0, 0.0, 0.0),
+            ObjectiveWeights(0.0, 0.0, 0.0, 0.0),
+            ObjectiveWeights(1.01, 0.0, 0.0, 0.0)
+        )
+        invalid.forEach { values ->
+            assertEquals(null, ObjectiveWeightResolver.normalize(values))
+            assertEquals(ObjectiveWeightResolver.DEFAULT_WEIGHTS,
+                ObjectiveWeightResolver.normalizeOrDefault(values))
+        }
+        assertEquals(ObjectiveWeightResolver.DEFAULT_WEIGHTS,
+            AdaptivePolicy.scoreComparison(metrics(), metrics(), invalid.first()).objectiveWeights)
+        val unavailableObjective = ObjectiveWeights(0.0, 1.0, 0.0, 0.0)
+        assertEquals(ObjectiveWeightResolver.DEFAULT_WEIGHTS,
+            AdaptivePolicy.scoreComparison(
+                metrics(temp = null, slope = null), metrics(temp = null, slope = null), unavailableObjective
+            ).objectiveWeights
+        )
+    }
+
+    @Test fun `context objective policy is declared and requires enough valid support`() {
+        val default = ObjectiveWeightResolver.resolve(context(tier = 1), priorValidPairs = 7)
+        val thermal = ObjectiveWeightResolver.resolve(context(tier = 1), priorValidPairs = 8)
+        val cool = ObjectiveWeightResolver.resolve(context(tier = 0), priorValidPairs = 80)
+        val invalidConfig = ObjectiveWeightResolver.resolve(
+            context(tier = 1), priorValidPairs = 80, minEvidencePairs = 0
+        )
+        assertEquals("balanced-v1", default.profileId)
+        assertEquals(ObjectiveWeightResolver.DEFAULT_WEIGHTS, default.weights)
+        assertEquals("thermal-cautious-v1", thermal.profileId)
+        assertEquals(ObjectiveWeights(0.50, 0.20, 0.20, 0.10), thermal.weights)
+        assertEquals("balanced-v1", cool.profileId)
+        assertEquals("balanced-v1", invalidConfig.profileId)
+
+        val conflictingIds = ObjectiveWeightResolver.resolve(
+            context(tier = 1), priorValidPairs = 80,
+            thermalProfile = ObjectiveWeightProfile("balanced-v1", ObjectiveWeights(0.5, 0.2, 0.2, 0.1))
+        )
+        assertEquals("balanced-v1", conflictingIds.profileId)
+        assertEquals(ObjectiveWeightResolver.DEFAULT_WEIGHTS, conflictingIds.weights)
+    }
+
+    @Test fun `loop switches only to its declared thermal policy after enough valid context-matched evidence`() {
+        val task = MutationTask()
+        val fixture = fixture(task, FakeExecutor().apply { sysfs[PATH] = "0" })
+        val defaultContext = fixture.loop.trialContextForTask(task.id, fixture.ctx, 1)
+        assertEquals(TrialContext.DEFAULT_OBJECTIVE_POLICY_KEY, defaultContext.objectivePolicyKey)
+
+        fixture.ledger.recordVariant(
+            task.id, task.titleEn, AdaptiveLoop.DEFAULT_VARIANT_ID, AdaptiveLoop.DEFAULT_VARIANT_ID,
+            List(8) { observation(AdaptiveLoop.DEFAULT_VARIANT_ID, "prior-session", it, 0.05) },
+            comparisonCount = 1, context = defaultContext, nowMs = 100_000L, cfg = baseConfig
+        )
+
+        val selected = fixture.loop.trialContextForTask(task.id, fixture.ctx, 1)
+        assertEquals("thermal-cautious-v1", selected.objectivePolicyKey)
+        assertFalse(defaultContext == selected)
+        assertEquals(TrialContext.OBJECTIVE_POLICY_REVISION, selected.objectivePolicyRevision)
+    }
+
+    @Test fun `FPS variability must be present finite and below the configured gate`() {
+        assertFalse(SessionQualityGate.validateWindow(metrics(fpsCv = null), gamePackage, baseConfig).accepted)
+        assertFalse(SessionQualityGate.validateWindow(metrics(fpsCv = Double.NaN), gamePackage, baseConfig).accepted)
+        assertFalse(SessionQualityGate.validateWindow(metrics(fpsCv = 0.76), gamePackage, baseConfig).accepted)
+        assertTrue(SessionQualityGate.validateWindow(metrics(fpsCv = 0.75), gamePackage, baseConfig).accepted)
+    }
+
+    @Test fun `paired window temporal separation is quality gated`() {
+        val baseline = metrics()
+        val candidate = metrics().copy(firstTimestampMs = 100_000L, lastTimestampMs = 112_000L)
+        val result = SessionQualityGate.compare(baseline, candidate, gamePackage, baseConfig)
+        assertFalse(result.accepted)
+        assertEquals("paired windows are too far apart", result.reason)
     }
 
     @Test fun `significant composite improvement is kept`() {
@@ -238,6 +352,55 @@ class AdaptiveEngineV2Test {
         assertEquals("0", f.readSys(PATH))
         assertTrue(fixture.ctx.journal.isEmpty())
         assertEquals(Decision.MORE_DATA, fixture.ledger.decisionFor(task.id))
+        val attempt = fixture.ledger.entries[task.id]!!.variants[AdaptiveLoop.DEFAULT_VARIANT_ID]!!
+        assertEquals(1, attempt.attemptCount)
+        assertEquals(PairOrder.BASELINE_THEN_CANDIDATE, attempt.lastAttemptOrder)
+        assertEquals("adaptive session cancelled", attempt.lastInvalidReason)
+    }
+
+    @Test fun `paired trial alternates order and records block timing without retaining an insufficient candidate`() = runBlocking {
+        val executor = FakeExecutor().apply { sysfs[PATH] = "0" }
+        val task = MutationTask()
+        val fixture = fixture(task, executor)
+
+        fixture.loop.runTrial(task, fixture.ctx)
+
+        val entry = fixture.ledger.entries[task.id]!!
+        val observations = entry.variants[AdaptiveLoop.DEFAULT_VARIANT_ID]!!.observations
+        assertEquals(2, observations.size)
+        assertEquals(
+            listOf(PairOrder.BASELINE_THEN_CANDIDATE, PairOrder.CANDIDATE_THEN_BASELINE),
+            observations.map { it.order }
+        )
+        assertEquals(listOf(0, 1), observations.map { it.blockIndex })
+        assertTrue(observations.all { it.qualityValid && it.invalidReason == null })
+        assertTrue(observations.all { it.temporalDistanceMs in 1L..16_000L })
+        assertTrue(observations.all { it.blockDurationMs >= 12_000L })
+        assertTrue(observations.all { it.baseline.fpsMean == 60.0 && it.candidate.fpsMean == 66.0 })
+        assertEquals(Decision.MORE_DATA, entry.decision)
+        assertEquals("0", executor.readSys(PATH))
+        assertTrue(fixture.ctx.journal.isEmpty())
+    }
+
+    @Test fun `variant sweep uses paired opposite orders and keeps independent evidence for each arm`() = runBlocking {
+        val executor = FakeExecutor().apply { sysfs[GOVERNOR_PATH] = "schedutil" }
+        val task = GovernorSweepDispatchTask()
+        val fixture = fixture(task, executor)
+
+        fixture.loop.runTrial(task, fixture.ctx)
+
+        val entry = fixture.ledger.entries[task.id]!!
+        val expectedOrder = listOf(PairOrder.BASELINE_THEN_CANDIDATE, PairOrder.CANDIDATE_THEN_BASELINE)
+        for (governor in AdaptiveLoop.GOVERNOR_VARIANTS) {
+            val observations = entry.variants["governor=$governor"]!!.observations
+            assertEquals(2, observations.size)
+            assertEquals(expectedOrder, observations.map { it.order })
+            assertTrue(observations.all { it.qualityValid && it.invalidReason == null })
+            assertTrue(observations.all { it.temporalDistanceMs <= 16_000L })
+        }
+        assertEquals(Decision.MORE_DATA, entry.decision)
+        assertEquals("schedutil", executor.readSys(GOVERNOR_PATH))
+        assertTrue(fixture.ctx.journal.isEmpty())
     }
 
     @Test fun `exception during candidate restores any already journaled partial change`() = runBlocking {
@@ -287,8 +450,97 @@ class AdaptiveEngineV2Test {
         assertEquals(currentContext, entry.context)
         assertEquals(8, arm.observations.size)
         assertEquals(0.1, arm.observations.first().score.score, 1e-9)
+        assertEquals(samples.first().order, arm.observations.first().order)
+        assertEquals(samples.first().temporalDistanceMs, arm.observations.first().temporalDistanceMs)
+        assertEquals(ObjectiveWeightResolver.DEFAULT_WEIGHTS, arm.observations.first().score.objectiveWeights)
         assertEquals(3, arm.comparisonCount)
         assertNotNull(arm.observations.first().baseline.tempMeanC)
+    }
+
+    @Test fun `pair attempt alternation survives a ledger reload before measurement`() {
+        val file = tempFile("pair-order")
+        val context = context()
+        val ledger = DecisionLedger(file)
+        val first = ledger.beginPairAttempt("task", "Task", "default", "default", 1, context, 1_000L)!!
+        val second = ledger.beginPairAttempt("task", "Task", "default", "default", 1, context, 2_000L)!!
+        val reloaded = DecisionLedger(file).also { it.load() }
+        val third = reloaded.beginPairAttempt("task", "Task", "default", "default", 1, context, 3_000L)!!
+
+        assertEquals(listOf(0, 1, 2), listOf(first.blockIndex, second.blockIndex, third.blockIndex))
+        assertEquals(
+            listOf(PairOrder.BASELINE_THEN_CANDIDATE, PairOrder.CANDIDATE_THEN_BASELINE,
+                PairOrder.BASELINE_THEN_CANDIDATE),
+            listOf(first.order, second.order, third.order)
+        )
+        assertEquals(3, reloaded.entries["task"]!!.variants["default"]!!.attemptCount)
+    }
+
+    @Test fun `invalid and non-finite paired observations do not enter arm evidence`() {
+        val ledger = DecisionLedger(tempFile("invalid-pair"))
+        val valid = observation("a", "session", 0, 0.1)
+        val validSecond = observation("a", "session", 1, 0.1)
+        val nonFinite = valid.copy(sampleId = "non-finite", score = score(Double.NaN))
+        val contaminated = valid.copy(sampleId = "contaminated", qualityValid = false)
+        val wrongPolicy = valid.copy(
+            sampleId = "wrong-policy",
+            score = valid.score.copy(objectiveWeights = ObjectiveWeightResolver.THERMAL_CONTEXT_PROFILE.weights)
+        )
+        ledger.recordVariant(
+            "task", "Task", "a", "A", listOf(valid, validSecond, nonFinite, contaminated, wrongPolicy),
+            comparisonCount = 1, context = context(), nowMs = 21_000L, cfg = baseConfig
+        )
+        val arm = ledger.entries["task"]!!.variants["a"]!!
+        assertEquals(2, arm.observations.size)
+        assertEquals(2, arm.observations.count { it.qualityValid && it.score.score.isFinite() })
+        assertEquals(0.1, arm.meanScore!!, 1e-9)
+        assertEquals(2, ledger.validObservationCounts("task", context())["a"])
+    }
+
+    @Test fun `v1.10 ledger observations load with explicit safe legacy defaults`() {
+        val file = tempFile("legacy-objective")
+        val oldShape = DecisionLedger(file)
+        val currentContext = context()
+        oldShape.recordVariant(
+            "legacy", "Legacy", "a", "A",
+            List(8) { observation("a", "legacy-session", it, 0.1) },
+            comparisonCount = 1, context = currentContext, nowMs = 20_000L, cfg = baseConfig
+        )
+
+        val entry = JSONArray(file.readText()).getJSONObject(0)
+        val contextJson = entry.getJSONObject("context")
+        contextJson.remove("objectivePolicyRevision")
+        contextJson.remove("objectivePolicyKey")
+        val variantJson = entry.getJSONObject("variants").getJSONObject("a")
+        variantJson.remove("attemptCount")
+        variantJson.remove("lastAttemptIndex")
+        variantJson.remove("lastAttemptOrder")
+        variantJson.remove("lastAttemptAtMs")
+        variantJson.remove("lastInvalidReason")
+        val oldObservations = variantJson.getJSONArray("observations")
+        for (i in 0 until oldObservations.length()) {
+            val observation = oldObservations.getJSONObject(i)
+            observation.remove("blockIndex")
+            observation.remove("order")
+            observation.remove("temporalDistanceMs")
+            observation.remove("blockDurationMs")
+            observation.remove("qualityValid")
+            observation.remove("invalidReason")
+            observation.getJSONObject("score").remove("objectiveWeights")
+            observation.getJSONObject("baseline").remove("fpsCoefficientOfVariation")
+            observation.getJSONObject("candidate").remove("fpsCoefficientOfVariation")
+        }
+        file.writeText(JSONArray().put(entry).toString())
+
+        val loaded = DecisionLedger(file).also { it.load() }
+        val loadedEntry = loaded.entries["legacy"]!!
+        val legacyContext = loadedEntry.context!!
+        val oldObservation = loadedEntry.variants["a"]!!.observations.first()
+        assertEquals(0, legacyContext.objectivePolicyRevision)
+        assertEquals(TrialContext.LEGACY_OBJECTIVE_POLICY_KEY, legacyContext.objectivePolicyKey)
+        assertEquals(PairOrder.LEGACY_SEQUENTIAL, oldObservation.order)
+        assertEquals(null, oldObservation.baseline.fpsCoefficientOfVariation)
+        assertEquals(ObjectiveWeightResolver.DEFAULT_WEIGHTS, oldObservation.score.objectiveWeights)
+        assertFalse(loaded.isCurrent(loadedEntry, currentContext, 20_001L, 60_000L))
     }
 
     @Test fun `cache context and expiry invalidate old decisions`() {
@@ -296,11 +548,12 @@ class AdaptiveEngineV2Test {
         val ledger = DecisionLedger(file)
         val now = System.currentTimeMillis()
         val current = context()
-        ledger.entries["task"] = LedgerEntry(
-            taskId = "task", taskTitle = "Task", decision = Decision.KEEP,
-            deltas = emptyList(), meanDelta = 1.0, ciLow = 0.5, ciHigh = 1.5,
-            pairs = 8, sessions = 1, evaluatedAt = now, context = current
+        ledger.recordVariant(
+            "task", "Task", "default", "default",
+            List(8) { observation("default", "session", it, 0.1) },
+            comparisonCount = 1, context = current, nowMs = now, cfg = baseConfig
         )
+        ledger.finalizeSingle("task", "Task", "default", current, now)
         assertTrue(ledger.isResolved("task", current, now, 60_000L))
         assertFalse(ledger.isResolved("task", context(game = "com.other.game"), now, 60_000L))
         assertFalse(ledger.isResolved("task", context(android = "36:16"), now, 60_000L))
@@ -379,6 +632,19 @@ class AdaptiveEngineV2Test {
         pairs = 0, sessions = 0, evaluatedAt = at, context = context()
     )
 
+    private class GovernorSweepDispatchTask : BoostTask {
+        override val id = "cpu_governor"
+        override val titleAr = "اختبار"
+        override val titleEn = "Governor sweep test"
+        override val descAr = ""
+        override val descEn = ""
+        override val module = Module.CPU
+        override val requiresPrivilege = true
+        override fun isSupported(ctx: BoostContext) = true
+        override fun isApplied(ctx: BoostContext) = false
+        override fun apply(ctx: BoostContext) = TaskResult(id, TaskStatus.NoChange)
+    }
+
     private class MutationTask(
         private val throwAfterSelfJournal: Boolean = false
     ) : BoostTask {
@@ -412,7 +678,7 @@ class AdaptiveEngineV2Test {
         private val executor: SystemExecutor
     ) : AdaptiveSampler {
         override fun poll(): AdaptiveSample = AdaptiveSample(
-            fps = if (executor.readSys(PATH) == "1") 66 else 60,
+            fps = if (executor.readSys(PATH) == "1" || executor.readSys(GOVERNOR_PATH) == "performance") 66 else 60,
             thermal = 0,
             timestampMs = now(),
             tempC = 37.0,
@@ -474,5 +740,6 @@ class AdaptiveEngineV2Test {
 
     companion object {
         private const val PATH = "/sys/test/adaptive_node"
+        private const val GOVERNOR_PATH = "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"
     }
 }

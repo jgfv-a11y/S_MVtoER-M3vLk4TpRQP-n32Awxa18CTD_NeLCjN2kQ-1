@@ -120,17 +120,24 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
     ): VariantTrialRecord {
         val previousTask = entries[taskId]?.takeIf { it.context == context }
         val previousVariant = previousTask?.variants?.get(variantId)
-        val seenIds = previousVariant?.observations?.mapTo(HashSet()) { it.sampleId } ?: hashSetOf()
-        val fresh = newObservations.filter { it.sampleId !in seenIds }
-        val observations = ((previousVariant?.observations ?: emptyList()) + fresh)
-            .takeLast(maxPairs.coerceAtLeast(1))
+        val priorValidObservations = (previousVariant?.observations ?: emptyList())
+            .filter { isValidObservation(context, it) }
+        val seenIds = priorValidObservations.mapTo(HashSet()) { it.sampleId }
+        val fresh = newObservations.filter {
+            isValidObservation(context, it) && it.sampleId !in seenIds
+        }
+        val observations = (priorValidObservations + fresh).takeLast(maxPairs.coerceAtLeast(1))
+        val validObservations = observations
         val assessed = AdaptivePolicy.assessScores(
-            observations.map { it.score.score }, cfg, comparisonCount.coerceAtLeast(1)
+            validObservations.map { it.score.score }, cfg, comparisonCount.coerceAtLeast(1)
         )
         val finalDecision = applySafetyLimit(assessed.decision, safetyLimit)
         val reason = if (finalDecision != assessed.decision) {
             safetyReason(safetyLimit)
         } else assessed.reason
+        val latestObservation = observations.maxByOrNull { it.blockIndex }
+        val previousAttemptIsNewer = (previousVariant?.lastAttemptIndex ?: -1) >
+            (latestObservation?.blockIndex ?: -1)
         val record = VariantTrialRecord(
             variantId = variantId,
             detail = detail,
@@ -141,14 +148,25 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
             ciHigh = assessed.ciHigh,
             confidenceLevel = assessed.confidenceLevel ?: AdaptivePolicy.FAMILY_WISE_CONFIDENCE,
             comparisonCount = comparisonCount.coerceAtLeast(1),
-            sessions = observations.map { it.sessionId }.distinct().size,
+            sessions = validObservations.map { it.sessionId }.distinct().size,
             evaluatedAt = nowMs,
-            reason = reason
+            reason = reason,
+            attemptCount = maxOf(
+                previousVariant?.attemptCount ?: 0,
+                observations.maxOfOrNull { it.blockIndex + 1 } ?: 0
+            ),
+            lastAttemptIndex = maxOf(previousVariant?.lastAttemptIndex ?: -1, latestObservation?.blockIndex ?: -1),
+            lastAttemptOrder = if (previousAttemptIsNewer) previousVariant?.lastAttemptOrder
+                else latestObservation?.order ?: previousVariant?.lastAttemptOrder,
+            lastAttemptAtMs = if (previousAttemptIsNewer) previousVariant?.lastAttemptAtMs ?: nowMs else nowMs,
+            lastInvalidReason = if (previousAttemptIsNewer) previousVariant?.lastInvalidReason else null
         )
         val variants = previousTask?.variants?.toMutableMap() ?: linkedMapOf()
         variants[variantId] = record
         val previousPreview = variants.values
-            .filter { it.meanScore != null }
+            .filter { arm -> arm.meanScore?.isFinite() == true &&
+                arm.observations.any { isValidObservation(context, it) }
+            }
             .maxByOrNull { it.meanScore ?: Double.NEGATIVE_INFINITY }
         val preview = previousPreview ?: record
         entries[taskId] = LedgerEntry(
@@ -157,14 +175,19 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
             // A sweep is unresolved until every arm has corrected evidence and
             // the selected arm has actually been restored/applied safely.
             decision = Decision.MORE_DATA,
-            deltas = preview.observations.map { it.candidate.fpsMean - it.baseline.fpsMean },
-            meanDelta = preview.observations.takeIf { it.isNotEmpty() }?.map {
-                it.candidate.fpsMean - it.baseline.fpsMean
-            }?.average(),
+            deltas = preview.observations.filter { isValidObservation(context, it) }
+                .map { it.candidate.fpsMean - it.baseline.fpsMean },
+            meanDelta = preview.observations
+                .filter { isValidObservation(context, it) }
+                .takeIf { it.isNotEmpty() }?.map {
+                    it.candidate.fpsMean - it.baseline.fpsMean
+                }?.average(),
             ciLow = preview.ciLow,
             ciHigh = preview.ciHigh,
-            pairs = preview.observations.size,
-            sessions = variants.values.sumOf { it.sessions },
+            pairs = preview.observations.count { isValidObservation(context, it) },
+            sessions = variants.values.sumOf { arm -> arm.observations.filter {
+                isValidObservation(context, it)
+            }.map { it.sessionId }.distinct().size },
             evaluatedAt = nowMs,
             detail = previousTask?.detail,
             context = context,
@@ -176,6 +199,90 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
         )
         save()
         return record
+    }
+
+    /**
+     * Persist a deterministic alternating order before touching the candidate.
+     * Counting attempts (including later-invalid blocks) prevents retries from
+     * always starting with baseline after an interrupted/contaminated pair.
+     */
+    @Synchronized
+    fun beginPairAttempt(
+        taskId: String,
+        taskTitle: String,
+        variantId: String,
+        detail: String,
+        comparisonCount: Int,
+        context: TrialContext,
+        nowMs: Long
+    ): PairAttempt? {
+        val previousTask = entries[taskId]?.takeIf { it.context == context }
+        val variants = previousTask?.variants?.toMutableMap() ?: linkedMapOf()
+        val previousVariant = variants[variantId]
+        val index = maxOf(
+            previousVariant?.attemptCount ?: 0,
+            (previousVariant?.observations?.maxOfOrNull { it.blockIndex + 1 } ?: 0)
+        )
+        val order = if (index % 2 == 0) PairOrder.BASELINE_THEN_CANDIDATE
+            else PairOrder.CANDIDATE_THEN_BASELINE
+        val attempt = PairAttempt(index, order, nowMs)
+        val placeholder = previousVariant ?: VariantTrialRecord(
+            variantId = variantId,
+            detail = detail,
+            observations = emptyList(),
+            decision = Decision.MORE_DATA,
+            meanScore = null,
+            ciLow = null,
+            ciHigh = null,
+            confidenceLevel = AdaptivePolicy.FAMILY_WISE_CONFIDENCE,
+            comparisonCount = comparisonCount.coerceAtLeast(1),
+            sessions = 0,
+            evaluatedAt = nowMs,
+            reason = "paired block pending"
+        )
+        variants[variantId] = placeholder.copy(
+            detail = detail,
+            decision = Decision.MORE_DATA,
+            comparisonCount = comparisonCount.coerceAtLeast(1),
+            evaluatedAt = nowMs,
+            reason = "paired block pending",
+            attemptCount = index + 1,
+            lastAttemptIndex = index,
+            lastAttemptOrder = order,
+            lastAttemptAtMs = nowMs,
+            lastInvalidReason = null
+        )
+        val task = (previousTask ?: emptyEntry(taskId, taskTitle, context, nowMs)).copy(
+            decision = Decision.MORE_DATA,
+            evaluatedAt = nowMs,
+            context = context,
+            reason = "paired block in progress",
+            variants = variants
+        )
+        entries[taskId] = task
+        return attempt.takeIf { save() }
+    }
+
+    /** Valid prior pairs for context-policy qualification; old objective revisions never qualify. */
+    @Synchronized
+    fun validObservationCounts(taskId: String, context: TrialContext): Map<String, Int> {
+        val entry = entries[taskId] ?: return emptyMap()
+        val storedContext = entry.context ?: return emptyMap()
+        if (storedContext.objectivePolicyRevision != context.objectivePolicyRevision ||
+            storedContext.copy(objectivePolicyKey = context.objectivePolicyKey) != context
+        ) return emptyMap()
+        return entry.variants.mapValues { (_, variant) ->
+            variant.observations.count { isValidObservation(storedContext, it) }
+        }
+    }
+
+    private fun isValidObservation(context: TrialContext, observation: PairObservation): Boolean {
+        val expectedWeights = ObjectiveWeightResolver.weightsForProfile(context.objectivePolicyKey)
+            ?: return false
+        return observation.qualityValid && observation.invalidReason == null &&
+            observation.order != PairOrder.LEGACY_SEQUENTIAL && observation.blockIndex >= 0 &&
+            observation.temporalDistanceMs > 0L && observation.blockDurationMs > 0L &&
+            observation.score.score.isFinite() && observation.score.objectiveWeights == expectedWeights
     }
 
     /** Mark a failed/invalid session as unresolved without adding bad evidence. */
@@ -197,10 +304,19 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
                 VariantTrialRecord(
                     variantId, detail ?: variantId, emptyList(), Decision.MORE_DATA,
                     null, null, null, AdaptivePolicy.FAMILY_WISE_CONFIDENCE,
-                    maxOf(1, variants.size), 0, nowMs, reason
+                    maxOf(1, variants.size), 0, nowMs, reason,
+                    attemptCount = 0,
+                    lastAttemptIndex = -1,
+                    lastAttemptAtMs = nowMs,
+                    lastInvalidReason = reason
                 )
             } else {
-                old.copy(decision = Decision.MORE_DATA, evaluatedAt = nowMs, reason = reason)
+                old.copy(
+                    decision = Decision.MORE_DATA,
+                    evaluatedAt = nowMs,
+                    reason = reason,
+                    lastInvalidReason = reason
+                )
             }
         }
         val entry = (previous ?: emptyEntry(taskId, taskTitle, context, nowMs)).copy(
@@ -230,17 +346,18 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
             ?: return markMoreData(taskId, taskTitle, context, "no matching measured variant", nowMs, variantId)
         val variant = previous.variants[variantId]
             ?: return markMoreData(taskId, taskTitle, context, "no matching measured variant", nowMs, variantId)
+        val validObservations = variant.observations.filter { isValidObservation(context, it) }
         val entry = previous.copy(
             taskTitle = taskTitle.ifEmpty { taskId },
-            decision = variant.decision,
-            deltas = variant.observations.map { it.candidate.fpsMean - it.baseline.fpsMean },
-            meanDelta = variant.observations.takeIf { it.isNotEmpty() }?.map {
+            decision = if (validObservations.size >= 2) variant.decision else Decision.MORE_DATA,
+            deltas = validObservations.map { it.candidate.fpsMean - it.baseline.fpsMean },
+            meanDelta = validObservations.takeIf { it.isNotEmpty() }?.map {
                 it.candidate.fpsMean - it.baseline.fpsMean
             }?.average(),
-            ciLow = variant.ciLow,
-            ciHigh = variant.ciHigh,
-            pairs = variant.observations.size,
-            sessions = variant.sessions,
+            ciLow = variant.ciLow.takeIf { validObservations.size >= 2 },
+            ciHigh = variant.ciHigh.takeIf { validObservations.size >= 2 },
+            pairs = validObservations.size,
+            sessions = validObservations.map { it.sessionId }.distinct().size,
             evaluatedAt = nowMs,
             detail = detail ?: variant.detail,
             score = variant.meanScore,
@@ -272,7 +389,9 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
         val arms = expectedVariantIds.mapNotNull(previous.variants::get)
         val allPresent = arms.size == expectedVariantIds.size &&
             arms.all { it.comparisonCount == expectedVariantIds.size }
-        val allResolved = arms.size == expectedVariantIds.size && arms.all { it.decision.resolved }
+        val allResolved = arms.size == expectedVariantIds.size && arms.all { arm ->
+            arm.decision.resolved && arm.observations.count { isValidObservation(context, it) } >= 2
+        }
         val winner = if (completeSweep && allPresent && allResolved) {
             arms.filter { it.decision == Decision.KEEP }
                 .maxWithOrNull(compareBy<VariantTrialRecord> { it.meanScore ?: Double.NEGATIVE_INFINITY }
@@ -288,14 +407,18 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
         val entry = previous.copy(
             taskTitle = taskTitle.ifEmpty { taskId },
             decision = decision,
-            deltas = preview?.observations?.map { it.candidate.fpsMean - it.baseline.fpsMean } ?: emptyList(),
-            meanDelta = preview?.observations?.takeIf { it.isNotEmpty() }?.map {
-                it.candidate.fpsMean - it.baseline.fpsMean
-            }?.average(),
+            deltas = preview?.observations?.filter { isValidObservation(context, it) }
+                ?.map { it.candidate.fpsMean - it.baseline.fpsMean } ?: emptyList(),
+            meanDelta = preview?.observations?.filter { isValidObservation(context, it) }
+                ?.takeIf { it.isNotEmpty() }?.map {
+                    it.candidate.fpsMean - it.baseline.fpsMean
+                }?.average(),
             ciLow = preview?.ciLow,
             ciHigh = preview?.ciHigh,
-            pairs = preview?.observations?.size ?: 0,
-            sessions = arms.sumOf { it.sessions },
+            pairs = preview?.observations?.count { isValidObservation(context, it) } ?: 0,
+            sessions = arms.sumOf { arm -> arm.observations.filter {
+                isValidObservation(context, it)
+            }.map { it.sessionId }.distinct().size },
             evaluatedAt = nowMs,
             detail = winner?.detail,
             score = preview?.meanScore,
@@ -320,10 +443,24 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
     @Synchronized
     fun isResolved(taskId: String): Boolean = entries[taskId]?.resolved == true
 
+    private fun hasCompatibleResolvedEvidence(entry: LedgerEntry, context: TrialContext): Boolean {
+        if (!entry.decision.resolved) return true
+        if (context.objectivePolicyRevision < TrialContext.OBJECTIVE_POLICY_REVISION) return false
+        val arms = entry.variants.values
+        return arms.isNotEmpty() && arms.size == entry.comparisonCount.coerceAtLeast(1) &&
+            arms.all { arm -> arm.decision.resolved &&
+                arm.observations.count { isValidObservation(context, it) } >=
+                    ObjectiveWeightResolver.MIN_CONTEXT_EVIDENCE_PAIRS
+            }
+    }
+
     @Synchronized
     fun decisionFor(taskId: String, context: TrialContext, nowMs: Long, ttlMs: Long): Decision? {
         val e = entries[taskId] ?: return null
-        return e.decision.takeIf { e.context == context && isFresh(e.evaluatedAt, nowMs, ttlMs) }
+        return e.decision.takeIf {
+            e.context == context && isFresh(e.evaluatedAt, nowMs, ttlMs) &&
+                hasCompatibleResolvedEvidence(e, context)
+        }
     }
 
     @Synchronized
@@ -334,7 +471,8 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
 
     @Synchronized
     fun isCurrent(entry: LedgerEntry, context: TrialContext, nowMs: Long, ttlMs: Long): Boolean =
-        entry.context == context && isFresh(entry.evaluatedAt, nowMs, ttlMs)
+        entry.context == context && isFresh(entry.evaluatedAt, nowMs, ttlMs) &&
+            hasCompatibleResolvedEvidence(entry, context)
 
     /** Unresolved candidates the loop should keep measuring. */
     @Synchronized
@@ -496,7 +634,13 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
             comparisonCount = o.optInt("comparisonCount", 1).coerceAtLeast(1),
             sessions = o.optInt("sessions", 0),
             evaluatedAt = o.optLong("evaluatedAt"),
-            reason = o.optString("reason", "")
+            reason = o.optString("reason", ""),
+            attemptCount = o.optInt("attemptCount", observations.size).coerceAtLeast(0),
+            lastAttemptIndex = o.optInt("lastAttemptIndex", observations.size - 1),
+            lastAttemptOrder = o.optString("lastAttemptOrder")
+                .takeIf { it.isNotBlank() && it != "null" }?.let(::parsePairOrder),
+            lastAttemptAtMs = o.optLong("lastAttemptAtMs", o.optLong("evaluatedAt")),
+            lastInvalidReason = nullableString(o, "lastInvalidReason")
         )
     }
 
@@ -516,6 +660,11 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
             .put("sessions", value.sessions)
             .put("evaluatedAt", value.evaluatedAt)
             .put("reason", value.reason)
+            .put("attemptCount", value.attemptCount)
+            .put("lastAttemptIndex", value.lastAttemptIndex)
+            .put("lastAttemptOrder", value.lastAttemptOrder?.name ?: JSONObject.NULL)
+            .put("lastAttemptAtMs", value.lastAttemptAtMs)
+            .put("lastInvalidReason", value.lastInvalidReason ?: JSONObject.NULL)
     }
 
     private fun parseObservation(o: JSONObject): PairObservation? = try {
@@ -525,7 +674,13 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
             observedAtMs = o.optLong("observedAtMs"),
             baseline = parseWindow(o.getJSONObject("baseline")),
             candidate = parseWindow(o.getJSONObject("candidate")),
-            score = parseScore(o.getJSONObject("score"))
+            score = parseScore(o.getJSONObject("score")),
+            blockIndex = o.optInt("blockIndex", 0),
+            order = parsePairOrder(o.optString("order", PairOrder.LEGACY_SEQUENTIAL.name)),
+            temporalDistanceMs = o.optLong("temporalDistanceMs", 0L),
+            blockDurationMs = o.optLong("blockDurationMs", 0L),
+            qualityValid = o.optBoolean("qualityValid", true),
+            invalidReason = nullableString(o, "invalidReason")
         )
     } catch (_: Exception) {
         null
@@ -538,6 +693,12 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
         .put("baseline", windowJson(value.baseline))
         .put("candidate", windowJson(value.candidate))
         .put("score", scoreJson(value.score))
+        .put("blockIndex", value.blockIndex)
+        .put("order", value.order.name)
+        .put("temporalDistanceMs", value.temporalDistanceMs)
+        .put("blockDurationMs", value.blockDurationMs)
+        .put("qualityValid", value.qualityValid)
+        .put("invalidReason", value.invalidReason ?: JSONObject.NULL)
 
     private fun windowJson(value: WindowMetrics): JSONObject = JSONObject()
         .put("fpsMean", value.fpsMean)
@@ -563,6 +724,7 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
         .put("gamePackage", value.gamePackage ?: JSONObject.NULL)
         .put("processEpoch", value.processEpoch)
         .put("targetFps", value.targetFps)
+        .put("fpsCoefficientOfVariation", value.fpsCoefficientOfVariation ?: JSONObject.NULL)
 
     private fun parseWindow(o: JSONObject): WindowMetrics = WindowMetrics(
         fpsMean = o.optDouble("fpsMean"),
@@ -587,7 +749,8 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
         maxMonitorAgeMs = o.optLong("maxMonitorAgeMs"),
         gamePackage = nullableString(o, "gamePackage"),
         processEpoch = o.optLong("processEpoch"),
-        targetFps = o.optInt("targetFps", 60)
+        targetFps = o.optInt("targetFps", 60),
+        fpsCoefficientOfVariation = nullableDouble(o, "fpsCoefficientOfVariation")
     )
 
     private fun scoreJson(value: ScoreComponents): JSONObject = JSONObject()
@@ -602,6 +765,7 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
         .put("thermalTierCost", value.thermalTierCost)
         .put("thermalHeadroomFactor", value.thermalHeadroomFactor)
         .put("score", value.score)
+        .put("objectiveWeights", objectiveWeightsJson(value.objectiveWeights))
 
     private fun parseScore(o: JSONObject): ScoreComponents = ScoreComponents(
         averageFpsGain = o.optDouble("averageFpsGain"),
@@ -614,8 +778,26 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
         thermalSlopeCost = nullableDouble(o, "thermalSlopeCost"),
         thermalTierCost = o.optDouble("thermalTierCost"),
         thermalHeadroomFactor = o.optDouble("thermalHeadroomFactor", 1.0),
-        score = o.optDouble("score")
+        score = o.optDouble("score"),
+        objectiveWeights = o.optJSONObject("objectiveWeights")?.let(::parseObjectiveWeights)
+            ?: ObjectiveWeightResolver.DEFAULT_WEIGHTS
     )
+
+    private fun objectiveWeightsJson(value: ObjectiveWeights): JSONObject = JSONObject()
+        .put("performance", value.performance)
+        .put("temperature", value.temperature)
+        .put("thermalSlope", value.thermalSlope)
+        .put("thermalTier", value.thermalTier)
+
+    private fun parseObjectiveWeights(o: JSONObject): ObjectiveWeights =
+        ObjectiveWeightResolver.normalizeOrDefault(
+            ObjectiveWeights(
+                performance = o.optDouble("performance", Double.NaN),
+                temperature = o.optDouble("temperature", Double.NaN),
+                thermalSlope = o.optDouble("thermalSlope", Double.NaN),
+                thermalTier = o.optDouble("thermalTier", Double.NaN)
+            )
+        )
 
     private fun frameTimeJson(value: FrameTimeMetrics): JSONObject = JSONObject()
         .put("frameCount", value.frameCount)
@@ -648,6 +830,8 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
         .put("profileKey", value.profileKey)
         .put("thermalSignature", value.thermalSignature)
         .put("taskRevision", value.taskRevision)
+        .put("objectivePolicyRevision", value.objectivePolicyRevision)
+        .put("objectivePolicyKey", value.objectivePolicyKey)
 
     private fun parseContext(o: JSONObject): TrialContext = TrialContext(
         deviceKey = o.optString("deviceKey"),
@@ -658,7 +842,11 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
         capabilityKey = o.optString("capabilityKey"),
         profileKey = o.optString("profileKey"),
         thermalSignature = o.optString("thermalSignature", ""),
-        taskRevision = o.optInt("taskRevision", 1)
+        taskRevision = o.optInt("taskRevision", 1),
+        objectivePolicyRevision = o.optInt("objectivePolicyRevision", 0),
+        objectivePolicyKey = o.optString(
+            "objectivePolicyKey", TrialContext.LEGACY_OBJECTIVE_POLICY_KEY
+        )
     )
 
     private fun emptyEntry(taskId: String, taskTitle: String, context: TrialContext, nowMs: Long) =
@@ -701,6 +889,9 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
         "NEEDS_MORE" -> Decision.MORE_DATA
         else -> Decision.valueOf(value)
     }
+
+    private fun parsePairOrder(value: String): PairOrder =
+        runCatching { PairOrder.valueOf(value) }.getOrDefault(PairOrder.LEGACY_SEQUENTIAL)
 
     private fun nullableDouble(o: JSONObject, key: String): Double? {
         if (!o.has(key) || o.isNull(key)) return null

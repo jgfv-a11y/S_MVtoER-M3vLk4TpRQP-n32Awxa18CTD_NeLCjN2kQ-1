@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.11.0 — Adaptive experiment hardening
+- **Version code 14**; this revision changes the adaptive objective identity so decisions scored under different policies are not reused.
+- Replaced full-run baseline-then-candidate sampling with quality-gated paired windows in deterministic alternating order (baseline→candidate, then candidate→baseline); persist each attempt before measuring it, with pair order, duration, time distance, and invalid-attempt metadata.
+- Added an explicit bounded, finite, normalized objective-weight resolver with safe default fallback. `balanced-v1` (0.60/0.15/0.15/0.10) remains the default; the documented `thermal-cautious-v1` (0.50/0.20/0.20/0.10) policy is selected only in verified LIGHT-or-higher thermal context after at least eight valid prior pairs (for a sweep, per required arm). This is declared policy, not learning.
+- FPS coefficient-of-variation is computed only from actual samples and gates unstable windows; invalid, incomplete, stale, or thermally contaminated blocks do not enter evidence or decisions.
+- Reworked multi-variant sweeps to use the same paired-block pipeline while retaining per-arm evidence and family-wise correction. Existing ledger records remain readable with safe legacy defaults and are not reused across objective identities.
+- Added behavior tests for weight validation/context selection, absent measurements, workload-quality rejection, persisted order alternation, sweep order, contaminated evidence, and legacy ledger defaults.
+- Interleaving reduces temporal/workload confounding, but cannot prove the game executed identical internal workload in the two arms; no device benchmarks are claimed.
+- **Session longevity fixes**: game-exit detection now follows UsageEvents lifecycle transitions instead of treating `lastTimeUsed` as a live-process heartbeat; unavailable usage state cannot falsely stop a session. Transient adaptive-step failures retry after backoff, and failed initial boosts attempt a journal rollback before ending the service.
+- **Bounded privileged commands**: both root and Shizuku shell paths drain stdout/stderr concurrently and terminate a command that exceeds the 10s limit, including when a pipe would otherwise fill.
+- Added JVM tests for UsageEvents state transitions and adaptive-loop transient-error retry; Android build/device behavior remains unverified in this environment.
+
 ## v1.10.0 — Adaptive evidence and restoration safety
 - **Version code 13**; release workflow will publish APK artifacts after CI tests and build succeed.
 - Every baseline/candidate arm retains paired block observations and its own confidence interval; multi-arm decisions use Bonferroni family-wise correction before ranking eligible winners.

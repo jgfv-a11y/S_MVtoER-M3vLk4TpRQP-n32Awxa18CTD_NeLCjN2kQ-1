@@ -18,6 +18,7 @@ import com.nitroboost.app.data.Prefs
 import com.nitroboost.app.data.ProfileStore
 import com.nitroboost.app.data.SessionLog
 import com.nitroboost.app.platform.AndroidExecutor
+import com.nitroboost.app.platform.UsageEventPackageTracker
 import com.nitroboost.app.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -46,6 +47,7 @@ class BoosterService : Service() {
         const val EXTRA_PROFILE = "profile"
         private const val CHANNEL_SESSION = "boost_session"
         private const val RESTORE_RETRY_DELAY_MS = 10_000L
+        private const val GAME_EXIT_GRACE_MS = 60_000L
 
         @Volatile
         var active: Boolean = false
@@ -266,30 +268,60 @@ class BoosterService : Service() {
     }
 
     /**
-     * Every 5s: check whether the game is still running. When it has been
-     * gone for two consecutive checks (10s) we restore everything — the
-     * "restore when the game closes" behaviour, but conflict-free because the
-     * journal owns all reverts.
+     * Every 5s: consume UsageEvents foreground/background transitions. Keep the
+     * existing 60s background grace, then require two consecutive gone checks
+     * before restoring; an unknown state (for example missing Usage Access)
+     * must never be mistaken for an exited game.
      */
     private fun launchGameWatch(pkg: String) {
         val job = scope?.launch {
+            val tracker = try {
+                UsageEventPackageTracker(this@BoosterService, pkg)
+            } catch (_: Exception) {
+                null
+            }
             var goneOnce = false
+            var unknownLogged = false
+            var notForegroundSince = 0L
             while (isActive) {
                 delay(5000)
                 try {
-                    val running = AppStore.isPackageRunning(pkg)
-                    if (!running) {
-                        if (goneOnce) {
-                            SessionLog.log(this@BoosterService, "game_exited", pkg)
-                            endSession()
-                            return@launch
+                    when (tracker?.isForeground()) {
+                        null -> {
+                            goneOnce = false
+                            notForegroundSince = 0L
+                            if (!unknownLogged) {
+                                SessionLog.log(
+                                    this@BoosterService,
+                                    "game_watch_unverified",
+                                    "Usage Access unavailable or no recent lifecycle event; session kept active"
+                                )
+                                unknownLogged = true
+                            }
                         }
-                        goneOnce = true
-                    } else {
-                        goneOnce = false
+                        false -> {
+                            val now = android.os.SystemClock.elapsedRealtime()
+                            if (notForegroundSince == 0L) notForegroundSince = now
+                            if (now - notForegroundSince < GAME_EXIT_GRACE_MS) {
+                                goneOnce = false
+                                continue
+                            }
+                            if (goneOnce) {
+                                SessionLog.log(this@BoosterService, "game_exited", pkg)
+                                endSession()
+                                return@launch
+                            }
+                            goneOnce = true
+                        }
+                        true -> {
+                            goneOnce = false
+                            notForegroundSince = 0L
+                        }
                     }
-                } catch (e: Exception) {
-                    // keep watching
+                } catch (_: Exception) {
+                    // An unverified poll breaks the consecutive-gone sequence.
+                    goneOnce = false
+                    notForegroundSince = 0L
                 }
             }
         }

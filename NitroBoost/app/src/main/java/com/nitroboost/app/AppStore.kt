@@ -3,7 +3,6 @@ package com.nitroboost.app
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.app.usage.UsageStats
 import android.app.usage.UsageStatsManager
 import android.os.BatteryManager
 import android.os.Build
@@ -600,9 +599,12 @@ object AppStore {
             ) return@synchronized
             val previousSessionState = session.value ?: SessionState.Idle
             session.postValue(SessionState.Boosting(profile.name))
+            var activeJournal: Journal? = null
+            var activeExecutor: AndroidExecutor? = null
+            var measurementStarted = false
             try {
-                val journal = journal()
-                val executor = AndroidExecutor(c)
+                val journal = journal().also { activeJournal = it }
+                val executor = AndroidExecutor(c).also { activeExecutor = it }
                 val previousPackage = gamePackage()
                 val switchingProfile = !previousPackage.isNullOrBlank() && previousPackage != profile.packageName
                 val adaptive = adaptiveLoop
@@ -622,6 +624,7 @@ object AppStore {
                 }
                 if (switchingProfile) finishSessionMeasurement()
                 beginSessionMeasurement()
+                measurementStarted = true
                 wireRamKill(profile, executor)
                 val bctx = BoostContext(profile, executor, journal) { line -> appendLog(line) }
                 // Never re-apply the candidate the adaptive engine is
@@ -682,7 +685,49 @@ object AppStore {
                 }
             } catch (e: Exception) {
                 appendLog("boost crashed: ${e.message}")
-                session.postValue(SessionState.Boosting(profile.name))
+                try {
+                    adaptiveLoop?.stopAndJoinBlocking()
+                } catch (cleanupError: Exception) {
+                    appendLog("adaptive cleanup after boost failure failed: ${cleanupError.message}")
+                }
+                val cleanupJournal = activeJournal ?: try {
+                    journal()
+                } catch (_: Exception) {
+                    null
+                }
+                val rollbackComplete = when {
+                    cleanupJournal == null -> false
+                    cleanupJournal.isEmpty() -> true
+                    else -> {
+                        val cleanupExecutor = activeExecutor ?: try {
+                            AndroidExecutor(c)
+                        } catch (_: Exception) {
+                            null
+                        }
+                        val restore = cleanupExecutor?.let { ex ->
+                            runCatching {
+                                engine.restoreAll(
+                                    BoostContext(profile, ex, cleanupJournal) { line -> appendLog(line) }
+                                )
+                            }.getOrNull()
+                        }
+                        restore != null && restore.failedCount == 0 && cleanupJournal.isEmpty()
+                    }
+                }
+                if (rollbackComplete) {
+                    setGamePackage(null)
+                    if (measurementStarted) runCatching { finishSessionMeasurement() }
+                    refreshTaskStates()
+                    session.postValue(SessionState.Idle)
+                    appendLog("boost failure rolled back; session returned to idle")
+                } else {
+                    appendLog("boost rollback incomplete; journal retained for retry")
+                    session.postValue(SessionState.Boosting(profile.name))
+                }
+                // A foreground service must not keep advertising a session
+                // whose initial/re-profile boost failed; it will retry restore
+                // before releasing ownership of any retained journal entries.
+                if (BoosterService.active) BoosterService.stop(c)
             }
             }
         }
@@ -708,11 +753,13 @@ object AppStore {
         // device, OS, game, profile, thermal tier or app/task revision is not
         // applied blindly. The ledger remains private to filesDir.
         val decisions = ledger()
-        val currentContext = makeTrialContext(ctx, effectiveThermalStatus())
+        val thermalTier = effectiveThermalStatus()
         val now = System.currentTimeMillis()
         // v1.5: the user's level valve wins over the ledger — a level-1
         // session must not re-apply a level-2/3 "winner".
         for (entry in decisions.snapshotEntries()) {
+            val currentContext = adaptiveLoop?.trialContextForTask(entry.taskId, ctx, thermalTier)
+                ?: makeTrialContext(ctx, thermalTier)
             if (!decisions.isCurrent(entry, currentContext, now, trialConfig.decisionTtlMs)) continue
             if (entry.taskId in skip) continue
             val task = com.nitroboost.app.core.tasks.AllTasks.byId[entry.taskId]
@@ -733,6 +780,11 @@ object AppStore {
                     }
                 }
                 com.nitroboost.app.core.adaptive.Decision.KEEP -> {
+                    val currentThermal = effectiveThermalStatus()
+                    if (currentThermal >= ThermalGuard.STATUS_MODERATE) {
+                        appendLog("adaptive: skipped KEEP for ${entry.taskId}; thermal floor active ($currentThermal)")
+                        continue
+                    }
                     val detail = entry.detail ?: continue
                     val winner = when {
                         entry.taskId == "game_api_downscale" && detail.startsWith("level=") -> {
@@ -762,8 +814,10 @@ object AppStore {
                         } catch (e: Exception) {
                             null
                         }
-                        if (r != null && r.entries.isNotEmpty() && r.status.success) {
-                            ctx.journal.add(r.entries)
+                        if (r != null && r.status.success &&
+                            (r.entries.isNotEmpty() || r.status == com.nitroboost.app.core.TaskStatus.NoChange)
+                        ) {
+                            if (r.entries.isNotEmpty()) ctx.journal.add(r.entries)
                             appendLog("adaptive: restored winning ${winner.second}")
                         } else {
                             appendLog("adaptive: failed to apply winning ${winner.second}")
@@ -996,20 +1050,6 @@ object AppStore {
             fg
         } catch (e: Exception) {
             null
-        }
-    }
-
-    fun isPackageRunning(pkg: String): Boolean {
-        val fg = foregroundPackage()
-        if (fg == pkg) return true
-        return try {
-            val c = ctx()
-            val usm = c.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-            val now = System.currentTimeMillis()
-            val recent = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, now - 60_000, now)
-            recent.any { it.packageName == pkg && it.lastTimeUsed > now - 60_000 }
-        } catch (e: Exception) {
-            false
         }
     }
 
