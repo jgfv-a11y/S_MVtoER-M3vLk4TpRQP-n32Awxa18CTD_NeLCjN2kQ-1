@@ -4,6 +4,7 @@ import com.nitroboost.app.core.BoostContext
 import com.nitroboost.app.core.BoostTask
 import com.nitroboost.app.core.JournalEntry
 import com.nitroboost.app.core.Module
+import com.nitroboost.app.core.ShellInput
 import com.nitroboost.app.core.TaskResult
 import com.nitroboost.app.core.TaskStatus
 
@@ -26,20 +27,24 @@ class PowerSaveWhitelistTask : BoostTask {
 
     override fun isSupported(ctx: BoostContext): Boolean {
         if (!ctx.executor.privileged) return false
-        if (pkg(ctx).isEmpty()) return false
+        if (!ShellInput.isPackageName(pkg(ctx))) return false
         return ctx.executor.shell("cmd deviceidle whitelist").ok
     }
 
     override fun isApplied(ctx: BoostContext): Boolean {
+        val packageName = pkg(ctx)
+        if (!ShellInput.isPackageName(packageName)) return false
         val r = ctx.executor.shell("dumpsys deviceidle whitelist")
         if (!r.ok) return false
-        val wanted = Regex("(^|\\s)${Regex.escape(pkg(ctx))}(\\s|$)")
+        val wanted = Regex("(^|\\s)${Regex.escape(packageName)}(\\s|$)")
         return r.stdout.lineSequence().any { wanted.containsMatchIn(it) }
     }
 
     override fun apply(ctx: BoostContext): TaskResult {
         val p = pkg(ctx)
-        if (p.isEmpty()) return TaskResult(id, TaskStatus.Skipped, "no game package set")
+        if (!ShellInput.isPackageName(p)) return TaskResult(id, TaskStatus.Skipped, "invalid game package")
+        if (!ctx.executor.privileged) return TaskResult(id, TaskStatus.Skipped, "needs Shizuku or root")
+        if (!isSupported(ctx)) return TaskResult(id, TaskStatus.Skipped, "deviceidle whitelist unavailable")
         if (isApplied(ctx)) return TaskResult(id, TaskStatus.NoChange)
         val r = ctx.executor.shell("cmd deviceidle whitelist +$p 2>/dev/null")
         if (!r.ok) {

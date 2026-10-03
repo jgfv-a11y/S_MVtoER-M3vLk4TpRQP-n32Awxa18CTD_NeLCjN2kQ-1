@@ -10,7 +10,9 @@ import android.provider.Settings
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.Observer
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.nitroboost.app.AppStore
 import com.nitroboost.app.R
@@ -18,8 +20,15 @@ import com.nitroboost.app.data.Prefs
 import com.nitroboost.app.data.ProfileStore
 import com.nitroboost.app.platform.ShizukuShell
 import com.nitroboost.app.service.BoosterService
+import com.nitroboost.app.core.MonitorClient
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
+
+    private var autoBoostJob: Job? = null
 
     private val notifLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -82,6 +91,16 @@ class MainActivity : AppCompatActivity() {
                 .setNegativeButton(R.string.cancel, null)
                 .show()
         })
+    }
+
+    override fun onStart() {
+        super.onStart()
+        AppStore.setMonitorClient(MonitorClient.UI, true)
+    }
+
+    override fun onStop() {
+        AppStore.setMonitorClient(MonitorClient.UI, false)
+        super.onStop()
     }
 
     override fun onResume() {
@@ -163,11 +182,26 @@ class MainActivity : AppCompatActivity() {
      * matches a profile, start a session automatically.
      */
     private fun maybeAutoBoost() {
-        if (!Prefs.getBool(this, Prefs.KEY_AUTO_BOOST, false)) return
-        if (BoosterService.active) return
-        val fg = AppStore.foregroundPackage() ?: return
-        val profile = ProfileStore(this).all().firstOrNull { it.packageName == fg } ?: return
-        BoosterService.start(this, profile.packageName)
+        if (!Prefs.getBool(this, Prefs.KEY_AUTO_BOOST, false) || BoosterService.active) return
+        if (autoBoostJob?.isActive == true) return
+        autoBoostJob = lifecycleScope.launch {
+            val profilePkg = withContext(Dispatchers.IO) {
+                val foreground = AppStore.foregroundPackage() ?: return@withContext null
+                ProfileStore(applicationContext).all()
+                    .firstOrNull { it.packageName == foreground }
+                    ?.packageName
+            }
+            if (profilePkg == null || isFinishing ||
+                !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) ||
+                !Prefs.getBool(this@MainActivity, Prefs.KEY_AUTO_BOOST, false) ||
+                BoosterService.active
+            ) return@launch
+            try {
+                BoosterService.start(this@MainActivity, profilePkg)
+            } catch (_: Exception) {
+                // Auto-start must not crash the foreground UI if Android rejects a service start.
+            }
+        }
     }
 
     private fun onBoostTap() {

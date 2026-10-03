@@ -44,6 +44,7 @@ class TouchBoostTask : BoostTask {
     }
 
     override fun apply(ctx: BoostContext): TaskResult {
+        if (!ctx.executor.privileged) return TaskResult(id, TaskStatus.Skipped, "needs Shizuku or root")
         val a = active(ctx)
         if (a.isEmpty()) return TaskResult(id, TaskStatus.Skipped, "no cpu_boost interface on this kernel")
         val entries = mutableListOf<JournalEntry>()

@@ -4,6 +4,7 @@ import com.nitroboost.app.core.BoostContext
 import com.nitroboost.app.core.BoostTask
 import com.nitroboost.app.core.JournalEntry
 import com.nitroboost.app.core.Module
+import com.nitroboost.app.core.ProfileValidation
 import com.nitroboost.app.core.TaskResult
 import com.nitroboost.app.core.TaskStatus
 
@@ -35,12 +36,16 @@ class GameModeTask : BoostTask {
 
     override fun isApplied(ctx: BoostContext): Boolean {
         val target = ctx.profile.gameMode
-        return target > 0 && current(ctx) == target
+        return target > 0 && ProfileValidation.isValidGameMode(target) && current(ctx) == target
     }
 
     override fun apply(ctx: BoostContext): TaskResult {
         val target = ctx.profile.gameMode
         if (target <= 0) return TaskResult(id, TaskStatus.Skipped, "profile game mode off")
+        if (!ProfileValidation.isValidGameMode(target)) {
+            return TaskResult(id, TaskStatus.Skipped, "invalid profile game mode")
+        }
+        if (!ctx.executor.privileged) return TaskResult(id, TaskStatus.Skipped, "needs Shizuku or root")
         val cur = current(ctx)
         if (cur == target) return TaskResult(id, TaskStatus.NoChange)
         val r = ctx.executor.shell("settings put secure game_mode $target")

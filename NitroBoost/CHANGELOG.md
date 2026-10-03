@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.12.0 — Safety, display policy, and session efficiency
+- **Version code 15** (up from 14); release APK publication remains gated on GitHub Actions.
+- Hardened profile and preference handling: validate package names and numeric ranges, sanitize legacy profile data, bound protected-package lists, and atomically replace custom-profile JSON after fsync.
+- RAM cleanup now excludes the selected game, the booster, protected packages, invalid package names, and all packages with currently resumed activities when Usage Access is available; app-process RSS rows are validated and aggregated by package. Automatic force-stop still requires an explicit aggressive profile option and privileged access.
+- Display settings now preserve the device refresh policy by default (`0` means no refresh override), reject a requested rate above the reported panel peak, and journal precise prior refresh/density state—including resetting density overrides and deleting previously unset refresh keys on restore.
+- Maximum screen brightness moved to boost level 3 because it can materially increase battery use and heat; it is no longer part of the standard level.
+- Bounded shell output capture is connected to root and Shizuku process execution; validated sysfs, settings, governor, and package inputs; persisted shell reversals are allowlisted before execution.
+- Session summaries use constant-memory accumulators, FPS presentation briefly retains a fresh measurement between polls, and monitoring runs only while a UI, session, or overlay client needs samples.
+- Moved process/storage queries and force-stop work off the Settings UI thread; profile package-list lookups no longer reread the custom-profile file for every row.
+- Fixed the static verifier's Kotlin `R.type.name` matching and added missing English/Arabic strings it exposed.
+- Added JVM coverage for display restoration and refresh caps, RAM kill exclusions, CPU sysfs path validation, foreground protection, privilege gates, and tampered journal commands. GitHub Actions must still pass before release; no device benchmark or install test is claimed.
+
 ## v1.11.0 — Adaptive experiment hardening
 - **Version code 14**; this revision changes the adaptive objective identity so decisions scored under different policies are not reused.
 - Replaced full-run baseline-then-candidate sampling with quality-gated paired windows in deterministic alternating order (baseline→candidate, then candidate→baseline); persist each attempt before measuring it, with pair order, duration, time distance, and invalid-attempt metadata.

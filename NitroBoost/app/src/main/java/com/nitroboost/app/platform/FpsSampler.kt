@@ -1,6 +1,7 @@
 package com.nitroboost.app.platform
 
 import android.os.SystemClock
+import com.nitroboost.app.core.ShellInput
 import com.nitroboost.app.core.SystemExecutor
 import com.nitroboost.app.core.adaptive.GfxFrameStatsParser
 
@@ -37,7 +38,7 @@ class FpsSampler(
         executor: SystemExecutor
     ): FpsObservation {
         val now = SystemClock.elapsedRealtime()
-        if (!PACKAGE_NAME.matches(gamePackage)) {
+        if (!ShellInput.isPackageName(gamePackage)) {
             resetForPackage(null)
             return FpsObservation(null, emptyList(), processEpoch, now, false)
         }
@@ -92,7 +93,6 @@ class FpsSampler(
     }
 
     companion object {
-        private val PACKAGE_NAME = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")
         private val TOTAL_FRAMES = Regex("Total frames rendered:\\s*(\\d+)")
         const val MIN_POLL_INTERVAL_MS = 2_000L
         const val MIN_RATE_INTERVAL_MS = 800L

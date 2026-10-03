@@ -46,6 +46,17 @@ class GameApiTaskTest {
     }
 
     @Test
+    fun `rejects downscale values outside the adaptive allowlist`() {
+        val ex = FakeExecutor().apply { privileged = true }
+        val task = GameApiTask(sdk = 34, level = "0.8; reboot")
+        val ctx = BoostContext(testProfile(Module.GPU), ex, journal())
+
+        assertFalse(task.isSupported(ctx))
+        assertEquals(TaskStatus.Skipped, task.apply(ctx).status)
+        assertTrue(ex.shellLog.none { it.contains("0.8; reboot") })
+    }
+
+    @Test
     fun `skipped on android 11 even with privilege`() {
         val ex = FakeExecutor()
         ex.privileged = true

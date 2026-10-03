@@ -13,6 +13,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
@@ -21,10 +22,15 @@ import com.nitroboost.app.AppStore
 import com.nitroboost.app.R
 import com.nitroboost.app.data.Prefs
 import com.nitroboost.app.data.SessionLog
+import com.nitroboost.app.core.ShellInput
 import com.nitroboost.app.platform.AndroidExecutor
 import com.nitroboost.app.platform.RootShell
 import com.nitroboost.app.platform.ShizukuShell
 import com.nitroboost.app.service.BoosterService
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Settings tab (v1.5 redesign): Shizuku/Root guidance, floating monitor,
@@ -34,6 +40,9 @@ import com.nitroboost.app.service.BoosterService
 class SettingsFragment : Fragment() {
 
     private lateinit var procAdapter: ProcessAdapter
+    private var systemRefreshJob: Job? = null
+    private var shizukuRefreshJob: Job? = null
+    private var shizukuActionPending = false
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -77,7 +86,6 @@ class SettingsFragment : Fragment() {
 
             // Shizuku / root
             root.findViewById<Button>(R.id.btn_shizuku).setOnClickListener { onShizukuTap(c) }
-            refreshShizuku()
 
             // Journal
             root.findViewById<MaterialButton>(R.id.btn_restore_all).setOnClickListener {
@@ -104,7 +112,6 @@ class SettingsFragment : Fragment() {
             rec.adapter = procAdapter
             root.findViewById<Button>(R.id.btn_refresh_procs).setOnClickListener { refreshSystem() }
             root.findViewById<Button>(R.id.btn_edit_protected).setOnClickListener { showProtectedDialog() }
-            refreshSystem()
 
             // About
             root.findViewById<TextView>(R.id.about_version).text =
@@ -112,6 +119,12 @@ class SettingsFragment : Fragment() {
 
             updateJournal()
         }
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        refreshShizuku()
+        refreshSystem()
     }
 
     override fun onResume() {
@@ -131,113 +144,129 @@ class SettingsFragment : Fragment() {
         }
 
     private fun onShizukuTap(c: android.content.Context) {
-        val act = activity ?: return
-        Thread {
-            val state = try {
-                ShizukuShell.state(c)
-            } catch (e: Exception) {
-                ShizukuShell.ShizukuState.NOT_STARTED
-            }
-            when (state) {
-                ShizukuShell.ShizukuState.NOT_INSTALLED,
-                ShizukuShell.ShizukuState.NOT_STARTED ->
-                    ShizukuShell.openShizukuApp(c)
-                ShizukuShell.ShizukuState.PENDING_PERMISSION ->
-                    ShizukuShell.requestPermission()
-                else -> ShizukuShell.ensureBound(c)
-            }
-            act.runOnUiThread {
+        if (shizukuActionPending) return
+        shizukuActionPending = true
+        view?.findViewById<Button>(R.id.btn_shizuku)?.isEnabled = false
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val state = withContext(Dispatchers.IO) {
+                    try {
+                        ShizukuShell.state(c)
+                    } catch (_: Exception) {
+                        ShizukuShell.ShizukuState.NOT_STARTED
+                    }
+                }
+                when (state) {
+                    ShizukuShell.ShizukuState.NOT_INSTALLED,
+                    ShizukuShell.ShizukuState.NOT_STARTED -> ShizukuShell.openShizukuApp(c)
+                    ShizukuShell.ShizukuState.PENDING_PERMISSION -> ShizukuShell.requestPermission()
+                    else -> withContext(Dispatchers.IO) { ShizukuShell.ensureBound(c) }
+                }
                 if (isResumed) {
                     refreshShizuku()
                     AppStore.refreshTaskStates()
                 }
+            } finally {
+                shizukuActionPending = false
+                view?.findViewById<Button>(R.id.btn_shizuku)?.isEnabled = true
             }
-        }.start()
+        }
     }
 
     private fun refreshShizuku() {
-        val tv = view?.findViewById<TextView>(R.id.shizuku_status) ?: return
-        val c = context ?: return
-        val rootAvail = try {
-            RootShell.isAvailable()
-        } catch (e: Exception) {
-            false
+        if (shizukuRefreshJob?.isActive == true) return
+        val c = context?.applicationContext ?: return
+        shizukuRefreshJob = viewLifecycleOwner.lifecycleScope.launch {
+            val status = withContext(Dispatchers.IO) {
+                val rootAvail = try {
+                    RootShell.isAvailable()
+                } catch (_: Exception) {
+                    false
+                }
+                val state = try {
+                    ShizukuShell.state(c)
+                } catch (_: Exception) {
+                    if (rootAvail) ShizukuShell.ShizukuState.READY
+                    else ShizukuShell.ShizukuState.NOT_STARTED
+                }
+                rootAvail to state
+            }
+            val (rootAvail, state) = status
+            val tv = view?.findViewById<TextView>(R.id.shizuku_status) ?: return@launch
+            tv.text = when {
+                state == ShizukuShell.ShizukuState.READY -> getString(R.string.shizuku_ready)
+                rootAvail -> getString(R.string.shizuku_via_root)
+                state == ShizukuShell.ShizukuState.NOT_INSTALLED ->
+                    getString(R.string.shizuku_state_not_installed)
+                state == ShizukuShell.ShizukuState.NOT_STARTED ->
+                    getString(R.string.shizuku_state_not_started)
+                state == ShizukuShell.ShizukuState.PENDING_PERMISSION ->
+                    getString(R.string.shizuku_state_pending)
+                else -> getString(R.string.shizuku_state_not_bound)
+            }
+            tv.setTextColor(
+                if (state == ShizukuShell.ShizukuState.READY || rootAvail)
+                    0xFF00E676.toInt() else 0xFFFFB74D.toInt()
+            )
         }
-        val state = try {
-            ShizukuShell.state(c)
-        } catch (e: Exception) {
-            if (rootAvail) ShizukuShell.ShizukuState.READY else ShizukuShell.ShizukuState.NOT_STARTED
-        }
-        tv.text = when {
-            state == ShizukuShell.ShizukuState.READY ->
-                getString(R.string.shizuku_ready)
-            rootAvail ->
-                getString(R.string.shizuku_via_root)
-            state == ShizukuShell.ShizukuState.NOT_INSTALLED ->
-                getString(R.string.shizuku_state_not_installed)
-            state == ShizukuShell.ShizukuState.NOT_STARTED ->
-                getString(R.string.shizuku_state_not_started)
-            state == ShizukuShell.ShizukuState.PENDING_PERMISSION ->
-                getString(R.string.shizuku_state_pending)
-            else ->
-                getString(R.string.shizuku_state_not_bound)
-        }
-        tv.setTextColor(
-            if (state == ShizukuShell.ShizukuState.READY || rootAvail)
-                0xFF00E676.toInt() else 0xFFFFB74D.toInt()
-        )
     }
 
     // ---------------- System & RAM ----------------
 
     private fun refreshSystem() {
-        val c = requireContext()
-        val protectedList = Prefs.protectedList(c).toSet()
+        if (systemRefreshJob?.isActive == true) return
+        val c = context?.applicationContext ?: return
         val self = c.packageName
-
-        android.os.Handler(android.os.Looper.getMainLooper()).post {
-            val v = view ?: return@post
-            val procs = AppStore.topProcesses(15)
-            procAdapter.items = procs.filter { it.pkg != self && it.pkg !in protectedList }
-            procAdapter.notifyDataSetChanged()
-
-            val free = try {
-                val st = android.os.StatFs(android.os.Environment.getDataDirectory().path)
-                st.availableBlocksLong * st.blockSizeLong
-            } catch (e: Exception) {
-                0L
-            }
-            val total = try {
-                val st = android.os.StatFs(android.os.Environment.getDataDirectory().path)
-                st.blockCountLong * st.blockSizeLong
-            } catch (e: Exception) {
-                0L
-            }
-            v.findViewById<TextView>(R.id.storage_info).text =
-                getString(R.string.storage_line, formatBytes(free), formatBytes(total))
-
-            v.findViewById<TextView>(R.id.protected_list).text =
-                Prefs.protectedList(c).joinToString(", ").ifEmpty {
-                    getString(R.string.protected_none)
+        systemRefreshJob = viewLifecycleOwner.lifecycleScope.launch {
+            val snapshot = withContext(Dispatchers.IO) {
+                val procs = AppStore.topProcesses(15)
+                val (free, total) = try {
+                    val stat = android.os.StatFs(android.os.Environment.getDataDirectory().path)
+                    (stat.availableBlocksLong * stat.blockSizeLong) to
+                        (stat.blockCountLong * stat.blockSizeLong)
+                } catch (_: Exception) {
+                    0L to 0L
                 }
+                Triple(procs, free, total)
+            }
+            val v = view ?: return@launch
+            val protectedList = Prefs.protectedList(c).toSet()
+            procAdapter.items = snapshot.first.filter {
+                it.pkg != self && it.pkg !in protectedList && ShellInput.isPackageName(it.pkg)
+            }
+            procAdapter.notifyDataSetChanged()
+            v.findViewById<TextView>(R.id.storage_info).text =
+                getString(R.string.storage_line, formatBytes(snapshot.second), formatBytes(snapshot.third))
+            v.findViewById<TextView>(R.id.protected_list).text =
+                protectedList.joinToString(", ").ifEmpty { getString(R.string.protected_none) }
         }
     }
 
     private fun confirmKill(info: AppStore.ProcessInfo) {
         val c = requireContext()
+        if (!ShellInput.isPackageName(info.pkg) || info.pkg == c.packageName ||
+            info.pkg in Prefs.protectedList(c)
+        ) {
+            android.widget.Toast.makeText(c, R.string.invalid_package_name, android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
         AlertDialog.Builder(c)
             .setTitle(R.string.kill_confirm_title)
             .setMessage("${info.name}\n${info.pkg}")
             .setPositiveButton(R.string.kill) { _, _ ->
-                val ex = AndroidExecutor(c)
-                val r = ex.shell("am force-stop \"${info.pkg}\"")
-                if (!r.ok) {
-                    com.google.android.material.snackbar.Snackbar
-                        .make(requireView(), R.string.kill_needs_shizuku,
-                            com.google.android.material.snackbar.Snackbar.LENGTH_LONG)
-                        .show()
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val ok = withContext(Dispatchers.IO) {
+                        AndroidExecutor(c.applicationContext)
+                            .shell("am force-stop \"${info.pkg}\"").ok
+                    }
+                    if (!ok && view != null) {
+                        com.google.android.material.snackbar.Snackbar
+                            .make(requireView(), R.string.kill_needs_shizuku,
+                                com.google.android.material.snackbar.Snackbar.LENGTH_LONG)
+                            .show()
+                    }
+                    refreshSystem()
                 }
-                refreshSystem()
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
@@ -250,20 +279,27 @@ class SettingsFragment : Fragment() {
                 android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
             setText(Prefs.protectedList(c).joinToString("\n"))
         }
-        AlertDialog.Builder(c)
+        val dialog = AlertDialog.Builder(c)
             .setTitle(R.string.protected_title)
             .setMessage(R.string.protected_hint)
             .setView(edit)
-            .setPositiveButton(R.string.save) { _, _ ->
-                val list = edit.text.toString()
-                    .split("\n")
-                    .map { it.trim() }
-                    .filter { it.isNotEmpty() }
-                Prefs.setProtectedList(c, list)
-                refreshSystem()
-            }
+            .setPositiveButton(R.string.save, null)
             .setNegativeButton(R.string.cancel, null)
             .show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val list = edit.text.toString()
+                .split("\n")
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+            if (list.any { !ShellInput.isPackageName(it) }) {
+                edit.error = getString(R.string.invalid_package_name)
+                return@setOnClickListener
+            }
+            edit.error = null
+            Prefs.setProtectedList(c, list)
+            dialog.dismiss()
+            refreshSystem()
+        }
     }
 
     private fun formatBytes(b: Long): String {

@@ -4,6 +4,7 @@ import com.nitroboost.app.core.BoostContext
 import com.nitroboost.app.core.BoostTask
 import com.nitroboost.app.core.JournalEntry
 import com.nitroboost.app.core.Module
+import com.nitroboost.app.core.ShellInput
 import com.nitroboost.app.core.TaskResult
 import com.nitroboost.app.core.TaskStatus
 
@@ -33,7 +34,7 @@ class DeviceIdleTask : BoostTask {
 
     override fun isSupported(ctx: BoostContext): Boolean {
         if (!ctx.executor.privileged) return false
-        if (pkg(ctx).isBlank()) return false
+        if (!ShellInput.isPackageName(pkg(ctx))) return false
         val r = ctx.executor.shell("cmd deviceidle help 2>&1")
         return r.ok && "whitelist" in r.stdout
     }
@@ -43,7 +44,7 @@ class DeviceIdleTask : BoostTask {
 
     override fun apply(ctx: BoostContext): TaskResult {
         val p = pkg(ctx)
-        if (p.isBlank()) return TaskResult(id, TaskStatus.Skipped, "no game package set")
+        if (!ShellInput.isPackageName(p)) return TaskResult(id, TaskStatus.Skipped, "invalid game package")
         if (!isSupported(ctx)) {
             return TaskResult(id, TaskStatus.Skipped, "deviceidle API not available on this ROM")
         }

@@ -33,7 +33,7 @@ class GovernorTaskTest {
         val r = task.apply(ctx)
         assertEquals(TaskStatus.Applied, r.status)
         j.add(r.entries)
-        assertTrue(ex.written.any { it == "shell-echo:$govPath" })
+        assertTrue(ex.written.any { it == "sysfs:$govPath" })
         assertEquals("performance", ex.sysfs[govPath])
         assertTrue(task.isApplied(ctx))
         assertTrue(task.titleEn.contains("performance"))
@@ -66,9 +66,7 @@ class GovernorTaskTest {
         // ROM that exposes the node but the kernel refuses echo-writes
         // (read-only cpufreq on some vendor kernels).
         val ro = object : SystemExecutor by ex {
-            override fun shell(cmd: String): ShellResult =
-                if (cmd.startsWith("echo")) ShellResult(false, 1, "", "read-only file system")
-                else ex.shell(cmd)
+            override fun writeSys(path: String, value: String): Boolean = false
         }
         val j = journal()
         val task = GovernorTask()
@@ -77,6 +75,16 @@ class GovernorTaskTest {
         val r = task.apply(ctx)
         assertEquals(TaskStatus.Skipped, r.status)
         assertTrue(j.isEmpty())
+    }
+
+    @Test
+    fun `rejects a shell-like governor value`() {
+        val ex = FakeExecutor().apply { sysfs[govPath] = "schedutil" }
+        val task = GovernorTask(governor = "performance; reboot")
+        val ctx = BoostContext(testProfile(Module.CPU), ex, journal())
+
+        assertEquals(TaskStatus.Skipped, task.apply(ctx).status)
+        assertTrue(ex.shellLog.none { it.startsWith("echo") })
     }
 
     @Test

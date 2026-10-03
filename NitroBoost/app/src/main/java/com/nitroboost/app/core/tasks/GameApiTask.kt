@@ -5,6 +5,7 @@ import com.nitroboost.app.core.BoostContext
 import com.nitroboost.app.core.BoostTask
 import com.nitroboost.app.core.JournalEntry
 import com.nitroboost.app.core.Module
+import com.nitroboost.app.core.ShellInput
 import com.nitroboost.app.core.TaskResult
 import com.nitroboost.app.core.TaskStatus
 
@@ -44,6 +45,7 @@ class GameApiTask(
     companion object {
         const val DOWNSCALE = "0.8"
         const val MIN_SDK = 31
+        val ALLOWED_DOWNSCALES = setOf("0.9", "0.8", "0.7")
     }
 
     private fun pkg(ctx: BoostContext): String = ctx.profile.packageName
@@ -51,7 +53,7 @@ class GameApiTask(
     private fun supported(ctx: BoostContext): Boolean {
         if (!ctx.executor.privileged) return false
         if (sdk < MIN_SDK) return false
-        if (pkg(ctx).isBlank()) return false
+        if (!ShellInput.isPackageName(pkg(ctx)) || level !in ALLOWED_DOWNSCALES) return false
         val help = ctx.executor.shell("cmd game help 2>&1")
         return help.ok && "set" in help.stdout
     }
@@ -65,7 +67,8 @@ class GameApiTask(
 
     override fun apply(ctx: BoostContext): TaskResult {
         val p = pkg(ctx)
-        if (p.isBlank()) return TaskResult(id, TaskStatus.Skipped, "no game package set")
+        if (!ShellInput.isPackageName(p)) return TaskResult(id, TaskStatus.Skipped, "invalid game package")
+        if (level !in ALLOWED_DOWNSCALES) return TaskResult(id, TaskStatus.Skipped, "invalid downscale value")
         if (!supported(ctx)) {
             return TaskResult(
                 id,

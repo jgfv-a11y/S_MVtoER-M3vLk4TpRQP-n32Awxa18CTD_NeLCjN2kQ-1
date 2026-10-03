@@ -199,6 +199,15 @@ jobs:
             automatically once the signing secrets are configured — see
             `NitroBoost/docs/DISTRIBUTION.md`.
 
+            ## v1.12.0 — safety and session efficiency
+            - Profiles/preferences validate package names and ranges, sanitize legacy data, and save custom profiles atomically.
+            - Background cleanup excludes the selected game, the booster, protected packages, and resumed activities when Usage Access is available; it is opt-in and requires privilege.
+            - Display policy is preserved by default; explicit refresh rates are capped to the reported panel peak and original settings are journaled for restore.
+            - Maximum brightness is opt-in at boost level 3 due to its battery and heat cost.
+            - Shell output is bounded; interpolated packages, sysfs/settings inputs, and persisted reversal commands are validated before use.
+            - Session summaries use constant memory and monitoring stops when no UI/session/overlay consumer remains.
+            - CI tests/build and device-specific benchmark status are reported separately; no universal FPS claim is made.
+
             ## v1.11.0 — adaptive experiment hardening
             - Quality-gated paired baseline/candidate windows alternate measurement order; incomplete, stale, unstable, or thermally contaminated blocks add no evidence.
             - Bounded normalized objective weights and context-bound decisions; unavailable FPS, frame-time, energy, or other metrics are omitted rather than inferred.

@@ -3,6 +3,7 @@ package com.nitroboost.app.core.tasks
 import com.nitroboost.app.core.BoostContext
 import com.nitroboost.app.core.BoostTask
 import com.nitroboost.app.core.Module
+import com.nitroboost.app.core.ShellInput
 import com.nitroboost.app.core.TaskResult
 import com.nitroboost.app.core.TaskStatus
 
@@ -18,8 +19,8 @@ class RamTrimTask : BoostTask {
     override val id = "ram_trim"
     override val titleAr = "تنظيف ذاكرة التخزين المؤقت"
     override val titleEn = "Trim app caches"
-    override val descAr = "تخليص النظام من كاش التطبيقات لتحرير ذاكرة"
-    override val descEn = "Let the system evict app caches to free memory"
+    override val descAr = "تنظيف كاش التخزين فقط — قد يجعل التطبيقات تعيد تحميل البيانات لاحقًا"
+    override val descEn = "Evicts storage caches (not RAM); apps may need to reload data afterward"
     override val module = Module.RAM
     override val requiresPrivilege = true
 
@@ -28,6 +29,7 @@ class RamTrimTask : BoostTask {
     override fun isApplied(ctx: BoostContext): Boolean = false
 
     override fun apply(ctx: BoostContext): TaskResult {
+        if (!ctx.executor.privileged) return TaskResult(id, TaskStatus.Skipped, "needs Shizuku or root")
         val r = ctx.executor.shell("pm trim-caches 9223372036854775807")
         return if (r.ok) {
             TaskResult(id, TaskStatus.Applied, "cache trim requested")
@@ -54,15 +56,19 @@ object BackgroundSelector {
         selfPackage: String?,
         protectedPackages: Set<String>,
         nowMs: Long,
-        idleMs: Long = 90_000L
+        idleMs: Long = 90_000L,
+        gamePackage: String? = null,
+        foregroundPackages: Set<String> = emptySet()
     ): List<String> {
         val forbidden = protectedPackages.toMutableSet()
         if (foregroundPackage != null) forbidden.add(foregroundPackage)
+        forbidden.addAll(foregroundPackages.filter(ShellInput::isPackageName))
         if (selfPackage != null) forbidden.add(selfPackage)
+        if (gamePackage != null) forbidden.add(gamePackage)
         return backgroundPackages.entries
             .map { it.key to it.value }
             .filter { (pkg, last) ->
-                pkg !in forbidden && (nowMs - last) >= idleMs
+                ShellInput.isPackageName(pkg) && pkg !in forbidden && (nowMs - last) >= idleMs
             }
             .map { it.first }
             .sorted()
@@ -96,11 +102,16 @@ class RamKillTask : BoostTask {
     override fun isApplied(ctx: BoostContext): Boolean = false
 
     override fun apply(ctx: BoostContext): TaskResult {
+        if (!ctx.executor.privileged) return TaskResult(id, TaskStatus.Skipped, "needs Shizuku or root")
         val killable = killableProvider()
+            .asSequence()
+            .filter(ShellInput::isPackageName)
+            .filter { it != ctx.profile.packageName }
+            .distinct()
+            .toList()
         if (killable.isEmpty()) return TaskResult(id, TaskStatus.NoChange, "nothing to kill")
         var ok = 0
         for (pkg in killable) {
-            if (pkg.isBlank()) continue
             val r = ctx.executor.shell("am force-stop \"$pkg\"")
             if (r.ok) ok++
         }

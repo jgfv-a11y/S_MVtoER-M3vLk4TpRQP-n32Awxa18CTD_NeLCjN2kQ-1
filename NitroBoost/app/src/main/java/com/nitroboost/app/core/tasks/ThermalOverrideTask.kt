@@ -35,7 +35,9 @@ class ThermalOverrideTask : BoostTask {
         ctx.journal.containsTask(id)
 
     override fun apply(ctx: BoostContext): TaskResult {
+        if (!ctx.executor.privileged) return TaskResult(id, TaskStatus.Skipped, "needs Shizuku or root")
         if (isApplied(ctx)) return TaskResult(id, TaskStatus.NoChange)
+        if (!probe(ctx)) return TaskResult(id, TaskStatus.Skipped, "thermal override unavailable on this ROM")
         val r = ctx.executor.shell("cmd thermalservice override-status 0")
         if (!r.ok) {
             return TaskResult(id, TaskStatus.Failed("thermalservice not controllable on this ROM"))

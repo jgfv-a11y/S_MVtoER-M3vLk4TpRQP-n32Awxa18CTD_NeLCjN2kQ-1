@@ -44,13 +44,13 @@ class BoostLevelTest {
         assertEquals(1, t["animations"]!!.boostLevel)
         assertEquals(1, t["game_mode"]!!.boostLevel)
         assertEquals(1, t["data_saver"]!!.boostLevel)
-        assertEquals(1, t["peak_brightness"]!!.boostLevel)
         // Level 3 — aggressive, opt-in only
         assertEquals(3, t["walt_tuning"]!!.boostLevel)
         assertEquals(3, t["touch_boost"]!!.boostLevel)
         assertEquals(3, t["ram_trim"]!!.boostLevel)
         assertEquals(3, t["ram_kill"]!!.boostLevel)
         assertEquals(3, t["thermal_override"]!!.boostLevel)
+        assertEquals(3, t["peak_brightness"]!!.boostLevel)
         // Level 2 — the standard default
         assertEquals(2, t["cpu_online"]!!.boostLevel)
         assertEquals(2, t["io_scheduler"]!!.boostLevel)

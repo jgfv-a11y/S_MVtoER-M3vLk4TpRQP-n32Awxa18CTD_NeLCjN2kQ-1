@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.RemoteException
 import android.util.Base64
 import androidx.annotation.Keep
+import com.nitroboost.app.core.ShellInput
+import com.nitroboost.app.platform.ShellOutputReader
 import com.nitroboost.app.shizuku.INitroService
 import java.io.File
 import java.io.InputStream
@@ -35,8 +37,8 @@ class NitroUserService constructor() : INitroService.Stub() {
     override fun runShell(cmd: String): String {
         return try {
             val process = Runtime.getRuntime().exec(arrayOf("/system/bin/sh", "-c", cmd))
-            val outFuture = readAsync(process.inputStream)
-            val errFuture = readAsync(process.errorStream)
+            val outFuture = readAsync(process.inputStream, ShellOutputReader.MAX_STDOUT_BYTES)
+            val errFuture = readAsync(process.errorStream, ShellOutputReader.MAX_STDERR_BYTES)
             val finished = try {
                 process.waitFor(SHELL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             } catch (e: InterruptedException) {
@@ -60,8 +62,8 @@ class NitroUserService constructor() : INitroService.Stub() {
         }
     }
 
-    private fun readAsync(stream: InputStream): Future<String> = outputReaders.submit<String> {
-        stream.bufferedReader().use { it.readText() }
+    private fun readAsync(stream: InputStream, maxBytes: Int): Future<String> = outputReaders.submit<String> {
+        ShellOutputReader.readLimited(stream, maxBytes)
     }
 
     private fun collectOutput(future: Future<String>): String = try {
@@ -102,6 +104,7 @@ class NitroUserService constructor() : INitroService.Stub() {
     }
 
     override fun readSys(path: String): String {
+        if (!ShellInput.isSysPath(path)) return ""
         return try {
             val f = File(path)
             if (f.canRead()) f.readText().trim() else ""

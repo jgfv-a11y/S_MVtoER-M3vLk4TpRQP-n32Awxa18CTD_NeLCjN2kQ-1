@@ -12,6 +12,10 @@ import androidx.lifecycle.MutableLiveData
 import com.nitroboost.app.core.BoostContext
 import com.nitroboost.app.core.BoostEngine
 import com.nitroboost.app.core.Journal
+import com.nitroboost.app.core.MonitorClient
+import com.nitroboost.app.core.MonitorDemand
+import com.nitroboost.app.core.SessionSampleAccumulator
+import com.nitroboost.app.core.ShellInput
 import com.nitroboost.app.core.adaptive.AdaptiveLoop
 import com.nitroboost.app.core.adaptive.AdaptiveSampler
 import com.nitroboost.app.core.adaptive.Bottleneck
@@ -26,6 +30,7 @@ import com.nitroboost.app.core.adaptive.TrialConfig
 import com.nitroboost.app.core.ScoreEngine
 import com.nitroboost.app.core.SessionReport
 import com.nitroboost.app.core.SessionReportBuilder
+import com.nitroboost.app.core.SessionSampleSummary
 import com.nitroboost.app.core.ThermalGuard
 import com.nitroboost.app.core.TaskState
 import com.nitroboost.app.core.AppProfile
@@ -38,6 +43,7 @@ import com.nitroboost.app.data.SessionLog
 import com.nitroboost.app.platform.AndroidExecutor
 import com.nitroboost.app.platform.MonitorHub
 import com.nitroboost.app.platform.MonitorSnapshot
+import com.nitroboost.app.platform.UsageEventForegroundResolver
 import com.nitroboost.app.service.BoosterService
 import com.nitroboost.app.service.WidgetProvider
 import kotlinx.coroutines.CoroutineScope
@@ -70,6 +76,8 @@ sealed class SessionState {
  */
 object AppStore {
 
+    private const val MAX_PROCESS_RSS_KB = 1_048_576L // cap malformed output at 1 GiB/process
+
     @Volatile
     private var app: Context? = null
 
@@ -77,6 +85,7 @@ object AppStore {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val monitorLock = Any()
+    private val monitorDemand = MonitorDemand()
     private val sessionStateLock = Any()
     /** Serializes boost requests against session teardown and whole-journal restore. */
     private val sessionLifecycleLock = Any()
@@ -217,7 +226,7 @@ object AppStore {
             deviceKey = staticKeys.first,
             androidVersion = "$sdk:${Build.VERSION.RELEASE}",
             gamePackage = profile.packageName,
-            boostLevel = Prefs.getInt(ctx(), Prefs.KEY_BOOST_LEVEL, 2),
+            boostLevel = Prefs.boostLevel(ctx()),
             thermalTier = thermalTier,
             capabilityKey = staticKeys.second,
             profileKey = profileKey,
@@ -271,17 +280,11 @@ object AppStore {
             }
     }
 
-    private val sessFps = mutableListOf<Int>()
-    private val sessTemp = mutableListOf<Int>()
-    private val sessPing = mutableListOf<Int>()
-    private val sessRam = mutableListOf<Int>()
+    private val sessionSamples = SessionSampleAccumulator()
 
     private fun beginSessionMeasurement() {
         synchronized(sessionStateLock) {
-            sessFps.clear()
-            sessTemp.clear()
-            sessPing.clear()
-            sessRam.clear()
+            sessionSamples.clear()
             sessApplied = 0
             sessFailed = 0
             sessStart = System.currentTimeMillis()
@@ -290,23 +293,14 @@ object AppStore {
 
     private fun finishSessionMeasurement() {
         val end = System.currentTimeMillis()
-        val fps = mutableListOf<Int>()
-        val temp = mutableListOf<Int>()
-        val ping = mutableListOf<Int>()
-        val ram = mutableListOf<Int>()
-        var applied: Int
-        var failed: Int
+        var applied = 0
+        var failed = 0
+        var sampleSummary = SessionSampleSummary.EMPTY
         val start = synchronized(sessionStateLock) {
-            fps += sessFps
-            temp += sessTemp
-            ping += sessPing
-            ram += sessRam
+            sampleSummary = sessionSamples.snapshot()
+            sessionSamples.clear()
             applied = sessApplied
             failed = sessFailed
-            sessFps.clear()
-            sessTemp.clear()
-            sessPing.clear()
-            sessRam.clear()
             sessApplied = 0
             sessFailed = 0
             val s = sessStart
@@ -316,7 +310,7 @@ object AppStore {
         if (start == 0L) return
         val prev = Prefs.getInt(ctx(), Prefs.KEY_PREV_FPS, -1).takeIf { it > 0 }
         val rep = SessionReportBuilder.summarize(
-            start, end, fps, temp, ping, ram, applied, failed, prev,
+            start, end, sampleSummary, applied, failed, prev,
             endBottleneck = lastFrame?.let { BottleneckDetector.detect(it) }
         )
         try {
@@ -368,17 +362,34 @@ object AppStore {
         }
     }
 
-    fun init(ctx: Context) {
-        app = ctx.applicationContext
-        val h = MonitorHub(ctx.applicationContext)
-        h.gamePackage = { gamePackage() }
+    /** Start/stop expensive monitoring only while a live consumer needs samples. */
+    fun setMonitorClient(client: MonitorClient, enabled: Boolean) {
         synchronized(monitorLock) {
-            hub = h
-            h.start { s ->
-                monitor.postValue(s)
-                collectSample(s)
+            monitorDemand.set(client, enabled)
+            if (monitorDemand.shouldRun()) {
+                startMonitorLocked()
+            } else {
+                hub?.stop()
+                hub = null
+                monitor.postValue(MonitorSnapshot.EMPTY)
             }
         }
+    }
+
+    private fun startMonitorLocked() {
+        if (hub != null) return
+        val context = app ?: return
+        val newHub = MonitorHub(context.applicationContext)
+        newHub.gamePackage = { gamePackage() }
+        hub = newHub
+        newHub.start { sample ->
+            monitor.postValue(sample)
+            collectSample(sample)
+        }
+    }
+
+    fun init(ctx: Context) {
+        app = ctx.applicationContext
         loadLogs()
         adaptiveLoop = AdaptiveLoop(
             engine = engine,
@@ -395,7 +406,7 @@ object AppStore {
             cfg = trialConfig,
             effectiveThermal = { effectiveThermalStatus() },
             log = { line -> appendLog("adaptive: $line") },
-            maxLevel = { Prefs.getInt(ctx(), Prefs.KEY_BOOST_LEVEL, 2) },
+            maxLevel = { Prefs.boostLevel(ctx()) },
             trialContextFactory = { bctx, tier -> makeTrialContext(bctx, tier) }
         )
         // Self-healing monitor: if the sampling hub ever dies (process
@@ -405,6 +416,7 @@ object AppStore {
             while (isActive) {
                 delay(15_000)
                 try {
+                    if (!monitorDemand.shouldRun()) continue
                     val v = monitor.value
                     val now = android.os.SystemClock.elapsedRealtime()
                     // Restart not only on an empty snapshot: if the hub died
@@ -412,13 +424,10 @@ object AppStore {
                     val stale = v == null || v.ts == 0L || now - v.ts > 20_000L
                     if (stale) {
                         synchronized(monitorLock) {
-                            hub?.stop()
-                            val newHub = MonitorHub(ctx().applicationContext)
-                            newHub.gamePackage = { gamePackage() }
-                            hub = newHub
-                            newHub.start { s ->
-                                monitor.postValue(s)
-                                collectSample(s)
+                            if (monitorDemand.shouldRun()) {
+                                hub?.stop()
+                                hub = null
+                                startMonitorLocked()
                             }
                         }
                     }
@@ -488,10 +497,12 @@ object AppStore {
         postAdaptiveUi()
         synchronized(sessionStateLock) {
             if (sessStart == 0L) return
-            s.fps?.let { sessFps.add(it) }
-            s.tempC?.let { sessTemp.add(it.toInt()) }
-            s.pingMs?.let { sessPing.add(it) }
-            if (s.ramUsedMb > 0) sessRam.add(s.ramUsedMb.toInt())
+            sessionSamples.add(
+                fps = s.fps,
+                tempC = s.tempC?.toInt(),
+                pingMs = s.pingMs,
+                ramMb = s.ramUsedMb.toInt().takeIf { it > 0 }
+            )
         }
     }
 
@@ -633,7 +644,7 @@ object AppStore {
                     if (it.isRunning) setOfNotNull(it.candidateId) else emptySet()
                 } ?: emptySet()
                 // v1.5: level gate — 1 = basics, 2 = standard, 3 = max.
-                val maxLevel = Prefs.getInt(c, Prefs.KEY_BOOST_LEVEL, 2)
+                val maxLevel = Prefs.boostLevel(c)
                 val report = engine.boost(bctx, exclude = reserved, maxLevel = maxLevel)
                 // Apply the non-disableable thermal floor immediately after
                 // initial tasks; the service watchdog remains a second line.
@@ -656,8 +667,7 @@ object AppStore {
                     adaptiveLoop?.start()
                 }
                 refreshTaskStates()
-                postScore(profile)
-                val s = score.value ?: 0
+                val s = postScore(profile)
                 if (BoosterService.active) BoosterService.pushScore(c, s)
                 session.postValue(
                     SessionState.Boosted(
@@ -673,7 +683,7 @@ object AppStore {
                 }
                 // The floating monitor goes up with the session — that is
                 // where the user expects it (over the game).
-                if (Prefs.getBool(c, Prefs.KEY_OVERLAY_ON, true)) {
+                if (Prefs.getBool(c, Prefs.KEY_OVERLAY_ON, false)) {
                     if (android.provider.Settings.canDrawOverlays(c)) {
                         try {
                             com.nitroboost.app.service.FpsOverlayService.start(c)
@@ -853,7 +863,8 @@ object AppStore {
             setGamePackage(null)
             finishSessionMeasurement()
             refreshTaskStates()
-            postScore(profile)
+            val restoredScore = postScore(profile)
+            if (BoosterService.active) BoosterService.pushScore(c, restoredScore)
             session.postValue(SessionState.Idle)
             try {
                 WidgetProvider.update(c)
@@ -961,10 +972,11 @@ object AppStore {
         }
     }
 
-    private fun postScore(profile: AppProfile) {
+    private fun postScore(profile: AppProfile): Int {
         val (s, p) = computeScores(profile)
         score.postValue(s)
         scorePotential.postValue(p)
+        return s
     }
 
     /** Maximum the device can reach with this profile — shown as "X / Y". */
@@ -983,39 +995,25 @@ object AppStore {
                 val since = now - 24 * 3600 * 1000L
                 val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, since, now)
                 val background = LinkedHashMap<String, Long>()
-                var foreground: String? = null
-                var fgTime = -1L
                 for (s in stats) {
                     val pkg = s.packageName ?: continue
+                    if (!ShellInput.isPackageName(pkg)) continue
                     val last = s.lastTimeUsed
                     val existing = background[pkg]
                     if (existing == null || last > existing) background[pkg] = last
-                    if (last > fgTime) {
-                        fgTime = last
-                        foreground = pkg
-                    }
                 }
-                // refine foreground: what was used in the last 30 seconds
-                val recent = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, now - 30_000, now)
-                var fg30: String? = null
-                var fg30t = -1L
-                for (s in recent) {
-                    val last = s.lastTimeUsed
-                    if (last > fg30t) {
-                        fg30t = last
-                        fg30 = s.packageName
-                    }
-                }
-                foreground = fg30 ?: foreground
+                val foreground = UsageEventForegroundResolver.foregroundPackages(c)
 
                 val protectedSet = HashSet<String>()
-                protectedSet.addAll(profile.extraProtected)
+                protectedSet.addAll(profile.extraProtected.filter(ShellInput::isPackageName))
                 protectedSet.addAll(Prefs.protectedList(c))
+                protectedSet.add(profile.packageName)
                 protectedSet.add(c.packageName)
                 protectedSet.add("android")
 
                 // drop system apps (uid < 10000) — they are never killable
                 val userApps = background.keys.filter { pkg ->
+                    if (!ShellInput.isPackageName(pkg)) return@filter false
                     try {
                         val ai = pm.getApplicationInfo(pkg, 0)
                         ai.uid >= 10000
@@ -1025,7 +1023,9 @@ object AppStore {
                 }
                 val userMap = userApps.associateWith { background[it] ?: 0L }
                 BackgroundSelector.select(
-                    userMap, foreground, c.packageName, protectedSet, now
+                    userMap, foreground.firstOrNull(), c.packageName, protectedSet, now,
+                    gamePackage = profile.packageName,
+                    foregroundPackages = foreground
                 )
             } catch (e: Exception) {
                 emptyList()
@@ -1034,23 +1034,9 @@ object AppStore {
     }
 
     fun foregroundPackage(): String? {
-        return try {
-            val c = ctx()
-            val usm = c.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-            val now = System.currentTimeMillis()
-            val recent = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, now - 30_000, now)
-            var fg: String? = null
-            var best = -1L
-            for (s in recent) {
-                if (s.lastTimeUsed > best) {
-                    best = s.lastTimeUsed
-                    fg = s.packageName
-                }
-            }
-            fg
-        } catch (e: Exception) {
-            null
-        }
+        val c = ctx()
+        return UsageEventForegroundResolver.currentPackage(c)
+            ?.takeIf { it != c.packageName && ShellInput.isPackageName(it) }
     }
 
     /**
@@ -1061,33 +1047,46 @@ object AppStore {
      *    memory API without privilege) — the RAM column stays 0.
      */
     fun topProcesses(limit: Int = 20): List<ProcessInfo> {
+        val safeLimit = limit.coerceIn(0, 100)
+        if (safeLimit == 0) return emptyList()
         try {
             val c = ctx()
             val ex = AndroidExecutor(c)
             val r = ex.shellNonBlocking("ps -A -o PID,RSS,NAME")
             if (r != null && r.ok) {
                 val pm = c.packageManager
-                val list = r.stdout.lineSequence()
+                val processes = r.stdout.lineSequence()
                     .drop(1)
                     .mapNotNull { line ->
                         val p = line.trim().split(Regex("\\s+"))
                         if (p.size < 3) return@mapNotNull null
-                        val rssKb = p[1].toLongOrNull() ?: return@mapNotNull null
+                        val rssKb = p[1].toLongOrNull()?.takeIf { it in 1..MAX_PROCESS_RSS_KB }
+                            ?: return@mapNotNull null
                         // On Android the ps process name is the package
                         // (possibly with a ":suffix" for child processes).
                         val procName = p.drop(2).joinToString(" ")
                         val pkg = procName.substringBefore(":")
-                        if (!pkg.contains(".")) return@mapNotNull null // kernel/system thread
+                        if (!ShellInput.isPackageName(pkg)) return@mapNotNull null
+                        val appInfo = try {
+                            pm.getApplicationInfo(pkg, 0)
+                        } catch (_: Exception) {
+                            return@mapNotNull null
+                        }
+                        if (appInfo.uid < 10000) return@mapNotNull null
                         val name = try {
-                            pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
-                        } catch (e: Exception) {
+                            pm.getApplicationLabel(appInfo).toString()
+                        } catch (_: Exception) {
                             pkg
                         }
                         ProcessInfo(pkg, name, rssKb * 1024L, 0L)
                     }
+                    .groupBy { it.pkg }
+                    .map { (_, appProcesses) ->
+                        val first = appProcesses.first()
+                        first.copy(ramBytes = appProcesses.sumOf { it.ramBytes })
+                    }
                     .sortedByDescending { it.ramBytes }
-                    .take(limit)
-                    .toList()
+                    .take(safeLimit)
                 if (list.size >= 3) return list
             }
         } catch (e: Exception) {
@@ -1102,15 +1101,22 @@ object AppStore {
             val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, since, now)
             stats.mapNotNull { s ->
                 val pkg = s.packageName ?: return@mapNotNull null
+                if (!ShellInput.isPackageName(pkg)) return@mapNotNull null
+                val appInfo = try {
+                    pm.getApplicationInfo(pkg, 0)
+                } catch (_: Exception) {
+                    return@mapNotNull null
+                }
+                if (appInfo.uid < 10000) return@mapNotNull null
                 val name = try {
-                    pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
-                } catch (e: Exception) {
+                    pm.getApplicationLabel(appInfo).toString()
+                } catch (_: Exception) {
                     pkg
                 }
                 ProcessInfo(pkg, name, 0L, s.lastTimeUsed)
             }
                 .sortedByDescending { it.lastUsed }
-                .take(limit)
+                .take(safeLimit)
         } catch (e: Exception) {
             emptyList()
         }
@@ -1122,7 +1128,7 @@ object AppStore {
             val pm = c.packageManager
             pm.getInstalledApplications(0)
                 .filter { ai ->
-                    try {
+                    ShellInput.isPackageName(ai.packageName) && try {
                         ai.enabled
                     } catch (e: Exception) {
                         false

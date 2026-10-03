@@ -20,6 +20,7 @@ import com.nitroboost.app.BuildConfig
 import com.nitroboost.app.R
 import com.nitroboost.app.SessionState
 import com.nitroboost.app.core.AppProfile
+import com.nitroboost.app.core.FpsDisplayCache
 import com.nitroboost.app.core.GameSpaceDetector
 import com.nitroboost.app.core.SessionReport
 import com.nitroboost.app.core.adaptive.Bottleneck
@@ -49,6 +50,7 @@ class HomeFragment : Fragment() {
     private var statTemp: TextView? = null
     private var statFps: TextView? = null
     private var statPing: TextView? = null
+    private val fpsDisplayCache = FpsDisplayCache()
     private var btnBoost: MaterialButton? = null
     private var reportCard: View? = null
     private var reportText: TextView? = null
@@ -202,7 +204,7 @@ class HomeFragment : Fragment() {
 
     private fun renderLevelChips() {
         val c = requireContext()
-        val sel = Prefs.getInt(c, Prefs.KEY_BOOST_LEVEL, 2)
+        val sel = Prefs.boostLevel(c)
         val accent = ContextCompat.getColor(c, R.color.nb_accent)
         val normal = ContextCompat.getColor(c, R.color.nb_text)
         levelChips.forEachIndexed { i, chip ->
@@ -413,7 +415,9 @@ class HomeFragment : Fragment() {
             statCpu?.text = "${snap.cpuPct}%"
             statRam?.text = "${snap.ramUsedMb / 1024}GB"
             statTemp?.text = snap.tempC?.let { "${Math.round(it)}\u00B0" } ?: "--"
-            statFps?.text = snap.fps?.toString() ?: "--"
+            statFps?.text = fpsDisplayCache.value(
+                snap.fps, snap.gamePackage, android.os.SystemClock.elapsedRealtime()
+            )?.toString() ?: "--"
             statPing?.text = snap.pingMs?.let { "${it}ms" } ?: "--"
         })
         AppStore.session.observe(owner, Observer { st ->

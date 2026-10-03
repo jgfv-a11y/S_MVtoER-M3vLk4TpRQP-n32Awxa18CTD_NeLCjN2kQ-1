@@ -6,13 +6,12 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
-import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.Spinner
 import android.widget.TextView
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
@@ -21,9 +20,14 @@ import com.nitroboost.app.AppStore
 import com.nitroboost.app.R
 import com.nitroboost.app.core.AppProfile
 import com.nitroboost.app.core.Module
+import com.nitroboost.app.core.ProfileValidation
 import com.nitroboost.app.data.Prefs
 import com.nitroboost.app.data.ProfileStore
 import androidx.appcompat.app.AlertDialog
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Profiles tab: pick the active game profile, edit its modules and
@@ -33,6 +37,8 @@ class ProfilesFragment : Fragment() {
 
     private lateinit var adapter: ProfileAdapter
     private lateinit var store: ProfileStore
+    private var installedGamesJob: Job? = null
+    private var customProfilePackages: Set<String> = emptySet()
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -41,11 +47,14 @@ class ProfilesFragment : Fragment() {
     ): View {
         store = ProfileStore(requireContext())
         val c = requireContext()
+        val customProfiles = store.customs()
+        customProfilePackages = customProfiles.mapTo(HashSet()) { it.packageName }
+        val profiles = ProfileStore.mergeProfiles(store.builtins(), customProfiles)
         return inflater.inflate(R.layout.fragment_profiles, container, false).also { root ->
             val rec = root.findViewById<RecyclerView>(R.id.rec_profiles)
             rec.layoutManager = LinearLayoutManager(c)
             adapter = ProfileAdapter(
-                store.all(),
+                profiles,
                 Prefs.activeProfile(c) ?: "",
                 langAr = c.resources.configuration.locales[0].language == "ar",
                 onSelect = { p ->
@@ -62,8 +71,14 @@ class ProfilesFragment : Fragment() {
                         .setTitle(R.string.profile_delete_title)
                         .setMessage(p.name)
                         .setPositiveButton(R.string.delete) { _, _ ->
-                            store.removeCustom(p.packageName)
-                            val remaining = store.all()
+                            if (!store.removeCustom(p.packageName)) {
+                                android.widget.Toast.makeText(c, R.string.profile_save_failed,
+                                    android.widget.Toast.LENGTH_LONG).show()
+                                return@setPositiveButton
+                            }
+                            val customProfiles = store.customs()
+                            customProfilePackages = customProfiles.mapTo(HashSet()) { it.packageName }
+                            val remaining = ProfileStore.mergeProfiles(store.builtins(), customProfiles)
                             if (Prefs.activeProfile(c) == p.packageName) {
                                 val fallback = remaining.firstOrNull()?.packageName
                                 Prefs.setActiveProfile(c, fallback)
@@ -75,7 +90,7 @@ class ProfilesFragment : Fragment() {
                         .setNegativeButton(R.string.cancel, null)
                         .show()
                 },
-                isCustom = { p -> store.customs().any { it.packageName == p.packageName } }
+                isCustom = { p -> p.packageName in customProfilePackages }
             )
             rec.adapter = adapter
 
@@ -90,31 +105,50 @@ class ProfilesFragment : Fragment() {
     }
 
     private fun showAddDialog() {
-        val c = requireContext()
-        val view = layoutInflater.inflate(R.layout.dialog_profile, null)
-        val spinner = view.findViewById<Spinner>(R.id.dialog_game_picker)
-        val games = AppStore.installedGames()
-        val names = games.map { "${it.name}  (${it.pkg})" }
-        spinner.adapter = ArrayAdapter(c, android.R.layout.simple_spinner_dropdown_item, names)
-
-        val dialog = AlertDialog.Builder(c)
-            .setTitle(R.string.profile_add_title)
-            .setView(view)
-            .setPositiveButton(R.string.save) { _, _ ->
-                val idx = spinner.selectedItemPosition
-                if (idx in games.indices) {
-                    val g = games[idx]
-                    val p = AppProfile(packageName = g.pkg, name = g.name).copyProfile()
-                    store.upsertCustom(p)
-                    Prefs.setActiveProfile(c, p.packageName)
-                    adapter.items = store.all()
-                    adapter.active = p.packageName
-                    adapter.notifyDataSetChanged()
-                }
+        if (installedGamesJob?.isActive == true) return
+        val c = context?.applicationContext ?: return
+        installedGamesJob = viewLifecycleOwner.lifecycleScope.launch {
+            val games = withContext(Dispatchers.IO) { AppStore.installedGames() }
+            if (!isAdded || !isResumed) return@launch
+            if (games.isEmpty()) {
+                android.widget.Toast.makeText(c, R.string.no_installed_apps, android.widget.Toast.LENGTH_LONG).show()
+                return@launch
             }
-            .setNegativeButton(R.string.cancel, null)
-            .create()
-        dialog.show()
+            val dialogView = layoutInflater.inflate(R.layout.dialog_profile, null)
+            val spinner = dialogView.findViewById<Spinner>(R.id.dialog_game_picker)
+            val names = games.map { "${it.name}  (${it.pkg})" }
+            spinner.adapter = ArrayAdapter(c, android.R.layout.simple_spinner_dropdown_item, names)
+            val dialog = AlertDialog.Builder(requireContext())
+                .setTitle(R.string.profile_add_title)
+                .setView(dialogView)
+                .setPositiveButton(R.string.save, null)
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val idx = spinner.selectedItemPosition
+                if (idx !in games.indices) return@setOnClickListener
+                val game = games[idx]
+                val profile = ProfileValidation.validatedCopy(
+                    AppProfile(packageName = game.pkg, name = game.name)
+                ) ?: run {
+                    android.widget.Toast.makeText(c, R.string.invalid_package_name,
+                        android.widget.Toast.LENGTH_LONG).show()
+                    return@setOnClickListener
+                }
+                if (!store.upsertCustom(profile)) {
+                    android.widget.Toast.makeText(c, R.string.profile_save_failed,
+                        android.widget.Toast.LENGTH_LONG).show()
+                    return@setOnClickListener
+                }
+                Prefs.setActiveProfile(c, profile.packageName)
+                val customProfiles = store.customs()
+                customProfilePackages = customProfiles.mapTo(HashSet()) { it.packageName }
+                adapter.items = ProfileStore.mergeProfiles(store.builtins(), customProfiles)
+                adapter.active = profile.packageName
+                adapter.notifyDataSetChanged()
+                dialog.dismiss()
+            }
+        }
     }
 
     private fun showEditDialog(p: AppProfile) {
@@ -152,29 +186,49 @@ class ProfilesFragment : Fragment() {
         editRefresh.setText(profile.refreshRate.toString())
         editGameMode.setText(profile.gameMode.toString())
 
-        AlertDialog.Builder(c)
+        val dialog = AlertDialog.Builder(c)
             .setTitle(profile.name)
             .setView(view)
-            .setPositiveButton(R.string.save) { _, _ ->
-                profile.enabledModules.clear()
-                for ((m, cb) in moduleChecks) {
-                    if (cb.isChecked) profile.enabledModules.add(m)
-                }
-                profile.dnd = swDnd.isChecked
-                profile.killAnimations = swAnim.isChecked
-                profile.aggressiveRamClean = swRamKill.isChecked
-                profile.thermalOverride = swThermal.isChecked
-                profile.dpi = editDpi.text.toString().toIntOrNull() ?: 0
-                profile.refreshRate = editRefresh.text.toString().toIntOrNull() ?: 0
-                profile.gameMode = editGameMode.text.toString().toIntOrNull() ?: 0
-                store.upsertCustom(profile)
-                Prefs.setActiveProfile(c, profile.packageName)
-                adapter.items = store.all()
-                adapter.active = profile.packageName
-                adapter.notifyDataSetChanged()
-            }
+            .setPositiveButton(R.string.save, null)
             .setNegativeButton(R.string.cancel, null)
             .show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val dpi = editDpi.text.toString().toIntOrNull()
+            val refresh = editRefresh.text.toString().toIntOrNull()
+            val gameMode = editGameMode.text.toString().toIntOrNull()
+            val dpiValid = dpi != null && ProfileValidation.isValidDpi(dpi)
+            val refreshValid = refresh != null && ProfileValidation.isValidRefreshRate(refresh)
+            val gameModeValid = gameMode != null && ProfileValidation.isValidGameMode(gameMode)
+            editDpi.error = if (dpiValid) null else getString(R.string.profile_dpi_range)
+            editRefresh.error = if (refreshValid) null else getString(R.string.profile_refresh_range)
+            editGameMode.error = if (gameModeValid) null else getString(R.string.profile_game_mode_range)
+            if (!dpiValid || !refreshValid || !gameModeValid) return@setOnClickListener
+
+            profile.enabledModules.clear()
+            for ((m, cb) in moduleChecks) {
+                if (cb.isChecked) profile.enabledModules.add(m)
+            }
+            profile.dnd = swDnd.isChecked
+            profile.killAnimations = swAnim.isChecked
+            profile.aggressiveRamClean = swRamKill.isChecked
+            profile.thermalOverride = swThermal.isChecked
+            profile.dpi = dpi!!
+            profile.refreshRate = refresh!!
+            profile.gameMode = gameMode!!
+            val validated = ProfileValidation.validatedCopy(profile)
+            if (validated == null || !store.upsertCustom(validated)) {
+                android.widget.Toast.makeText(c, R.string.profile_save_failed,
+                    android.widget.Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            Prefs.setActiveProfile(c, validated.packageName)
+            val customProfiles = store.customs()
+            customProfilePackages = customProfiles.mapTo(HashSet()) { it.packageName }
+            adapter.items = ProfileStore.mergeProfiles(store.builtins(), customProfiles)
+            adapter.active = validated.packageName
+            adapter.notifyDataSetChanged()
+            dialog.dismiss()
+        }
     }
 }
 

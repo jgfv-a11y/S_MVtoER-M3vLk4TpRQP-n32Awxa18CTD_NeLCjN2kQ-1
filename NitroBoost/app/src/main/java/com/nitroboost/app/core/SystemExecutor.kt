@@ -33,6 +33,8 @@ interface SystemExecutor {
 
     fun sysSettingGet(key: String): String?
     fun sysSettingPut(key: String, value: String): Boolean
+    /** Delete a setting key to restore its implicit platform default, when supported. */
+    fun sysSettingDelete(key: String): Boolean = false
 
     fun secureSettingGet(key: String): String?
     fun secureSettingPut(key: String, value: String): Boolean

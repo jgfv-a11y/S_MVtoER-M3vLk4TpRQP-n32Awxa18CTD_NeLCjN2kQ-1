@@ -44,6 +44,7 @@ class GpuTask : BoostTask {
     }
 
     override fun apply(ctx: BoostContext): TaskResult {
+        if (!ctx.executor.privileged) return TaskResult(id, TaskStatus.Skipped, "needs Shizuku or root")
         val active = readable(ctx)
         if (active.isEmpty()) {
             return TaskResult(id, TaskStatus.Skipped, "no GPU sysfs nodes on this device")

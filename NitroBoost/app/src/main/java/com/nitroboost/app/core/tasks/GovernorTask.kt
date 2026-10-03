@@ -4,6 +4,7 @@ import com.nitroboost.app.core.BoostContext
 import com.nitroboost.app.core.BoostTask
 import com.nitroboost.app.core.JournalEntry
 import com.nitroboost.app.core.Module
+import com.nitroboost.app.core.ShellInput
 import com.nitroboost.app.core.TaskResult
 import com.nitroboost.app.core.TaskStatus
 
@@ -45,19 +46,27 @@ class GovernorTask(private val governor: String = "performance") : BoostTask {
                 val parts = line.split(Regex("\\s+"), limit = 2)
                 if (parts.size < 2) null else GovFile(parts[0], parts[1].trim())
             }
-            .filter { it.path.endsWith("scaling_governor") }
+            .filter {
+                it.path.startsWith("/sys/devices/system/cpu/") &&
+                    it.path.endsWith("scaling_governor") &&
+                    ShellInput.isSysPath(it.path) &&
+                    ShellInput.isSysValue(it.current)
+            }
             .toList()
     }
 
     override fun isSupported(ctx: BoostContext): Boolean =
-        ctx.executor.privileged && listGovernors(ctx).isNotEmpty()
+        ShellInput.isToken(governor) && ctx.executor.privileged && listGovernors(ctx).isNotEmpty()
 
     override fun isApplied(ctx: BoostContext): Boolean {
+        if (!ShellInput.isToken(governor)) return false
         val files = listGovernors(ctx)
         return files.isNotEmpty() && files.all { it.current == governor }
     }
 
     override fun apply(ctx: BoostContext): TaskResult {
+        if (!ctx.executor.privileged) return TaskResult(id, TaskStatus.Skipped, "needs Shizuku or root")
+        if (!ShellInput.isToken(governor)) return TaskResult(id, TaskStatus.Skipped, "invalid governor value")
         val files = listGovernors(ctx)
         if (files.isEmpty()) {
             return TaskResult(
@@ -72,9 +81,9 @@ class GovernorTask(private val governor: String = "performance") : BoostTask {
         for (f in files) {
             if (f.current == governor) continue
             attempted++
-            val w = ctx.executor.shell("echo $governor > \"${f.path}\" 2>/dev/null")
+            val wrote = ctx.executor.writeSys(f.path, governor)
             val now = ctx.executor.readSys(f.path)
-            if (now == governor) {
+            if (wrote && now == governor) {
                 entries.add(
                     JournalEntry(
                         taskId = id,

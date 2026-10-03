@@ -134,7 +134,14 @@
     <string name="opt_thermal">تجاوز التبريد (مجازف — بمراقبة أوتوماتيكية)</string>
     <string name="hint_dpi">الكثافة (0=أوتوماتيك)</string>
     <string name="hint_refresh">هرتز (0=أوتوماتيك)</string>
-    <string name="hint_game_mode">المستوى</string>
+    <string name="hint_game_mode">الوضع (0=إيقاف، 1–5=وضع النظام)</string>
+    <string name="profile_dpi_range">يجب أن تكون الكثافة 0 (تلقائي) أو بين 72 و1000.</string>
+    <string name="profile_refresh_range">يجب أن يكون معدل التحديث 0 (اتباع سياسة الجهاز) أو بين 24 و500 هرتز.</string>
+    <string name="profile_game_mode_range">يجب أن يكون وضع اللعبة بين 0 (إيقاف) و5.</string>
+    <string name="profile_save_failed">تعذر حفظ الملف؛ أُبقيت الإعدادات السابقة دون تغيير.</string>
+    <string name="invalid_package_name">أدخل اسم حزمة Android صالحًا.</string>
+    <string name="no_installed_apps">لا توجد تطبيقات مثبّتة متاحة لإضافتها كملف.</string>
+    <string name="ok">موافق</string>
 
     <!-- System tab -->
     <string name="storage_label">التخزين</string>

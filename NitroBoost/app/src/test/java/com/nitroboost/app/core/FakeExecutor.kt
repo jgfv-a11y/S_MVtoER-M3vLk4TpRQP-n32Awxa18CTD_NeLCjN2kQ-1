@@ -17,10 +17,30 @@ class FakeExecutor : SystemExecutor {
     var failDnd = false
     /** Simulates a device that refuses Settings.System writes (no WRITE_SETTINGS). */
     var failSys = false
+    var physicalDensity = 420
+    var densityOverride: Int? = null
     override var privileged: Boolean = true
 
     override fun shell(cmd: String): ShellResult {
         shellLog.add(cmd)
+
+        if (cmd == "wm density") {
+            val output = buildString {
+                append("Physical density: $physicalDensity\n")
+                densityOverride?.let { append("Override density: $it\n") }
+            }
+            return ShellResult(true, 0, output, "")
+        }
+        if (cmd == "wm density reset") {
+            densityOverride = null
+            written.add("wm-density-reset")
+            return ShellResult(true, 0, "", "")
+        }
+        Regex("wm density (\\d+)").matchEntire(cmd)?.let { m ->
+            densityOverride = m.groupValues[1].toInt()
+            written.add("wm-density:${m.groupValues[1]}")
+            return ShellResult(true, 0, "", "")
+        }
 
         // Simulate the governor listing loop
         if (cmd.startsWith("for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor")) {
@@ -115,6 +135,11 @@ class FakeExecutor : SystemExecutor {
     }
 
     override fun sysSettingGet(key: String): String? = sys[key]
+    override fun sysSettingDelete(key: String): Boolean {
+        sys.remove(key)
+        written.add("sys-delete:$key")
+        return true
+    }
     override fun sysSettingPut(key: String, value: String): Boolean {
         if (failSys) return false
         sys[key] = value

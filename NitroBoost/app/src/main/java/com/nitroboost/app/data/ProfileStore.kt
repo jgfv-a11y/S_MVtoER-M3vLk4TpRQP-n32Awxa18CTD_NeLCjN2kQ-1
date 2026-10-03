@@ -2,9 +2,14 @@ package com.nitroboost.app.data
 
 import android.content.Context
 import com.nitroboost.app.core.AppProfile
+import com.nitroboost.app.core.ProfileValidation
+import com.nitroboost.app.core.ShellInput
 import org.json.JSONArray
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 /**
  * Profiles: built-ins shipped in assets (reference-compatible schema) plus
@@ -18,7 +23,7 @@ class ProfileStore(private val ctx: Context) {
         return try {
             val text = ctx.assets.open("game_profiles.json").bufferedReader().use { it.readText() }
             parseArray(text)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             emptyList()
         }
     }
@@ -28,7 +33,7 @@ class ProfileStore(private val ctx: Context) {
         if (!f.exists()) return emptyList()
         return try {
             parseArray(f.readText())
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             emptyList()
         }
     }
@@ -38,8 +43,7 @@ class ProfileStore(private val ctx: Context) {
      * the same package name (the user's settings win) — the list never shows
      * the same game twice.
      */
-    fun all(): List<AppProfile> =
-        mergeProfiles(builtins(), customs())
+    fun all(): List<AppProfile> = mergeProfiles(builtins(), customs())
 
     companion object {
         /** Pure, unit-testable merge: customs shadow builtins by packageName. */
@@ -52,43 +56,55 @@ class ProfileStore(private val ctx: Context) {
 
     fun resolve(pkg: String?): AppProfile {
         val all = all()
-        val wanted = if (pkg.isNullOrBlank()) Prefs.activeProfile(ctx) else pkg
+        val wanted = (if (pkg.isNullOrBlank()) Prefs.activeProfile(ctx) else pkg)
+            ?.takeIf(ShellInput::isPackageName)
         return all.firstOrNull { it.packageName == wanted }
             ?: AppProfile(packageName = wanted ?: "", name = wanted ?: "General")
     }
 
-    fun upsertCustom(p: AppProfile) {
+    fun upsertCustom(p: AppProfile): Boolean {
+        val safe = ProfileValidation.validatedCopy(p) ?: return false
         val list = customs().toMutableList()
-        list.removeAll { it.packageName == p.packageName }
-        list.add(p)
-        save(list)
+        list.removeAll { it.packageName == safe.packageName }
+        list.add(safe)
+        return save(list)
     }
 
-    fun removeCustom(pkg: String) {
-        save(customs().filterNot { it.packageName == pkg })
+    fun removeCustom(pkg: String): Boolean {
+        if (!ShellInput.isPackageName(pkg)) return false
+        return save(customs().filterNot { it.packageName == pkg })
     }
 
-    fun save(list: List<AppProfile>) {
-        try {
+    /** Atomic, fsync-before-rename write; false means the caller should retain the old UI state. */
+    fun save(list: List<AppProfile>): Boolean {
+        val safeProfiles = list.map { ProfileValidation.validatedCopy(it) ?: return false }
+        val target = customFile()
+        val tmp = File(target.parentFile, target.name + ".tmp")
+        return try {
             val arr = JSONArray()
-            list.forEach { arr.put(AppProfile.toJson(it)) }
-            val target = customFile()
+            safeProfiles.forEach { arr.put(AppProfile.toJson(it)) }
             target.parentFile?.mkdirs()
-            val tmp = File(target.parentFile, target.name + ".tmp")
             FileOutputStream(tmp).use { out ->
                 out.write(arr.toString(2).toByteArray(Charsets.UTF_8))
-                try {
-                    out.fd.sync()
-                } catch (_: Exception) {
-                    // Some filesystems do not expose fsync; rename is still safer than direct write.
-                }
+                out.fd.sync()
             }
-            if (!tmp.renameTo(target)) {
-                tmp.copyTo(target, overwrite = true)
-                tmp.delete()
-            }
-        } catch (e: Exception) {
-            // never crash on persistence
+            atomicReplace(tmp, target)
+            true
+        } catch (_: Exception) {
+            tmp.delete()
+            false
+        }
+    }
+
+    private fun atomicReplace(source: File, destination: File) {
+        try {
+            Files.move(
+                source.toPath(), destination.toPath(),
+                StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING
+            )
+        } catch (_: AtomicMoveNotSupportedException) {
+            // Same-directory rename fallback; never truncate-copy the live profile file.
+            Files.move(source.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
         }
     }
 
@@ -97,8 +113,8 @@ class ProfileStore(private val ctx: Context) {
         val out = mutableListOf<AppProfile>()
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
-            val p = AppProfile.fromJson(o)
-            if (p.packageName.isNotBlank()) out.add(p)
+            val p = ProfileValidation.sanitizedStoredCopy(AppProfile.fromJson(o)) ?: continue
+            out.add(p)
         }
         return out
     }

@@ -53,6 +53,21 @@ class PeakBrightnessTaskTest {
     }
 
     @Test
+    fun `maximum brightness is reserved for explicit max level`() {
+        val ex = FakeExecutor()
+        ex.sys["screen_brightness"] = "100"
+        ex.sys["screen_brightness_mode"] = "1"
+        val j = journal()
+        val task = PeakBrightnessTask()
+        val report = BoostEngine(listOf(task)).boost(
+            BoostContext(testProfile(Module.DISPLAY), ex, j), maxLevel = 2
+        )
+        assertEquals(TaskStatus.Skipped, report.results[task.id]?.status)
+        assertTrue(ex.written.isEmpty())
+        assertTrue(j.isEmpty())
+    }
+
+    @Test
     fun `skipped when brightness is not writable at all`() {
         val ex = FakeExecutor()
         ex.privileged = true

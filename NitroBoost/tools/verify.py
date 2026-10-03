@@ -167,7 +167,7 @@ def main():
                 if f.endswith(".kt"):
                     kotlin_files.append(os.path.join(dp, f))
 
-    r_re = re.compile(r'R\.(string|color|drawable|layout|style|menu|xml|mipmap|id|raw)/([A-Za-z0-9_]+)')
+    r_re = re.compile(r'(?<!android\.)R\.(string|color|drawable|layout|style|menu|xml|mipmap|id|raw)\.([A-Za-z0-9_]+)')
     for kf in kotlin_files:
         text = open(kf, encoding="utf-8").read()
         for m in r_re.finditer(text):

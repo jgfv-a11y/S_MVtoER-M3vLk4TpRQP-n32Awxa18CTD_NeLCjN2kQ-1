@@ -208,6 +208,65 @@ class Journal(val file: File) {
         /** Live-journal size that triggers an archive + clear. */
         const val ROTATE_AFTER = 250
 
+        private fun safeRevertCommand(entry: JournalEntry): String? {
+            val command = entry.revertCmd ?: return null
+            return when (entry.kind) {
+                JournalEntry.Kind.THERMAL_OVERRIDE ->
+                    if (entry.taskId == "thermal_override" &&
+                        entry.key == "thermal_override" &&
+                        entry.oldValue == "-1" && entry.newValue == "0" &&
+                        command == "cmd thermalservice override-status -1"
+                    ) command else null
+
+                JournalEntry.Kind.CMD -> when (entry.taskId) {
+                    "display" -> {
+                        if (entry.key != "wm_density") return null
+                        val targetDpi = entry.newValue?.toIntOrNull()
+                        if (targetDpi == null || targetDpi !in 72..1000) return null
+                        val oldDpi = entry.oldValue?.toIntOrNull()
+                        when {
+                            oldDpi == null && entry.oldValue == null && command == "wm density reset" -> command
+                            oldDpi != null && oldDpi in 72..1000 && command == "wm density $oldDpi" -> command
+                            else -> null
+                        }
+                    }
+                    "game_api_downscale" -> {
+                        val pkg = entry.key.removePrefix("game_api:")
+                        val downscale = entry.newValue?.removePrefix("--downscale ")
+                        if (entry.key.startsWith("game_api:") && ShellInput.isPackageName(pkg) &&
+                            downscale != null && downscale in setOf("0.9", "0.8", "0.7") &&
+                            entry.oldValue == "none" &&
+                            command == "cmd game reset $pkg 2>/dev/null"
+                        ) command else null
+                    }
+                    "game_perf_mode" -> {
+                        val pkg = entry.key.removePrefix("game_mode_api:")
+                        if (entry.key.startsWith("game_mode_api:") && ShellInput.isPackageName(pkg) &&
+                            entry.oldValue == "1" && entry.newValue == "2" &&
+                            command == "cmd game set --mode 1 $pkg 2>/dev/null"
+                        ) command else null
+                    }
+                    "device_idle" -> {
+                        val pkg = entry.key.removePrefix("device_idle:")
+                        if (entry.key.startsWith("device_idle:") && ShellInput.isPackageName(pkg) &&
+                            entry.newValue == "whitelisted" &&
+                            command == "cmd deviceidle whitelist-remove $pkg 2>/dev/null"
+                        ) command else null
+                    }
+                    "doze_whitelist" -> {
+                        val pkg = entry.key.removePrefix("doze_whitelist:")
+                        if (entry.key.startsWith("doze_whitelist:") && ShellInput.isPackageName(pkg) &&
+                            entry.oldValue == "absent" && entry.newValue == "present" &&
+                            command == "cmd deviceidle whitelist -$pkg 2>/dev/null"
+                        ) command else null
+                    }
+                    else -> null
+                }
+
+                else -> null
+            }
+        }
+
         /**
          * Revert a single entry using the executor.
          * Returns true when the original state was successfully restored.
@@ -216,7 +275,9 @@ class Journal(val file: File) {
             return try {
                 when (entry.kind) {
                     JournalEntry.Kind.SYS_SETTING ->
-                        ex.sysSettingPut(entry.key, entry.oldValue ?: "0")
+                        if (entry.taskId == "display" && entry.key == "min_refresh_rate" && entry.oldValue == null)
+                            ex.sysSettingDelete(entry.key)
+                        else ex.sysSettingPut(entry.key, entry.oldValue ?: "0")
                     JournalEntry.Kind.SECURE_SETTING ->
                         ex.secureSettingPut(entry.key, entry.oldValue ?: "0")
                     JournalEntry.Kind.GLOBAL_SETTING ->
@@ -225,8 +286,10 @@ class Journal(val file: File) {
                         ex.writeSys(entry.key, entry.oldValue ?: "0")
                     JournalEntry.Kind.DND ->
                         ex.dndFilterSet(entry.oldValue?.toIntOrNull() ?: DndFilters.ALL)
-                    JournalEntry.Kind.THERMAL_OVERRIDE, JournalEntry.Kind.CMD ->
-                        if (entry.revertCmd.isNullOrBlank()) true else ex.shell(entry.revertCmd).ok
+                    JournalEntry.Kind.THERMAL_OVERRIDE, JournalEntry.Kind.CMD -> {
+                        val command = safeRevertCommand(entry) ?: return false
+                        ex.shell(command).ok
+                    }
                 }
             } catch (e: Exception) {
                 false

@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import com.nitroboost.app.AppStore
 import com.nitroboost.app.R
 import com.nitroboost.app.core.BoostContext
+import com.nitroboost.app.core.MonitorClient
 import com.nitroboost.app.core.ThermalGuard
 import com.nitroboost.app.data.Prefs
 import com.nitroboost.app.data.ProfileStore
@@ -112,9 +113,21 @@ class BoosterService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
-            endSession()
+            if (!active) {
+                ending = false
+                try {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } catch (_: Exception) {
+                }
+                stopSelf(startId)
+            } else {
+                endSession()
+            }
             return START_NOT_STICKY
         }
+        // Duplicate starts can be queued before Android dispatches the first
+        // one; do not launch a second boost/session watcher.
+        if (active) return START_STICKY
         // Android 14+ (target 34): the specialUse type must be passed at runtime.
         val n = buildNotification(getString(R.string.session_running), getString(R.string.session_notify_body))
         if (android.os.Build.VERSION.SDK_INT >= 29) {
@@ -125,6 +138,7 @@ class BoosterService : Service() {
         val profilePkg = intent?.getStringExtra(EXTRA_PROFILE)
         active = true
         ending = false
+        AppStore.setMonitorClient(MonitorClient.SESSION, true)
         scope?.launch {
             startSession(profilePkg)
         }
@@ -169,7 +183,15 @@ class BoosterService : Service() {
     }
 
     private fun endSession() {
-        if (!active || ending) return
+        if (!active) {
+            try {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } catch (_: Exception) {
+            }
+            stopSelf()
+            return
+        }
+        if (ending) return
         ending = true
         synchronized(watchJobsLock) {
             jobs.forEach { it.cancel() }
@@ -208,6 +230,7 @@ class BoosterService : Service() {
             withContext(Dispatchers.Main) {
                 active = false
                 ending = false
+                AppStore.setMonitorClient(MonitorClient.SESSION, false)
                 gamePackage = null
                 AppStore.setGamePackage(null)
                 try {
@@ -375,6 +398,7 @@ class BoosterService : Service() {
             }
         } catch (_: Exception) {
         }
+        AppStore.setMonitorClient(MonitorClient.SESSION, false)
         scope?.cancel()
         if (serviceInstance === this) serviceInstance = null
         super.onDestroy()

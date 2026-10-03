@@ -2,6 +2,8 @@ package com.nitroboost.app.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.nitroboost.app.core.ProfileValidation
+import com.nitroboost.app.core.ShellInput
 
 /** Central preferences. All keys live here — no stringly-typed sprinkling. */
 object Prefs {
@@ -30,21 +32,38 @@ object Prefs {
     fun sp(ctx: Context): SharedPreferences =
         ctx.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
-    fun activeProfile(ctx: Context): String? = sp(ctx).getString(KEY_ACTIVE_PROFILE, null)
+    fun activeProfile(ctx: Context): String? = try {
+        sp(ctx).getString(KEY_ACTIVE_PROFILE, null)?.takeIf(ShellInput::isPackageName)
+    } catch (_: Exception) {
+        null
+    }
 
     fun setActiveProfile(ctx: Context, pkg: String?) {
         sp(ctx).edit().apply {
-            if (pkg == null) remove(KEY_ACTIVE_PROFILE) else putString(KEY_ACTIVE_PROFILE, pkg)
+            if (pkg == null || !ShellInput.isPackageName(pkg)) remove(KEY_ACTIVE_PROFILE)
+            else putString(KEY_ACTIVE_PROFILE, pkg)
         }.apply()
     }
 
-    fun getBool(ctx: Context, key: String, def: Boolean): Boolean = sp(ctx).getBoolean(key, def)
+    fun getBool(ctx: Context, key: String, def: Boolean): Boolean = try {
+        sp(ctx).getBoolean(key, def)
+    } catch (_: Exception) {
+        def
+    }
 
     fun setBool(ctx: Context, key: String, value: Boolean) {
         sp(ctx).edit().putBoolean(key, value).apply()
     }
 
-    fun getInt(ctx: Context, key: String, def: Int): Int = sp(ctx).getInt(key, def)
+    fun getInt(ctx: Context, key: String, def: Int): Int = try {
+        sp(ctx).getInt(key, def)
+    } catch (_: Exception) {
+        def
+    }
+
+    /** Persisted/UI values are clamped to the supported three-level scale. */
+    fun boostLevel(ctx: Context): Int =
+        getInt(ctx, KEY_BOOST_LEVEL, 2).coerceIn(1, 3)
 
     fun putInt(ctx: Context, key: String, value: Int) {
         sp(ctx).edit().putInt(key, value).apply()
@@ -54,23 +73,51 @@ object Prefs {
         sp(ctx).edit().putString(key, value).apply()
     }
 
-    fun taskEnabled(ctx: Context, taskId: String, def: Boolean): Boolean =
-        sp(ctx).getBoolean(KEY_TASK_PREFIX + taskId, def)
+    fun taskEnabled(ctx: Context, taskId: String, def: Boolean): Boolean = try {
+        if (!taskId.matches(Regex("[A-Za-z0-9_]{1,80}"))) def
+        else sp(ctx).getBoolean(KEY_TASK_PREFIX + taskId, def)
+    } catch (_: Exception) {
+        def
+    }
 
     fun setTaskEnabled(ctx: Context, taskId: String, value: Boolean) {
+        if (!taskId.matches(Regex("[A-Za-z0-9_]{1,80}"))) return
         sp(ctx).edit().putBoolean(KEY_TASK_PREFIX + taskId, value).apply()
     }
 
-    fun protectedList(ctx: Context): List<String> =
-        sp(ctx).getString(KEY_PROTECTED, "")!!.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-
-    fun setProtectedList(ctx: Context, list: List<String>) {
-        sp(ctx).edit().putString(KEY_PROTECTED, list.joinToString(",")).apply()
+    fun protectedList(ctx: Context): List<String> {
+        val raw = try {
+            sp(ctx).getString(KEY_PROTECTED, "").orEmpty()
+        } catch (_: Exception) {
+            ""
+        }
+        return raw.split(',', '\n')
+            .asSequence()
+            .map { it.trim() }
+            .filter(ShellInput::isPackageName)
+            .distinct()
+            .take(ProfileValidation.MAX_PROTECTED_PACKAGES)
+            .toList()
     }
 
-    fun lang(ctx: Context): String = sp(ctx).getString(KEY_LANG, "auto") ?: "auto"
+    fun setProtectedList(ctx: Context, list: List<String>) {
+        val safe = list.asSequence()
+            .map { it.trim() }
+            .filter(ShellInput::isPackageName)
+            .distinct()
+            .take(ProfileValidation.MAX_PROTECTED_PACKAGES)
+            .toList()
+        sp(ctx).edit().putString(KEY_PROTECTED, safe.joinToString(",")).apply()
+    }
+
+    fun lang(ctx: Context): String = try {
+        sp(ctx).getString(KEY_LANG, "auto")?.takeIf { it in setOf("auto", "ar", "en") } ?: "auto"
+    } catch (_: Exception) {
+        "auto"
+    }
 
     fun setLang(ctx: Context, lang: String) {
+        if (lang !in setOf("ar", "en")) return
         sp(ctx).edit().putString(KEY_LANG, lang).apply()
     }
 }

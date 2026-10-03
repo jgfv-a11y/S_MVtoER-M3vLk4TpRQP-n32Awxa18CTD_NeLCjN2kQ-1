@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.os.PowerManager
 import android.provider.Settings
 import com.nitroboost.app.core.DndFilters
+import com.nitroboost.app.core.ShellInput
 import com.nitroboost.app.core.ShellResult
 import com.nitroboost.app.core.SystemExecutor
 import java.io.File
@@ -76,6 +77,7 @@ class AndroidExecutor(private val context: Context) : SystemExecutor {
     }
 
     override fun readSys(path: String): String? {
+        if (!ShellInput.isSysPath(path)) return null
         try {
             val f = File(path)
             if (f.canRead()) return f.readText().trim()
@@ -91,6 +93,7 @@ class AndroidExecutor(private val context: Context) : SystemExecutor {
     }
 
     override fun writeSys(path: String, value: String): Boolean {
+        if (!ShellInput.isSysPath(path) || !ShellInput.isSysValue(value)) return false
         if (ShizukuShell.isReady() && ShizukuShell.ensureBound(context)) {
             val r = ShizukuShell.run("echo \"$value\" > \"$path\" 2>/dev/null")
             if (r.ok && readSys(path) == value) return true
@@ -103,14 +106,17 @@ class AndroidExecutor(private val context: Context) : SystemExecutor {
 
     // ---------------- Settings.System ----------------
 
-    override fun sysSettingGet(key: String): String? =
-        try {
+    override fun sysSettingGet(key: String): String? {
+        if (!ShellInput.isSettingKey(key)) return null
+        return try {
             Settings.System.getString(context.contentResolver, key)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
+    }
 
     override fun sysSettingPut(key: String, value: String): Boolean {
+        if (!ShellInput.isSettingKey(key) || !ShellInput.isSettingValue(value)) return false
         try {
             if (Settings.System.putString(context.contentResolver, key, value) &&
                 Settings.System.getString(context.contentResolver, key) == value
@@ -124,9 +130,23 @@ class AndroidExecutor(private val context: Context) : SystemExecutor {
         return r.ok && sysSettingGet(key) == value
     }
 
+    override fun sysSettingDelete(key: String): Boolean {
+        if (!ShellInput.isSettingKey(key)) return false
+        try {
+            if (Settings.System.putString(context.contentResolver, key, null) &&
+                Settings.System.getString(context.contentResolver, key) == null
+            ) return true
+        } catch (_: Exception) {
+            // Fall back to the privileged settings command.
+        }
+        val result = runPriv("settings delete system $key")
+        return result.ok && sysSettingGet(key) == null
+    }
+
     // ---------------- Settings.Secure ----------------
 
     override fun secureSettingGet(key: String): String? {
+        if (!ShellInput.isSettingKey(key)) return null
         val viaApi = try {
             Settings.Secure.getString(context.contentResolver, key)
         } catch (e: Exception) {
@@ -142,6 +162,7 @@ class AndroidExecutor(private val context: Context) : SystemExecutor {
     }
 
     override fun secureSettingPut(key: String, value: String): Boolean {
+        if (!ShellInput.isSettingKey(key) || !ShellInput.isSettingValue(value)) return false
         try {
             if (Settings.Secure.putString(context.contentResolver, key, value) &&
                 Settings.Secure.getString(context.contentResolver, key) == value
@@ -158,6 +179,7 @@ class AndroidExecutor(private val context: Context) : SystemExecutor {
     // ---------------- Settings.Global ----------------
 
     override fun globalSettingGet(key: String): String? {
+        if (!ShellInput.isSettingKey(key)) return null
         val viaApi = try {
             Settings.Global.getString(context.contentResolver, key)
         } catch (e: Exception) {
@@ -173,6 +195,7 @@ class AndroidExecutor(private val context: Context) : SystemExecutor {
     }
 
     override fun globalSettingPut(key: String, value: String): Boolean {
+        if (!ShellInput.isSettingKey(key) || !ShellInput.isSettingValue(value)) return false
         try {
             if (Settings.Global.putString(context.contentResolver, key, value) &&
                 Settings.Global.getString(context.contentResolver, key) == value

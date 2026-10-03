@@ -21,6 +21,8 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.nitroboost.app.AppStore
 import com.nitroboost.app.R
+import com.nitroboost.app.core.FpsDisplayCache
+import com.nitroboost.app.core.MonitorClient
 import com.nitroboost.app.data.Prefs
 import com.nitroboost.app.ui.MainActivity
 import kotlin.concurrent.Volatile
@@ -64,6 +66,7 @@ class FpsOverlayService : Service() {
     private var wm: WindowManager? = null
     private var view: View? = null
     private var text: TextView? = null
+    private val fpsDisplayCache = FpsDisplayCache()
 
     private val handler = Handler(Looper.getMainLooper())
     private val updater = object : Runnable {
@@ -99,6 +102,11 @@ class FpsOverlayService : Service() {
             return START_NOT_STICKY
         }
         if (!visible) showOverlay()
+        if (!visible) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
         return START_STICKY
     }
 
@@ -170,6 +178,7 @@ class FpsOverlayService : Service() {
         try {
             wm?.addView(v, params)
             visible = true
+            AppStore.setMonitorClient(MonitorClient.OVERLAY, true)
             handler.post(updater)
         } catch (e: Exception) {
             // overlay permission missing or window error — do not crash
@@ -184,7 +193,11 @@ class FpsOverlayService : Service() {
         t.text = buildString {
             if (Prefs.getBool(c, Prefs.KEY_OV_FPS, true)) {
                 append("FPS ")
-                append(s.fps?.toString() ?: "--")
+                append(
+                    fpsDisplayCache.value(
+                        s.fps, s.gamePackage, android.os.SystemClock.elapsedRealtime()
+                    )?.toString() ?: "--"
+                )
             }
             if (Prefs.getBool(c, Prefs.KEY_OV_CPU, true)) {
                 if (isNotEmpty()) append("  ")
@@ -241,6 +254,9 @@ class FpsOverlayService : Service() {
         view = null
         text = null
         visible = false
+        fpsDisplayCache.clear()
+        AppStore.setMonitorClient(MonitorClient.OVERLAY, false)
+        stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }
 }

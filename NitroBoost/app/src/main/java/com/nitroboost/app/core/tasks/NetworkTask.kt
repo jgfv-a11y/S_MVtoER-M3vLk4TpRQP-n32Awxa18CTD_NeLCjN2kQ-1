@@ -33,6 +33,7 @@ class NetworkTask : BoostTask {
     override fun isApplied(ctx: BoostContext): Boolean = current(ctx) == "0"
 
     override fun apply(ctx: BoostContext): TaskResult {
+        if (!ctx.executor.privileged) return TaskResult(id, TaskStatus.Skipped, "needs Shizuku or root")
         val cur = current(ctx)
         if (cur == "0") return TaskResult(id, TaskStatus.NoChange)
         val r = ctx.executor.shell("settings put global no_background_data 0")

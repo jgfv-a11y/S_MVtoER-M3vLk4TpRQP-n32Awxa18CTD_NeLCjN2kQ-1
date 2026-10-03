@@ -9,6 +9,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.RemoteException
 import android.util.Base64
+import com.nitroboost.app.core.ShellInput
 import com.nitroboost.app.core.ShellResult
 import com.nitroboost.app.service.NitroUserService
 import com.nitroboost.app.shizuku.INitroService
@@ -289,6 +290,7 @@ object ShizukuShell {
     }
 
     fun readSys(path: String): String? {
+        if (!ShellInput.isSysPath(path)) return null
         val s = service
         if (s == null) return null
         if (!isReady()) return null

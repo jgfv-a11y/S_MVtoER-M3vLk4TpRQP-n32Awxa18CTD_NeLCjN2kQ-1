@@ -4,6 +4,7 @@ import com.nitroboost.app.core.BoostContext
 import com.nitroboost.app.core.BoostTask
 import com.nitroboost.app.core.JournalEntry
 import com.nitroboost.app.core.Module
+import com.nitroboost.app.core.ShellInput
 import com.nitroboost.app.core.TaskResult
 import com.nitroboost.app.core.TaskStatus
 
@@ -40,25 +41,37 @@ class CpuFloorTask : BoostTask {
             .mapNotNull { line ->
                 val p = line.split(Regex("\\s+"))
                 if (p.size < 3) return@mapNotNull null
+                val dir = p[0]
                 val maxF = p[1].toLongOrNull() ?: return@mapNotNull null
                 val minF = p[2].toLongOrNull() ?: return@mapNotNull null
-                if (maxF <= 0) return@mapNotNull null
-                Policy(p[0], maxF, minF)
+                if (!dir.startsWith("/sys/devices/system/cpu/cpufreq/policy") ||
+                    !ShellInput.isSysPath(dir) || maxF !in 1..MAX_CPU_FREQ_KHZ ||
+                    minF !in 0..maxF
+                ) return@mapNotNull null
+                Policy(dir, maxF, minF)
             }
             .toList()
     }
 
     private fun targetFloor(p: Policy): Long = (p.maxFreq * 65L / 100L).coerceAtMost(p.maxFreq)
 
+    companion object {
+        private const val MAX_CPU_FREQ_KHZ = 20_000_000L
+    }
+
     override fun isSupported(ctx: BoostContext): Boolean =
         ctx.executor.privileged && policies(ctx).isNotEmpty()
 
     override fun isApplied(ctx: BoostContext): Boolean {
+        if (!ctx.executor.privileged) return false
         val ps = policies(ctx)
         return ps.isNotEmpty() && ps.all { it.minFreq >= targetFloor(it) }
     }
 
     override fun apply(ctx: BoostContext): TaskResult {
+        if (!ctx.executor.privileged) {
+            return TaskResult(id, TaskStatus.Skipped, "needs Shizuku or root")
+        }
         val ps = policies(ctx)
         if (ps.isEmpty()) {
             return TaskResult(id, TaskStatus.Skipped, "no cpufreq policies visible to shell")
@@ -69,8 +82,9 @@ class CpuFloorTask : BoostTask {
             val target = targetFloor(p)
             if (p.minFreq >= target) continue
             attempted++
-            val w = ctx.executor.shell("echo $target > ${p.dir}/scaling_min_freq 2>/dev/null")
-            val now = ctx.executor.readSys("${p.dir}/scaling_min_freq")?.toLongOrNull()
+            val path = "${p.dir}/scaling_min_freq"
+            ctx.executor.writeSys(path, target.toString())
+            val now = ctx.executor.readSys(path)?.toLongOrNull()
             if (now != null && now >= target) {
                 entries.add(
                     JournalEntry(

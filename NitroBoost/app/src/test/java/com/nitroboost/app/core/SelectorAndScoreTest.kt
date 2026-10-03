@@ -29,6 +29,39 @@ class SelectorAndScoreTest {
     }
 
     @Test
+    fun `selected game remains protected even when foreground telemetry is stale`() {
+        val now = 1_000_000L
+        val selected = BackgroundSelector.select(
+            backgroundPackages = mapOf("com.game" to now - 500_000, "com.idle" to now - 500_000),
+            foregroundPackage = "com.booster",
+            selfPackage = "com.booster",
+            protectedPackages = emptySet(),
+            nowMs = now,
+            gamePackage = "com.game"
+        )
+        assertEquals(listOf("com.idle"), selected)
+    }
+
+    @Test
+    fun `all simultaneously resumed apps remain protected`() {
+        val now = 1_000_000L
+        val selected = BackgroundSelector.select(
+            backgroundPackages = mapOf(
+                "com.game" to now - 500_000,
+                "com.pictureinpicture" to now - 500_000,
+                "com.idle" to now - 500_000
+            ),
+            foregroundPackage = null,
+            selfPackage = "com.booster",
+            protectedPackages = emptySet(),
+            nowMs = now,
+            gamePackage = "com.game",
+            foregroundPackages = setOf("com.pictureinpicture")
+        )
+        assertEquals(listOf("com.idle"), selected)
+    }
+
+    @Test
     fun `selector returns empty when nothing idle`() {
         val now = 1_000_000L
         val selected = BackgroundSelector.select(

@@ -61,8 +61,8 @@ object RootShell {
                 return false
             }
             val out = try {
-                p.inputStream.bufferedReader().readText()
-            } catch (e: Exception) {
+                ShellOutputReader.readLimited(p.inputStream, 1_024)
+            } catch (_: Exception) {
                 ""
             }
             val rc = try {
@@ -92,8 +92,8 @@ object RootShell {
         val escaped = cmd.replace("'", "'\\''")
         return try {
             val p = Runtime.getRuntime().exec(arrayOf("su", "-c", escaped))
-            val outFuture = readAsync(p.inputStream)
-            val errFuture = readAsync(p.errorStream)
+            val outFuture = readAsync(p.inputStream, ShellOutputReader.MAX_STDOUT_BYTES)
+            val errFuture = readAsync(p.errorStream, ShellOutputReader.MAX_STDERR_BYTES)
             val done = try {
                 p.waitFor(COMMAND_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             } catch (e: InterruptedException) {
@@ -130,8 +130,8 @@ object RootShell {
         }
     }
 
-    private fun readAsync(stream: InputStream): Future<String> = outputReaders.submit<String> {
-        stream.bufferedReader().use { it.readText() }
+    private fun readAsync(stream: InputStream, maxBytes: Int): Future<String> = outputReaders.submit<String> {
+        ShellOutputReader.readLimited(stream, maxBytes)
     }
 
     private fun collectOutput(future: Future<String>): String = try {
@@ -153,12 +153,16 @@ object RootShell {
     }
 
     fun readSys(path: String): String? {
+        if (!com.nitroboost.app.core.ShellInput.isSysPath(path)) return null
         val r = run("cat \"$path\" 2>/dev/null")
         if (!r.ok || r.stdout.isBlank()) return null
         return r.stdout.trim()
     }
 
     fun writeSys(path: String, value: String): Boolean {
+        if (!com.nitroboost.app.core.ShellInput.isSysPath(path) ||
+            !com.nitroboost.app.core.ShellInput.isSysValue(value)
+        ) return false
         val r = run("echo \"$value\" > \"$path\" 2>/dev/null")
         if (!r.ok) return false
         return readSys(path) == value

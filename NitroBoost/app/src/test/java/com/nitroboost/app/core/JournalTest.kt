@@ -145,6 +145,22 @@ class JournalTest {
     }
 
     @Test
+    fun `restore rejects tampered persisted shell commands`() {
+        val executor = FakeExecutor()
+        val entry = JournalEntry(
+            taskId = "display",
+            kind = JournalEntry.Kind.CMD,
+            key = "wm_density",
+            oldValue = null,
+            newValue = "480",
+            revertCmd = "wm density reset; reboot"
+        )
+
+        assertFalse(Journal.restore(entry, executor))
+        assertTrue(executor.shellLog.isEmpty())
+    }
+
+    @Test
     fun testEmptyAndMissingFilesAreEmptyJournals() {
         val tmpDir = createTempDirectory().toFile()
         val missing = Journal(File(tmpDir, "nope.json"))

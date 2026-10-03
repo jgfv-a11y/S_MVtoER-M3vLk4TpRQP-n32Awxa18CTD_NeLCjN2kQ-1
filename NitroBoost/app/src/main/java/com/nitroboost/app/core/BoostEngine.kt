@@ -56,6 +56,8 @@ class BoostEngine(private val tasks: List<BoostTask>) {
                             "boost level too low (needs ${task.boostLevel})")
                     } else if (!ctx.profile.isEnabled(task)) {
                         TaskResult(task.id, TaskStatus.Skipped, "disabled in profile")
+                    } else if (task.requiresPrivilege && !ctx.executor.privileged) {
+                        TaskResult(task.id, TaskStatus.Skipped, "needs Shizuku or root")
                     } else {
                         task.apply(ctx)
                     }
@@ -126,7 +128,11 @@ class BoostEngine(private val tasks: List<BoostTask>) {
         val journalEntries = ctx.journal.snapshot()
         return tasks.map { t ->
             val applied = try {
-                journalEntries.any { it.taskId == t.id } || t.isApplied(ctx)
+                when {
+                    journalEntries.any { it.taskId == t.id } -> true
+                    t.requiresPrivilege && !ctx.executor.privileged -> false
+                    else -> t.isApplied(ctx)
+                }
             } catch (e: Exception) {
                 false
             }

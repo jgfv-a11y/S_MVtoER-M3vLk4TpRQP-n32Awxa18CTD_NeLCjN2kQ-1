@@ -5,6 +5,7 @@ import com.nitroboost.app.core.BoostContext
 import com.nitroboost.app.core.BoostTask
 import com.nitroboost.app.core.JournalEntry
 import com.nitroboost.app.core.Module
+import com.nitroboost.app.core.ShellInput
 import com.nitroboost.app.core.TaskResult
 import com.nitroboost.app.core.TaskStatus
 
@@ -45,7 +46,7 @@ class GamePerfModeTask(
     private fun supported(ctx: BoostContext): Boolean {
         if (!ctx.executor.privileged) return false
         if (sdk < MIN_SDK) return false
-        if (pkg(ctx).isBlank()) return false
+        if (!ShellInput.isPackageName(pkg(ctx))) return false
         val help = ctx.executor.shell("cmd game help 2>&1")
         return help.ok && "--mode" in help.stdout
     }
@@ -59,7 +60,7 @@ class GamePerfModeTask(
 
     override fun apply(ctx: BoostContext): TaskResult {
         val p = pkg(ctx)
-        if (p.isBlank()) return TaskResult(id, TaskStatus.Skipped, "no game package set")
+        if (!ShellInput.isPackageName(p)) return TaskResult(id, TaskStatus.Skipped, "invalid game package")
         if (!supported(ctx)) {
             return TaskResult(
                 id,

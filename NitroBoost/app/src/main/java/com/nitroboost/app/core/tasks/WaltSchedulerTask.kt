@@ -45,6 +45,7 @@ class WaltSchedulerTask : BoostTask {
     }
 
     override fun apply(ctx: BoostContext): TaskResult {
+        if (!ctx.executor.privileged) return TaskResult(id, TaskStatus.Skipped, "needs Shizuku or root")
         val a = active(ctx)
         if (a.isEmpty()) return TaskResult(id, TaskStatus.Skipped, "no WALT sysctls on this ROM")
         val entries = mutableListOf<JournalEntry>()

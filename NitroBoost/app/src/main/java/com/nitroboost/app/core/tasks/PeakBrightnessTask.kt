@@ -29,7 +29,7 @@ class PeakBrightnessTask : BoostTask {
     override val descEn = "Lock brightness to max and disable auto-brightness for the session — no dips in dark scenes"
     override val module = Module.DISPLAY
     override val requiresPrivilege = false
-    override val boostLevel = 1 // works without privileges
+    override val boostLevel = 3 // max brightness is an explicit, battery-heavy opt-in
 
     companion object {
         const val MAX_BRIGHTNESS = 255

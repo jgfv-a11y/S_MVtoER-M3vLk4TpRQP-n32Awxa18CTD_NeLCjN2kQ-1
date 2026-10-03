@@ -134,7 +134,14 @@ The app keeps checking by itself until connected. On rooted devices, Root is use
     <string name="opt_thermal">Thermal override (aggressive — auto-guarded)</string>
     <string name="hint_dpi">DPI (0=auto)</string>
     <string name="hint_refresh">Hz (0=auto)</string>
-    <string name="hint_game_mode">Mode</string>
+    <string name="hint_game_mode">Mode (0=off, 1–5=platform mode)</string>
+    <string name="profile_dpi_range">DPI must be 0 (auto) or between 72 and 1000.</string>
+    <string name="profile_refresh_range">Refresh rate must be 0 (keep system policy) or between 24 and 500 Hz.</string>
+    <string name="profile_game_mode_range">Game mode must be between 0 (off) and 5.</string>
+    <string name="profile_save_failed">Could not save the profile. Your previous settings were kept.</string>
+    <string name="invalid_package_name">Enter a valid Android package name.</string>
+    <string name="no_installed_apps">No installed apps are available to add as a profile.</string>
+    <string name="ok">OK</string>
 
     <!-- System tab -->
     <string name="storage_label">STORAGE</string>

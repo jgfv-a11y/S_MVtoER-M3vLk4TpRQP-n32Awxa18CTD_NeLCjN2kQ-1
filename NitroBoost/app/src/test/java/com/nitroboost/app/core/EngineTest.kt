@@ -2,6 +2,7 @@ package com.nitroboost.app.core
 
 import com.nitroboost.app.core.tasks.AllTasks
 import com.nitroboost.app.core.tasks.DndTask
+import com.nitroboost.app.core.tasks.PowerTask
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -189,6 +190,31 @@ class EngineTest {
             releaseFirst.countDown()
             pool.shutdownNow()
         }
+    }
+
+    @Test
+    fun `boost skips privileged tasks before issuing shell commands without a channel`() {
+        val ex = FakeExecutor().apply { privileged = false }
+        val report = BoostEngine(listOf(PowerTask())).boost(
+            BoostContext(testProfile(Module.POWER), ex, tempJournal())
+        )
+
+        assertEquals(TaskStatus.Skipped, report.results["battery_saver"]?.status)
+        assertTrue(ex.shellLog.isEmpty())
+    }
+
+    @Test
+    fun `states do not run privileged probes when no channel is available`() {
+        val ex = FakeExecutor().apply { privileged = false }
+        val task = PowerTask()
+        val state = BoostEngine(listOf(task)).states(
+            BoostContext(testProfile(Module.POWER), ex, tempJournal())
+        ).single()
+
+        assertFalse(state.applied)
+        assertFalse(state.supported)
+        assertTrue(state.pending)
+        assertTrue(ex.shellLog.isEmpty())
     }
 
     @Test
