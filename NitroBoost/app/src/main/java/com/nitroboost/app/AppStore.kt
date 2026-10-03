@@ -1087,7 +1087,7 @@ object AppStore {
                     }
                     .sortedByDescending { it.ramBytes }
                     .take(safeLimit)
-                if (list.size >= 3) return list
+                if (processes.size >= 3) return processes
             }
         } catch (e: Exception) {
             // fall through to the UsageStats path
