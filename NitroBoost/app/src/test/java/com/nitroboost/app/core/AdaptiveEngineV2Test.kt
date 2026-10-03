@@ -496,7 +496,7 @@ class AdaptiveEngineV2Test {
         assertEquals(2, ledger.validObservationCounts("task", context())["a"])
     }
 
-    @Test fun `v1.10 ledger observations load with explicit safe legacy defaults`() {
+    @Test fun `v1_10 ledger observations load with explicit safe legacy defaults`() {
         val file = tempFile("legacy-objective")
         val oldShape = DecisionLedger(file)
         val currentContext = context()
