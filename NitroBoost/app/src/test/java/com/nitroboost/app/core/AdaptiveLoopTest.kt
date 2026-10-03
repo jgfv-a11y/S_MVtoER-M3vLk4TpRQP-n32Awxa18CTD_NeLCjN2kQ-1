@@ -89,9 +89,9 @@ class AdaptiveLoopTest {
         assertEquals("game_mode", loop.nextCandidate(ctx())?.id)
     }
 
-    @Test fun `resolved candidates are never retried`() {
+    @Test fun `legacy resolved candidates are retried for a new v2 context`() {
         val (loop, ctx) = makeLoop(StubSampler())
-        // A context-free v1 ledger record must not be reused by the v2 cache.
+        // A context-free v1 ledger record must not suppress a trial in the v2 cache.
         val profileKey = "cpu,gpu,network,tweaks:0:0:4"
         val context = TrialContext(
             "unknown-device", "unknown-android", "com.test.game", 3, 0,
@@ -104,7 +104,7 @@ class AdaptiveLoopTest {
             pairs = 10, sessions = 1, evaluatedAt = now, context = context
         )
         val next = loop.nextCandidate(ctx())
-        assertEquals("cpu_governor", next!!.id)
+        assertEquals("game_mode", next!!.id)
     }
 
     @Test fun `no candidates when profile has no trial modules`() {

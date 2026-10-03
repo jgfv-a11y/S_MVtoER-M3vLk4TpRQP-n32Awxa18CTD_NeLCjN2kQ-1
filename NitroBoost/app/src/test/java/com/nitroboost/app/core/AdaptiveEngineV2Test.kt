@@ -216,7 +216,10 @@ class AdaptiveEngineV2Test {
         assertEquals("balanced-v1", default.profileId)
         assertEquals(ObjectiveWeightResolver.DEFAULT_WEIGHTS, default.weights)
         assertEquals("thermal-cautious-v1", thermal.profileId)
-        assertEquals(ObjectiveWeights(0.50, 0.20, 0.20, 0.10), thermal.weights)
+        assertEquals(0.50, thermal.weights.performance, 1e-12)
+        assertEquals(0.20, thermal.weights.temperature, 1e-12)
+        assertEquals(0.20, thermal.weights.thermalSlope, 1e-12)
+        assertEquals(0.10, thermal.weights.thermalTier, 1e-12)
         assertEquals("balanced-v1", cool.profileId)
         assertEquals("balanced-v1", invalidConfig.profileId)
 
