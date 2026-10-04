@@ -52,13 +52,13 @@
 - تحتاج جلسة لاحقة إلى مراجعة regression مركزة على telemetry وMonitorHub بعد الدمج الكبير.
 
 ## Next Automatic Task
-1. قراءة نتيجة CI لإصدار v1.14.0 والتأكد من نشر APK غير الموقّع.
-2. التحقق من رابط الإصدار والبصمة وحالة `main`.
-3. بعد نجاح النشر، تنفيذ مراجعة P1 جديدة على MonitorHub وSensorFusion دون ادعاء benchmark جهاز.
+1. بدء مراجعة P1 جديدة على MonitorHub وSensorFusion للبحث عن freshness أو null-semantics regressions.
+2. إضافة regression tests لأي خلل قابل للإعادة دون جهاز.
+3. عدم ادعاء benchmark أداء قبل توفر جهاز Android فعلي.
 4. تحديث هذا الملف والتقرير اليومي.
 5. إذا لم توجد مشكلة P0/P1، الانتقال إلى benchmark harness محلي/قابل للتشغيل على جهاز Android دون ادعاء نتائج أداء.
 
 ## Overall Progress
 - **Phase:** 4 — القياس التكيفي والتحليل القابل للتدقيق
 - **Task:** v1.14.0 gfxinfo epoch recovery
-- **Completion:** الكود والاختبارات المحلية جاهزة؛ بانتظار CI والنشر.
+- **Completion:** مكتمل؛ CI نجح وتم نشر APK v1.14.0 غير الموقّع بمفتاح release.
