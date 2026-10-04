@@ -157,6 +157,11 @@ jobs:
             automatically once the signing secrets are configured — see
             `NitroBoost/docs/DISTRIBUTION.md`.
 
+            ## v1.14.0 — gfxinfo epoch recovery
+            - Detects backward `FrameCompleted` timestamps when a game process or gfxinfo clock epoch restarts without resetting the cumulative frame counter.
+            - Starts a clean IntendedVsync epoch after backward timestamps instead of silently discarding later frame intervals.
+            - Adds parser and tracker regression tests; no boost policy or thermal safety behavior is changed.
+
             ## v1.13.0 — unified telemetry and frame pacing
             - Added a pure-Kotlin PerformanceSnapshot/SensorFusion layer; unavailable readings remain null, and optional CPU-frequency, battery, memory-pressure, and public device/display data are included only when exposed.
             - Added measured IntendedVsync gaps and FramePacingAnalyzer diagnostics: observed FPS mean/median, measured frame-time percentiles/variance, jank rate, and an explicitly estimated missed-vsync rate.

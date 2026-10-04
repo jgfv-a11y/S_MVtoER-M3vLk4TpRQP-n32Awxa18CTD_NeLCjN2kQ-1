@@ -1,4 +1,10 @@
 # Changelog
+## v1.14.0 — gfxinfo epoch recovery
+- **Frame telemetry recovery:** detects backward `FrameCompleted` timestamps when a game process or gfxinfo clock epoch restarts without resetting the cumulative frame counter.
+- **Vsync tracker recovery:** starts a clean IntendedVsync epoch after backward timestamps instead of silently discarding all later intervals.
+- **Regression coverage:** added parser and tracker tests for timestamp-reset behavior.
+- **Version code 17**.
+
 
 ## v1.13.0 — Unified telemetry and frame pacing
 - **Version code 16**; GitHub Actions is the release gate and publishes the debug APK after verification, JVM tests, lint, and assemble succeed. A signed release APK still requires the configured signing secrets.

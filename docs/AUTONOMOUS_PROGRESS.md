@@ -12,7 +12,7 @@
 - **P5 UI foundations:** dashboard، profiles، settings، overlay، reports، state-preserving navigation، ورسائل capability الصادقة.
 
 ## Current Task
-دمج سلسلة التطوير الموجودة في فرع `arena/01a0fe86-s-mvtoer-m3vlk4tprqp-n32awxa18` إلى `main` بعد مراجعة v1.10–v1.13، ثم التحقق والتوثيق.
+إصدار v1.14.0: حماية قياس frame telemetry من إعادة تشغيل epoch في gfxinfo، مع اختبار regression وبناء CI.
 
 ## Completed This Session — 2026-10-04
 - راجعت `main` وتقارير التقدم؛ لم يكن ملف الاستمرارية موجودًا.
@@ -23,6 +23,14 @@
 - التحقق الساكن المحلي: `43 XML`, `120 Kotlin`, `104 IDs`, `0 errors`.
 - اختبار stress Python: `10 tests`, كلها ناجحة.
 - CI v1.13 الموثق نجح في `test`, `lintDebug`, و`assembleDebug` ونشر APK.
+
+
+## v1.14.0 Work in This Session
+- أضيف اكتشاف رجوع `FrameCompleted` عند إعادة تشغيل process/clock epoch دون انخفاض عداد الإطارات التراكمي.
+- أضيفت إعادة parsing آمنة ومنع خلط الأدلة بين epochs.
+- أصبح IntendedVsync tracker يعيد تأسيس epoch عند الطابع الزمني الراجع.
+- أضيفت اختبارات regression للـparser والـtracker.
+- الإصدار المستهدف `1.14.0` و`versionCode=17`.
 
 ## Architecture Decisions
 - القياسات غير المتاحة تبقى `null` ولا تُحوّل إلى أصفار مضللة.
@@ -44,13 +52,13 @@
 - تحتاج جلسة لاحقة إلى مراجعة regression مركزة على telemetry وMonitorHub بعد الدمج الكبير.
 
 ## Next Automatic Task
-1. قراءة أحدث CI بعد دمج الحالة الموثقة والتأكد من نجاح `verify.py`, tests, lint, وassemble.
-2. تنفيذ مراجعة P1 مركزة لـ`MonitorHub` و`SensorFusion` و`FramePacingAnalyzer` بحثًا عن قياسات stale أو خلط timestamps أو null semantics.
-3. إضافة اختبارات regression لأي خلل قابل لإعادة الإنتاج دون جهاز.
+1. قراءة نتيجة CI لإصدار v1.14.0 والتأكد من نشر APK غير الموقّع.
+2. التحقق من رابط الإصدار والبصمة وحالة `main`.
+3. بعد نجاح النشر، تنفيذ مراجعة P1 جديدة على MonitorHub وSensorFusion دون ادعاء benchmark جهاز.
 4. تحديث هذا الملف والتقرير اليومي.
 5. إذا لم توجد مشكلة P0/P1، الانتقال إلى benchmark harness محلي/قابل للتشغيل على جهاز Android دون ادعاء نتائج أداء.
 
 ## Overall Progress
 - **Phase:** 4 — القياس التكيفي والتحليل القابل للتدقيق
-- **Task:** دمج v1.13 والتحقق والتوثيق
-- **Completion:** مكتمل من ناحية الكود وCI؛ benchmark الجهاز ما زال محجوبًا.
+- **Task:** v1.14.0 gfxinfo epoch recovery
+- **Completion:** الكود والاختبارات المحلية جاهزة؛ بانتظار CI والنشر.

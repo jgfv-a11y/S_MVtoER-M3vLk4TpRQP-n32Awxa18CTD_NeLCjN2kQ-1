@@ -21,6 +21,7 @@ class FrameTimeAnalysisTest {
         assertEquals(listOf(10.0, 15.0), parsed.frameTimesMs)
         assertEquals(listOf(1_000_000_000L, 1_020_000_000L), parsed.intendedVsyncNs)
         assertEquals(1_035_000_000L, parsed.lastCompletedNs)
+        assertEquals(1_035_000_000L, parsed.highestCompletedNs)
         assertEquals(2, parsed.rowsSeen)
     }
 
@@ -33,6 +34,7 @@ class FrameTimeAnalysisTest {
         val parsed = GfxFrameStatsParser.parse(output, afterCompletedNs = 1_010_000_000L)
         assertEquals(listOf(15.0), parsed.frameTimesMs)
         assertEquals(listOf(1_020_000_000L), parsed.intendedVsyncNs)
+        assertEquals(1_035_000_000L, parsed.highestCompletedNs)
     }
 
     @Test fun `frame analysis reports percentiles variance and actual hitches`() {

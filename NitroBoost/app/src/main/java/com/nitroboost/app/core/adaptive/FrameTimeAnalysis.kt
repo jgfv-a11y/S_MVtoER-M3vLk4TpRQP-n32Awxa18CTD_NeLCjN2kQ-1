@@ -9,7 +9,9 @@ object GfxFrameStatsParser {
         val lastCompletedNs: Long,
         val rowsSeen: Int,
         /** IntendedVsync timestamps corresponding to the valid measured durations. */
-        val intendedVsyncNs: List<Long> = emptyList()
+        val intendedVsyncNs: List<Long> = emptyList(),
+        /** Highest valid completion timestamp in this dump, including old rows. */
+        val highestCompletedNs: Long = lastCompletedNs
     )
 
     /**
@@ -26,6 +28,7 @@ object GfxFrameStatsParser {
         var completedIndex = -1
         var rowsSeen = 0
         var lastCompleted = afterCompletedNs
+        var highestCompleted = Long.MIN_VALUE
         val frameLimit = maxFrames.coerceAtLeast(0)
         val durations = ArrayList<Double>(minOf(frameLimit, 128))
         val intendedVsyncs = ArrayList<Long>(minOf(frameLimit, 128))
@@ -47,6 +50,7 @@ object GfxFrameStatsParser {
             val intended = columns[intendedIndex].trim().toLongOrNull() ?: continue
             val completed = columns[completedIndex].trim().toLongOrNull() ?: continue
             rowsSeen++
+            if (completed > highestCompleted) highestCompleted = completed
             if (completed <= afterCompletedNs || intended <= 0L) continue
             if (completed > lastCompleted) lastCompleted = completed
             if (completed <= intended) continue
@@ -59,7 +63,13 @@ object GfxFrameStatsParser {
             durations.add(durationMs)
             intendedVsyncs.add(intended)
         }
-        return Parsed(durations, lastCompleted, rowsSeen, intendedVsyncs)
+        return Parsed(
+            durations,
+            lastCompleted,
+            rowsSeen,
+            intendedVsyncs,
+            highestCompleted.takeIf { it != Long.MIN_VALUE } ?: afterCompletedNs
+        )
     }
 
     private const val MIN_FRAME_MS = 0.1

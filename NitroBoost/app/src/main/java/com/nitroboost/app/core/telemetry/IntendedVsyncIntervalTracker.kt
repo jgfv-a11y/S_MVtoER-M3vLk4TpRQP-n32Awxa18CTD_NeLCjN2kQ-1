@@ -11,6 +11,12 @@ class IntendedVsyncIntervalTracker(
         val intervals = ArrayList<Double>()
         for (timestampNs in timestampsNs) {
             if (timestampNs <= 0L) continue
+            if (previousVsyncNs != Long.MIN_VALUE && timestampNs < previousVsyncNs) {
+                // gfxinfo timestamps can restart with a new game process even
+                // when its cumulative frame counter was not reset yet.
+                previousVsyncNs = timestampNs
+                continue
+            }
             if (previousVsyncNs != Long.MIN_VALUE && timestampNs > previousVsyncNs) {
                 val intervalMs = (timestampNs - previousVsyncNs) / NANOS_PER_MILLISECOND
                 if (intervalMs.isFinite() && intervalMs in minIntervalMs..maxIntervalMs) {
