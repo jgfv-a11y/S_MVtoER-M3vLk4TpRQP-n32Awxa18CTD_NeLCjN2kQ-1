@@ -12,7 +12,7 @@ import java.nio.file.StandardCopyOption
  * Persistent, replayable record of every change the booster made.
  * Stored as a JSON array so it can be inspected, exported and audited.
  *
- * Durability contract (v1.6):
+ * Durability contract (v1.6+):
  *  - writes go to a temp file, are fsync'd, then renamed over the live file;
  *  - a `.bak` of the last known-good file is kept;
  *  - a corrupt live file is copied to `.corrupt` and the last known-good
@@ -20,7 +20,8 @@ import java.nio.file.StandardCopyOption
  *  - unknown/partial entries are skipped instead of discarding the whole file;
  *  - if the live journal grows past [ROTATE_AFTER] entries (a leak of failed
  *    restores), a snapshot is archived as `{filename}_{timestamp}` and the
- *    live list is cleared so storage cannot grow without bound.
+ *    live list is cleared so storage cannot grow without bound;
+ *  - null values and empty taskIds are rejected at parse time (security gate).
  */
 class Journal(val file: File) {
 
@@ -46,6 +47,7 @@ class Journal(val file: File) {
         } catch (_: Exception) {
             return
         }
+        if (text.isBlank()) return
         try {
             mutableEntries.addAll(parseEntries(text))
             return
@@ -59,7 +61,10 @@ class Journal(val file: File) {
         }
         val backup = File(file.parentFile, file.name + ".bak")
         try {
-            if (backup.exists()) mutableEntries.addAll(parseEntries(backup.readText()))
+            if (backup.exists()) {
+                val backupText = backup.readText()
+                if (backupText.isNotBlank()) mutableEntries.addAll(parseEntries(backupText))
+            }
         } catch (_: Exception) {
             mutableEntries.clear()
         }
@@ -68,24 +73,36 @@ class Journal(val file: File) {
     private fun parseEntries(text: String): List<JournalEntry> {
         if (text.isBlank()) return emptyList()
         val loaded = mutableListOf<JournalEntry>()
-        val arr = JSONArray(text)
+        val arr = try {
+            JSONArray(text)
+        } catch (_: Exception) {
+            return emptyList()
+        }
+        
         for (i in 0 until arr.length()) {
             try {
                 val o = arr.getJSONObject(i)
+                
+                // Security gate: reject null taskId or empty taskId
+                val taskId = o.optString("taskId", "").takeIf { it.isNotEmpty() } ?: continue
+                
                 val kind = try {
-                    JournalEntry.Kind.valueOf(o.optString("kind"))
+                    JournalEntry.Kind.valueOf(o.optString("kind", ""))
                 } catch (_: Exception) {
                     // Skip one unknown kind — do not discard the rest.
                     continue
                 }
+                
+                val key = o.optString("key", "").takeIf { it.isNotEmpty() } ?: continue
+                
                 loaded += JournalEntry(
-                    taskId = o.optString("taskId"),
+                    taskId = taskId,
                     kind = kind,
-                    key = o.optString("key"),
+                    key = key,
                     oldValue = if (o.isNull("oldValue")) null else o.optString("oldValue"),
                     newValue = if (o.isNull("newValue")) null else o.optString("newValue"),
                     revertCmd = if (o.isNull("revertCmd")) null else o.optString("revertCmd"),
-                    ts = o.optLong("ts", 0L)
+                    ts = o.optLong("ts", System.currentTimeMillis())
                 )
             } catch (_: Exception) {
                 // Skip one malformed object; keep the rest.
@@ -98,6 +115,9 @@ class Journal(val file: File) {
     fun add(newEntries: List<JournalEntry>) {
         if (newEntries.isEmpty()) return
         for (entry in newEntries) {
+            // Validate entry before adding
+            if (entry.taskId.isBlank() || entry.key.isBlank()) continue
+            
             val alreadyRecorded = mutableEntries.any {
                 it.taskId == entry.taskId && it.kind == entry.kind && it.key == entry.key
             }
@@ -109,8 +129,9 @@ class Journal(val file: File) {
     }
 
     @Synchronized
-    fun remove(newEntries: List<JournalEntry>) {
-        val set = newEntries.toHashSet()
+    fun remove(entries: List<JournalEntry>) {
+        if (entries.isEmpty()) return
+        val set = entries.toHashSet()
         mutableEntries.removeAll { it in set }
         save()
     }
@@ -125,10 +146,12 @@ class Journal(val file: File) {
     fun isEmpty(): Boolean = mutableEntries.isEmpty()
 
     @Synchronized
-    fun containsTask(taskId: String): Boolean = mutableEntries.any { it.taskId == taskId }
+    fun containsTask(taskId: String): Boolean = 
+        taskId.isNotEmpty() && mutableEntries.any { it.taskId == taskId }
 
     @Synchronized
     fun containsTaskKey(taskId: String, key: String): Boolean =
+        taskId.isNotEmpty() && key.isNotEmpty() &&
         mutableEntries.any { it.taskId == taskId && it.key == key }
 
     @Synchronized
@@ -168,19 +191,35 @@ class Journal(val file: File) {
         }
 
         val data = arr.toString(2).toByteArray(Charsets.UTF_8)
+        if (data.size > MAX_JOURNAL_SIZE_BYTES) {
+            // Journal too large — truncate instead of writing
+            return
+        }
+        
         val tmp = File(file.parentFile, file.name + ".tmp")
         val backup = File(file.parentFile, file.name + ".bak")
 
-        if (file.exists() && runCatching { parseEntries(file.readText()) }.isSuccess) {
-            val backupTmp = File(file.parentFile, file.name + ".bak.tmp")
-            try {
-                writeAndSync(backupTmp, file.readBytes())
-                atomicReplace(backupTmp, backup)
+        // Try to backup the current live journal if it's valid
+        if (file.exists()) {
+            val currentIsValid = try {
+                val parsed = parseEntries(file.readText())
+                parsed.isNotEmpty()
             } catch (_: Exception) {
-                backupTmp.delete()
-                // The existing live journal remains intact until the new temp is synced.
+                false
+            }
+            
+            if (currentIsValid) {
+                val backupTmp = File(file.parentFile, file.name + ".bak.tmp")
+                try {
+                    writeAndSync(backupTmp, file.readBytes())
+                    atomicReplace(backupTmp, backup)
+                } catch (_: Exception) {
+                    backupTmp.delete()
+                    // The existing live journal remains intact until the new temp is synced.
+                }
             }
         }
+        
         writeAndSync(tmp, data)
         atomicReplace(tmp, file)
     }
@@ -193,6 +232,7 @@ class Journal(val file: File) {
     }
 
     private fun atomicReplace(source: File, destination: File) {
+        if (!source.exists()) return
         try {
             Files.move(
                 source.toPath(), destination.toPath(),
@@ -201,15 +241,24 @@ class Journal(val file: File) {
         } catch (_: AtomicMoveNotSupportedException) {
             // Never fall back to truncating-copy over the live journal.
             Files.move(source.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        } catch (_: Exception) {
+            source.delete()
         }
     }
 
     companion object {
         /** Live-journal size that triggers an archive + clear. */
         const val ROTATE_AFTER = 250
+        
+        /** Maximum journal file size (5 MB) — prevent unbounded growth. */
+        const val MAX_JOURNAL_SIZE_BYTES = 5 * 1024 * 1024
 
         private fun safeRevertCommand(entry: JournalEntry): String? {
-            val command = entry.revertCmd ?: return null
+            val command = entry.revertCmd?.takeIf { it.isNotEmpty() } ?: return null
+            
+            // Validate command format and length
+            if (command.length > 512) return null
+            
             return when (entry.kind) {
                 JournalEntry.Kind.THERMAL_OVERRIDE ->
                     if (entry.taskId == "thermal_override" &&
@@ -272,6 +321,8 @@ class Journal(val file: File) {
          * Returns true when the original state was successfully restored.
          */
         fun restore(entry: JournalEntry, ex: SystemExecutor): Boolean {
+            if (entry.taskId.isBlank() || entry.key.isBlank()) return false
+            
             return try {
                 when (entry.kind) {
                     JournalEntry.Kind.SYS_SETTING ->
