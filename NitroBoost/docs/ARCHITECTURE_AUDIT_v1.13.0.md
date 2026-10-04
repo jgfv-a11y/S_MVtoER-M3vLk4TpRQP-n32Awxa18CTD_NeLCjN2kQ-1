@@ -1,6 +1,6 @@
 # تدقيق معماري — NitroBoost 1.13.0
 
-**الحالة:** اكتمل التدقيق والتنفيذ الموثق أدناه؛ نجح verifier البنيوي محليًا، بينما ينتظر build والاختبارات تأكيد GitHub Actions.
+**الحالة:** اكتمل التدقيق والتنفيذ؛ نجح CI والبناء ونُشر إصدار v1.13.0. لا يوجد benchmark على جهاز فعلي ضمن هذا التحقق.
 **النطاق المنفذ:** المرحلة 1 (التدقيق)، والمرحلة 2 (`core/telemetry/`)، والمرحلة 3 (تحليل Frame Pacing)، دون استبدال المحرك التكيفي أو تغيير وصفات التعزيز.
 
 ## 1. خريطة النظام الحالي
@@ -51,9 +51,9 @@
 
 ## 6. التحقق والإصدار
 
-CI في `.github/workflows/build-apk.yml` يشغّل `tools/verify.py` ثم `test`, `lintDebug`, و`assembleDebug`، ويولّد release موقّعًا فقط عند وجود أسرار التوقيع. لا يوجد `gradlew` مشحون في المستودع، وبيئة العمل الحالية لا تحتوي Java؛ لذلك لا يمكن إعلان نجاح اختبار أو APK محلي. يلزم تشغيل التحقق عبر CI بعد التنفيذ، وفصل نتيجة البناء عن benchmark على جهاز فعلي.
+CI في `.github/workflows/build-apk.yml` شغّل `tools/verify.py` ثم `test`, `lintDebug`, و`assembleDebug` بنجاح في [run #37195157347](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/actions/runs/37195157347) بتاريخ 2026-10-04. نُشر [NitroBoost v1.13.0](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases/tag/nitroboost-v1.13.0) مع `nitroboost-debug.apk` (6,428,246 بايت). لم ينتج APK release موقّع لأن أسرار التوقيع غير مهيأة.
 
-الإصدار التالي المخطط له `1.13.0` / `versionCode 16`، ويُنشر APK عبر مسار CI بعد نجاح البناء. لا يثبت هذا التدقيق وحده صلاحية تغييرات الأداء على أي جهاز بعينه.
+لم يُبنَ التطبيق محليًا: لا يوجد `gradlew` في المستودع، كما أن Java وGradle غير متاحين في بيئة العمل. نجاح CI لا يعوّض benchmark على جهاز فعلي، ولم يُجرَ اختبار جهاز.
 
 ## 7. متابعة التنفيذ بعد التدقيق
 
@@ -61,5 +61,5 @@ CI في `.github/workflows/build-apk.yml` يشغّل `tools/verify.py` ثم `tes
 - `PerformanceSnapshot` مرفق بـ`MonitorSnapshot` مع الحفاظ على حقوله القديمة. `ThermalSnapshot` يُغنى باتجاه `ThermalTrend` فقط عند وجود قراءة حرارة حالية، و`ThermalGuard` لم يتغير.
 - `FramePacingAnalyzer` يعيد استخدام `FrameTimeAnalysis.distribution/summarize`: FPS mean/median من قيم FPS الحقيقية؛ percentile/variance من frametimes المقاسة. الـjank هو تعريف النظام الحالي `> 2 × frame budget`. dropped rate اسمه `estimatedDroppedFrameRate` ويحسب missed slots من IntendedVsync gaps مقارنةً بهدف FPS؛ لا يظهر دون الفواصل والهدف.
 - درجتا stability/smoothness ضمن `[0,100]` وتُحجبان حتى خمس frametimes مقاسة على الأقل. Stability يطبّع معامل اختلاف frame-time على 0.50 بوزن 0.50، ويضيف jank/missed-vsync بوزني 0.25/0.25 عند توافرهما. Smoothness يطبّع تجاوز P95/P99 للميزانية (من الميزانية إلى ضعفيها) بأوزان 0.40/0.30، ثم jank/drop بوزني 0.20/0.10؛ يعاد تطبيع الأوزان عند غياب مكوّن. هذه diagnostics لا تغيّر `AdaptivePolicy`.
-- أضيفت نتائج Frame Pacing اختيارية إلى `WindowMetrics` ودفتر القرار، مع parser يقبل عدم وجود الحقل في السجلات القديمة. زادت اختبارات JVM من 36 إلى 39 ملفًا.
-- `python3 tools/verify.py` نجح محليًا بعد التنفيذ: **43 XML، 120 Kotlin، 104 IDs، 0 errors**. لم تنجح/تُشغّل أوامر Gradle محليًا لأن `gradlew` غير موجود (وJava غير مثبتة)؛ لم يُبنَ APK محليًا. يلزم اعتماد CI قبل اعتبار v1.13.0 منشورًا.
+- أضيفت نتائج Frame Pacing اختيارية إلى `WindowMetrics` ودفتر القرار، مع parser يقبل عدم وجود الحقل في السجلات القديمة. أصبح مجلد اختبارات JVM يحوي 39 ملف Kotlin (38 ملف `*Test.kt` وملف `FakeExecutor` مساعد).
+- `python3 tools/verify.py` نجح محليًا: **43 XML، 120 Kotlin، 104 IDs، 0 errors**. كما اجتاز CI الاختبارات وlint والبناء ونشر APK الإصدار v1.13.0؛ لم يُبنَ محليًا لغياب Java وGradle وwrapper. اختبارات الجهاز والـbenchmark تظل خطوة منفصلة.
