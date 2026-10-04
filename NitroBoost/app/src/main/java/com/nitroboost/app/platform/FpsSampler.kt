@@ -4,6 +4,7 @@ import android.os.SystemClock
 import com.nitroboost.app.core.ShellInput
 import com.nitroboost.app.core.SystemExecutor
 import com.nitroboost.app.core.adaptive.GfxFrameStatsParser
+import com.nitroboost.app.core.telemetry.IntendedVsyncIntervalTracker
 
 /** One bounded privileged observation; frame times exist only when gfxinfo supplied them. */
 data class FpsObservation(
@@ -11,7 +12,9 @@ data class FpsObservation(
     val frameTimesMs: List<Double>,
     val processEpoch: Long,
     val measuredAtMs: Long,
-    val sourceAvailable: Boolean
+    val sourceAvailable: Boolean,
+    /** Consecutive gaps from real IntendedVsync timestamps across polls. */
+    val frameIntervalsMs: List<Double> = emptyList()
 )
 
 /**
@@ -26,6 +29,7 @@ class FpsSampler(
     private var lastTime = 0L
     private var lastPollAt = 0L
     private var lastCompletedNs = Long.MIN_VALUE
+    private val vsyncIntervals = IntendedVsyncIntervalTracker()
     private var lastPackage: String? = null
     private var processEpoch = 0L
 
@@ -60,6 +64,7 @@ class FpsSampler(
             lastFrames = frames
             lastTime = now
             lastCompletedNs = Long.MIN_VALUE
+            vsyncIntervals.reset()
             return FpsObservation(null, emptyList(), processEpoch, now, true)
         }
         val parsed = GfxFrameStatsParser.parse(result.stdout, lastCompletedNs)
@@ -73,12 +78,14 @@ class FpsSampler(
             lastTime = now
         }
         if (parsed.lastCompletedNs > lastCompletedNs) lastCompletedNs = parsed.lastCompletedNs
+        val frameIntervalsMs = vsyncIntervals.append(parsed.intendedVsyncNs)
         return FpsObservation(
             fps = fps,
             frameTimesMs = parsed.frameTimesMs,
             processEpoch = processEpoch,
             measuredAtMs = now,
-            sourceAvailable = frames != null || parsed.rowsSeen > 0
+            sourceAvailable = frames != null || parsed.rowsSeen > 0,
+            frameIntervalsMs = frameIntervalsMs
         )
     }
 
@@ -90,6 +97,7 @@ class FpsSampler(
         lastTime = 0L
         lastPollAt = 0L
         lastCompletedNs = Long.MIN_VALUE
+        vsyncIntervals.reset()
     }
 
     companion object {

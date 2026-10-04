@@ -5,14 +5,15 @@ The workflow is `.github/workflows/build-apk.yml`.
 On every push to `main` or `arena/**` (and on manual dispatch) it:
 
 1. Reads `versionName` / `versionCode` from `NitroBoost/app/build.gradle.kts`
-2. Builds the debug APK and runs JVM unit tests
+2. Runs the static verifier, JVM unit tests, lint, and debug APK build
 3. Optionally builds a **signed** release APK if the `NITRO_*` secrets exist
 4. Refuses to publish a release APK that is `debuggable=true`
-5. Uploads artifacts, copies APKs to the `dist-apk` branch, and publishes a
+5. Uploads the APK as a workflow artifact and publishes it as an asset on the
    GitHub Release tagged `nitroboost-v{versionName}`
 
-Failed builds dump `NitroBoost/nitroboost-build.log` to the `build-logs`
-branch as `.build-logs/fail-{runId}.log`.
+The workflow only publishes a GitHub Release; it does not push build artifacts
+or failure logs to secondary branches. On failure, the build log is summarized
+in the job and uploaded as the `build-fail-log` artifact.
 
 ## Signing secrets (optional)
 
@@ -42,5 +43,5 @@ gradle wrapper --gradle-version 8.7   # once, if gradlew is missing
   `build-tools;34.0.0` itself. Confirm the runner is `ubuntu-latest`.
 - **Release APK not produced** — signing secrets are missing; debug APK
   still publishes.
-- **Unit test failure** — the log is on the `build-logs` branch and as
-  the `build-fail-log` artifact.
+- **Unit test failure** — inspect the job summary and download the
+  `build-fail-log` workflow artifact.

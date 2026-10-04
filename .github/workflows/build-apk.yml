@@ -9,7 +9,6 @@ on:
 
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
   build-apk:
@@ -69,47 +68,18 @@ jobs:
           tail -150 nitroboost-build.log
           exit $rc
 
-      - name: Capture build log on failure
+      - name: Summarize build log on failure
         if: failure()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set +e
           LOG=NitroBoost/nitroboost-build.log
-          PR=$(gh pr list --head "$GITHUB_HEAD_REF" --state open --json number 2>&1)
-          echo "PR-QUERY-OUTPUT: $PR" >> "$LOG"
-          PRN=$(echo "$PR" | grep -o '"number":[0-9]*' | head -1 | grep -o '[0-9]*')
-          echo "PR-NUMBER: ${PRN:-none}" >> "$LOG"
-          git config user.name "nitroboost-ci"
-          git config user.email "ci@nitroboost.local"
-          mkdir -p .build-logs
-          cp "$LOG" ".build-logs/fail-$GITHUB_RUN_ID.log"
-          git add ".build-logs/fail-$GITHUB_RUN_ID.log"
-          git commit -m "chore: capture failed build log (run $GITHUB_RUN_ID)" >> "$LOG" 2>&1
-          git fetch origin build-logs >> "$LOG" 2>&1
-          git push origin HEAD:build-logs --force >> "$LOG" 2>&1
-          echo "PUSH-EXIT: $?" >> "$LOG"
-          if [ -n "$PRN" ]; then
+          if [ -f "$LOG" ]; then
             {
-              echo "## :x: Build failed (run $GITHUB_RUN_ID)"
+              echo "## Build failed (run $GITHUB_RUN_ID)"
+              echo '```text'
+              tail -120 "$LOG"
               echo '```'
-              grep -E "^e: |error:|FAILURE|What went wrong|Execution failed for|Caused by|> Task.*FAILED" "$LOG" | head -60
-              echo '--- tail ---'
-              tail -80 "$LOG"
-              echo '```'
-            } > /tmp/pr-comment.md
-            python3 -c 'import json; json.dump({"body": open("/tmp/pr-comment.md").read()}, open("/tmp/pr-comment.json","w"))'
-            curl -s -o /tmp/pr-comment-resp.json -w "COMMENT-HTTP:%{http_code}\n" \
-              -X POST \
-              -H "Authorization: token $GITHUB_TOKEN" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/$GITHUB_REPOSITORY/issues/$PRN/comments" \
-              --data @/tmp/pr-comment.json \
-              >> "$LOG" 2>&1
-            head -c 400 /tmp/pr-comment-resp.json >> "$LOG" 2>&1
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
-          exit 0
 
       - name: Upload build log artifact on failure
         if: failure()
@@ -171,18 +141,6 @@ jobs:
           name: nitroboost-debug-apk
           path: ${{ steps.collect.outputs.paths }}
 
-      - name: Commit APK to dist branch
-        run: |
-          set +e
-          git config user.name "nitroboost-ci"
-          git config user.email "ci@nitroboost.local"
-          mkdir -p dist
-          cp NitroBoost/nitroboost-debug.apk dist/nitroboost-debug.apk
-          [ -f NitroBoost/nitroboost-release.apk ] && cp NitroBoost/nitroboost-release.apk dist/nitroboost-release.apk
-          git add dist/
-          git commit -m "dist: NitroBoost debug APK (build $GITHUB_RUN_ID)"
-          git push origin HEAD:dist-apk --force
-
       - name: Publish release with APK
         uses: softprops/action-gh-release@v2
         with:
@@ -198,6 +156,12 @@ jobs:
             for direct install; a signed release APK is published
             automatically once the signing secrets are configured — see
             `NitroBoost/docs/DISTRIBUTION.md`.
+
+            ## v1.13.0 — unified telemetry and frame pacing
+            - Added a pure-Kotlin PerformanceSnapshot/SensorFusion layer; unavailable readings remain null, and optional CPU-frequency, battery, memory-pressure, and public device/display data are included only when exposed.
+            - Added measured IntendedVsync gaps and FramePacingAnalyzer diagnostics: observed FPS mean/median, measured frame-time percentiles/variance, jank rate, and an explicitly estimated missed-vsync rate.
+            - Stability/smoothness scores require at least five measured frame-time samples. Existing A/B weights/decisions, Journal/rollback, privilege checks, and thermal guard are unchanged.
+            - GPU utilization/renderer and energy stay null without a trustworthy source; no cloud inference or device benchmark claim is added.
 
             ## v1.12.0 — safety and session efficiency
             - Profiles/preferences validate package names and ranges, sanitize legacy data, and save custom profiles atomically.

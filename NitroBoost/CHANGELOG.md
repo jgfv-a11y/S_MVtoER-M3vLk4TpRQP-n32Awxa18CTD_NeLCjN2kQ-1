@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.13.0 — Unified telemetry and frame pacing
+- **Version code 16**; GitHub Actions is the release gate and publishes the debug APK after verification, JVM tests, lint, and assemble succeed. A signed release APK still requires the configured signing secrets.
+- Added the pure-Kotlin `core/telemetry/` snapshot model and `SensorFusion`; readings retain explicit null/availability instead of turning missing CPU, GPU, RAM, thermal, battery, network, or frame sources into measurements.
+- Integrated best-effort read-only CPU policy frequency, system memory pressure, battery temperature/current, and public device/display metadata. GPU utilization/model/renderer and energy remain null where no trustworthy source is available; no privileged telemetry write or cloud collection was added.
+- Extended `gfxinfo` parsing to retain real IntendedVsync timestamps across polls. `FramePacingAnalyzer` now reports measured FPS mean/median, frame-time mean/median/P95/P99/variance, the existing >2x-budget jank rate, and a clearly labeled estimated missed-vsync rate when target FPS and timestamp gaps exist.
+- Added deterministic stability/smoothness diagnostics (0–100) only for windows with at least five measured frame-time samples. The A/B score weights, candidate decisions, task roster, Journal/rollback, Shizuku flow, and thermal policy are unchanged; extra frame-pacing metrics are persisted compatibly with old ledger files.
+- Added JVM tests for telemetry normalization, unavailable values, vsync intervals, frame pacing, and ledger round trips. No device benchmark or FPS improvement is claimed; validation must pass CI and device-specific measurements remain separate.
+- Architecture audit: `docs/ARCHITECTURE_AUDIT_v1.13.0.md`.
+
 ## v1.12.0 — Safety, display policy, and session efficiency
 - **Version code 15** (up from 14); release APK publication remains gated on GitHub Actions.
 - Hardened profile and preference handling: validate package names and numeric ranges, sanitize legacy profile data, bound protected-package lists, and atomically replace custom-profile JSON after fsync.

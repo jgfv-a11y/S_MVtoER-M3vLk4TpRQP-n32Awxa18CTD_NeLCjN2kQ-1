@@ -431,8 +431,8 @@ class HomeFragment : Fragment() {
         })
         AppStore.monitor.observe(owner, Observer { s ->
             val snap = s ?: MonitorSnapshot.EMPTY
-            statCpu?.text = "${snap.cpuPct}%"
-            statRam?.text = "${snap.ramUsedMb / 1024}GB"
+            statCpu?.text = if (snap.cpuSampleAvailable) "${snap.cpuPct}%" else "--"
+            statRam?.text = if (snap.ramSampleAvailable) "${snap.ramUsedMb / 1024}GB" else "--"
             statTemp?.text = snap.tempC?.let { "${Math.round(it)}\u00B0" } ?: "--"
             statFps?.text = fpsDisplayCache.value(
                 snap.fps, snap.gamePackage, android.os.SystemClock.elapsedRealtime()

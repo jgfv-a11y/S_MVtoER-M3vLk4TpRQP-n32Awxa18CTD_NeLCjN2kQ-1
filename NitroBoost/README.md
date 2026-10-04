@@ -66,7 +66,7 @@ The normalized block score is bounded to `[-1, 1]`. Weight profiles are explicit
 - Temperature, temperature-slope, and thermal-tier risks are subtracted using the active normalized profile. Missing temperature/slope metrics are omitted; the score is normalized over only applicable objective weights.
 - A positive result is not enough by itself: the corrected confidence interval must clear the configured useful-effect threshold (`0.015`) and the sample-quality/thermal-safety gates.
 
-Frame times are read only from `dumpsys gfxinfo ... framestats` when exposed by the device. Energy remains absent until a real platform counter is available. No FPS gain, benchmark result, or device measurement is assumed by the model.
+Frame times are read only from `dumpsys gfxinfo ... framestats` when exposed by the device. Energy remains absent until a real platform counter is available. The v1.13 telemetry snapshot aligns the available CPU, memory, thermal, battery, network, frame, and public device/display readings; GPU utilization/renderer and any other unsupported source remain null. `FramePacingAnalyzer` calculates FPS mean/median from observed FPS samples, frame-time percentiles/variance from framestats, and an **estimated** missed-vsync rate only from measured IntendedVsync gaps plus a valid configured target. Stability/smoothness scores are deterministic diagnostics, not benchmark promises. No FPS gain, benchmark result, or device measurement is assumed by the model.
 
 ## 📦 المتطلبات
 
@@ -110,13 +110,22 @@ gradle wrapper --gradle-version 8.7   # إذا كان Gradle 8.7 مثبتًا
 
 APK الناتج في `app/build/outputs/apk/debug/`.
 
-> 📲 **APK الإصدار v1.12.0**: [nitroboost-debug.apk](../dist/nitroboost-debug.apk) — ينشره GitHub Actions بعد نجاح الاختبارات والبناء؛ تحقق من [Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) للتأكد من اكتمال النشر.
+> 📲 **APK الإصدار v1.13.0**: [تنزيل nitroboost-debug.apk](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases/download/nitroboost-v1.13.0/nitroboost-debug.apk) — ينشره GitHub Actions بعد نجاح verifier والاختبارات وlint والبناء؛ تحقق من [Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) للتأكد من اكتمال النشر.
 > (أو من صفحة [Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) —
 > يُعاد بناؤه تلقائيًا عبر GitHub Actions عند كل تغيير).
 
 ---
 
 ## 📜 سجل الإصدارات
+
+### v1.13.0 — telemetry موحّدة وتحليل Frame Pacing
+- **الإصدار 16**؛ ينشر GitHub Actions APK بعد نجاح التحقق والاختبارات وlint والبناء. APK release موقّع يتطلب أسرار التوقيع.
+- إضافة `PerformanceSnapshot` و`SensorFusion` في `core/telemetry/`؛ القراءات غير المتاحة تبقى `null` مع حالة المصدر بدل اعتبار الصفر قياسًا.
+- دمج قراءات CPU/sysfs للـfrequency عندما تكون مقروءة دون امتيازات، ضغط الذاكرة النظامي، حرارة/تيار البطارية والبيانات الثابتة المتاحة عن الجهاز والشاشة. GPU utilization وrenderer والطاقة تبقى `null` دون مصدر موثوق.
+- إضافة فواصل IntendedVsync من سجلات framestats الفعلية، وقياسات FPS mean/median وframe-time median/P95/P99/variance وjank. معدل الإطارات الساقطة **تقديري** من فجوات VSync المقاسة والهدف المحدد فقط.
+- درجات الثبات والسلاسة مؤشرات تشخيصية حتمية ولا تظهر قبل خمس عينات frametime فعلية؛ لا تتغير أوزان أو قرارات محرك A/B في هذا الإصدار.
+- اختبارات JVM جديدة للتطبيع وحالات عدم التوفر وفواصل VSync والتحليل وحفظ الدفتر؛ لا يوجد ادعاء benchmark أو FPS على جهاز فعلي دون قياس.
+- تقرير التدقيق: `docs/ARCHITECTURE_AUDIT_v1.13.0.md`.
 
 ### v1.12.0 — حماية الإعدادات والاستعادة وتحسين كفاءة الجلسة
 - **الإصدار 15**؛ ينشر GitHub Actions APK بعد نجاح الاختبارات والبناء.

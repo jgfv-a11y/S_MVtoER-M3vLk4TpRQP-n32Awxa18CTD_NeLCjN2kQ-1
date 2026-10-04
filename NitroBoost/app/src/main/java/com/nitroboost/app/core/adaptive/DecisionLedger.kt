@@ -1,5 +1,6 @@
 package com.nitroboost.app.core.adaptive
 
+import com.nitroboost.app.core.telemetry.FramePacingMetrics
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -725,6 +726,7 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
         .put("processEpoch", value.processEpoch)
         .put("targetFps", value.targetFps)
         .put("fpsCoefficientOfVariation", value.fpsCoefficientOfVariation ?: JSONObject.NULL)
+        .put("framePacing", value.framePacing?.let(::framePacingJson) ?: JSONObject.NULL)
 
     private fun parseWindow(o: JSONObject): WindowMetrics = WindowMetrics(
         fpsMean = o.optDouble("fpsMean"),
@@ -750,7 +752,43 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
         gamePackage = nullableString(o, "gamePackage"),
         processEpoch = o.optLong("processEpoch"),
         targetFps = o.optInt("targetFps", 60),
-        fpsCoefficientOfVariation = nullableDouble(o, "fpsCoefficientOfVariation")
+        fpsCoefficientOfVariation = nullableDouble(o, "fpsCoefficientOfVariation"),
+        framePacing = o.optJSONObject("framePacing")?.let(::parseFramePacing)
+    )
+
+    private fun framePacingJson(value: FramePacingMetrics): JSONObject = JSONObject()
+        .put("targetFps", value.targetFps ?: JSONObject.NULL)
+        .put("averageFps", value.averageFps ?: JSONObject.NULL)
+        .put("medianFps", value.medianFps ?: JSONObject.NULL)
+        .put("meanFrameTimeMs", value.meanFrameTimeMs ?: JSONObject.NULL)
+        .put("medianFrameTimeMs", value.medianFrameTimeMs ?: JSONObject.NULL)
+        .put("p95FrameTimeMs", value.p95FrameTimeMs ?: JSONObject.NULL)
+        .put("p99FrameTimeMs", value.p99FrameTimeMs ?: JSONObject.NULL)
+        .put("frameTimeVarianceMs2", value.frameTimeVarianceMs2 ?: JSONObject.NULL)
+        .put("jankRate", value.jankRate ?: JSONObject.NULL)
+        .put("estimatedDroppedFrameRate", value.estimatedDroppedFrameRate ?: JSONObject.NULL)
+        .put("stabilityScore", value.stabilityScore ?: JSONObject.NULL)
+        .put("smoothnessScore", value.smoothnessScore ?: JSONObject.NULL)
+        .put("fpsSampleCount", value.fpsSampleCount)
+        .put("frameSampleCount", value.frameSampleCount)
+        .put("intendedVsyncIntervalCount", value.intendedVsyncIntervalCount)
+
+    private fun parseFramePacing(o: JSONObject): FramePacingMetrics = FramePacingMetrics(
+        targetFps = if (o.isNull("targetFps")) null else o.optInt("targetFps"),
+        averageFps = nullableDouble(o, "averageFps"),
+        medianFps = nullableDouble(o, "medianFps"),
+        meanFrameTimeMs = nullableDouble(o, "meanFrameTimeMs"),
+        medianFrameTimeMs = nullableDouble(o, "medianFrameTimeMs"),
+        p95FrameTimeMs = nullableDouble(o, "p95FrameTimeMs"),
+        p99FrameTimeMs = nullableDouble(o, "p99FrameTimeMs"),
+        frameTimeVarianceMs2 = nullableDouble(o, "frameTimeVarianceMs2"),
+        jankRate = nullableDouble(o, "jankRate"),
+        estimatedDroppedFrameRate = nullableDouble(o, "estimatedDroppedFrameRate"),
+        stabilityScore = nullableDouble(o, "stabilityScore"),
+        smoothnessScore = nullableDouble(o, "smoothnessScore"),
+        fpsSampleCount = o.optInt("fpsSampleCount").coerceAtLeast(0),
+        frameSampleCount = o.optInt("frameSampleCount").coerceAtLeast(0),
+        intendedVsyncIntervalCount = o.optInt("intendedVsyncIntervalCount").coerceAtLeast(0)
     )
 
     private fun scoreJson(value: ScoreComponents): JSONObject = JSONObject()

@@ -1,5 +1,7 @@
 package com.nitroboost.app.core.adaptive
 
+import com.nitroboost.app.core.telemetry.FramePacingMetrics
+
 /** Where the frames are being lost — the first honest question of any boost. */
 enum class Bottleneck {
     /** No FPS source (no Shizuku / gfxinfo) — decisions are blind, loop stays off. */
@@ -30,6 +32,15 @@ enum class Decision {
 }
 
 /** One real frame-time distribution; null means the platform exposed no frame-time source. */
+data class FrameTimeDistribution(
+    val frameCount: Int,
+    val meanMs: Double,
+    val medianMs: Double,
+    val p95Ms: Double,
+    val p99Ms: Double,
+    val varianceMs2: Double
+)
+
 data class FrameTimeMetrics(
     val frameCount: Int,
     val medianMs: Double,

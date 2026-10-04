@@ -1,5 +1,7 @@
 package com.nitroboost.app.core.adaptive
 
+import com.nitroboost.app.core.telemetry.FramePacingMetrics
+
 /** Local-only cache context. It intentionally contains no user/account identifiers. */
 data class TrialContext(
     val deviceKey: String,
@@ -106,7 +108,9 @@ data class WindowMetrics(
     val processEpoch: Long,
     val targetFps: Int,
     /** Coefficient of variation from sampled FPS readings; null when it cannot be measured. */
-    val fpsCoefficientOfVariation: Double? = null
+    val fpsCoefficientOfVariation: Double? = null,
+    /** Additional measured frame-pacing diagnostics; null when no inputs are available. */
+    val framePacing: FramePacingMetrics? = null
 )
 
 /** Normalized, bounded effects and risk terms for one paired block. */

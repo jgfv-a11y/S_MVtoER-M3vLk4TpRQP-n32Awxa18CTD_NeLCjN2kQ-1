@@ -126,6 +126,7 @@ object AppStore {
     @Volatile private var cachedProfileKey: Pair<String, String>? = null
 
     private val trend = ThermalTrend()
+    private var lastThermalObservationAtMs = Long.MIN_VALUE
     @Volatile
     private var lastFrame: FrameMetrics? = null
     @Volatile
@@ -239,9 +240,9 @@ object AppStore {
             .take(16).joinToString("") { "%02x".format(it) }
 
     /**
-     * Loop-side view of the monitor: poll returns one FRESH aligned snapshot
-     * per monitor tick (timestamp-deduped), carrying only actually measured
-     * frame times and the raw temperature/tier context.
+     * Loop-side view of the monitor: poll returns one fused snapshot per tick
+     * (capture-time deduped). Individual source timestamps preserve cache age;
+     * only measured frame times and raw thermal context feed adaptive metrics.
      */
     private val sampler = object : AdaptiveSampler {
         override fun poll(): com.nitroboost.app.core.adaptive.AdaptiveSample? {
@@ -259,15 +260,16 @@ object AppStore {
                 thermal = thermal,
                 timestampMs = s.ts,
                 tempC = s.tempC,
-                thermalSlopeCPerMin = trend.slopePerMin(),
-                ramPct = s.ramPct,
-                frameTimesMs = s.frameTimesMs,
+                thermalSlopeCPerMin = if (s.tempC != null) trend.slopePerMinOrNull() else null,
+                ramPct = s.ramPct.takeIf { s.ramSampleAvailable },
+                frameTimesMs = s.performance?.frame?.frameTimesMs ?: s.frameTimesMs,
                 energyMah = s.energyMah,
                 gamePackage = s.gamePackage,
                 processEpoch = s.processEpoch,
                 thermalValid = s.thermalSampleAvailable || s.tempC != null,
                 monitorAgeMs = (now - s.ts).coerceAtLeast(0L),
-                targetFps = currentTargetFps
+                targetFps = s.performance?.frame?.targetFps ?: currentTargetFps,
+                frameIntervalsMs = s.performance?.frame?.intendedVsyncIntervalsMs ?: s.frameIntervalsMs
             )
         }
         override fun fps(): Int? = monitor.value?.fps
@@ -381,10 +383,10 @@ object AppStore {
         val context = app ?: return
         val newHub = MonitorHub(context.applicationContext)
         newHub.gamePackage = { gamePackage() }
+        newHub.targetFps = { currentTargetFps.takeIf { gamePackage() != null } }
         hub = newHub
         newHub.start { sample ->
-            monitor.postValue(sample)
-            collectSample(sample)
+            monitor.postValue(collectSample(sample))
         }
     }
 
@@ -477,33 +479,61 @@ object AppStore {
         }
     }
 
-    private fun collectSample(s: MonitorSnapshot) {
-        // Predictive thermal trend + frame metrics feed the adaptive engine
-        // every sample, session or not.
-        trend.record(s.ts, s.tempC)
+    private fun collectSample(s: MonitorSnapshot): MonitorSnapshot {
+        // Record only a new sensor observation; cached temperatures can appear
+        // in several one-second monitor snapshots with the same source time.
+        val temperatureAtMs = s.performance?.sourceTimestamps?.temperatureAtMs
+            ?: if (s.performance == null && s.tempC != null) s.ts else null
+        if (temperatureAtMs != null && temperatureAtMs != lastThermalObservationAtMs) {
+            trend.record(temperatureAtMs, s.tempC)
+            lastThermalObservationAtMs = temperatureAtMs
+        }
+        // The existing predictive thermal trend enriches the snapshot; its
+        // slope stays null until two distinct, real readings are available.
+        val thermalSlope = if (s.tempC != null) trend.slopePerMinOrNull() else null
+        val effectiveThermal = maxOf(
+            s.thermalStatus,
+            trend.effectiveStatus(s.thermalStatus),
+            ThermalGuard.rawStatusFor(s.tempC)
+        )
+        val enriched = s.copy(
+            performance = s.performance?.let { performance ->
+                performance.copy(
+                    thermal = performance.thermal.copy(
+                        slopeCPerMin = thermalSlope,
+                        effectiveStatus = effectiveThermal
+                    )
+                )
+            }
+        )
         lastFrame = FrameMetrics(
             fps = s.fps,
-            targetFps = currentTargetFps,
+            targetFps = s.performance?.frame?.targetFps ?: currentTargetFps,
             cpuPct = s.cpuPct,
             ramPct = s.ramPct,
             pingMs = s.pingMs,
             retransPerSec = s.retransPerSec,
             thermalStatus = s.thermalStatus,
             tempC = s.tempC,
-            frameTime = FrameTimeAnalysis.summarize(s.frameTimesMs, currentTargetFps),
+            frameTime = FrameTimeAnalysis.summarize(
+                s.performance?.frame?.frameTimesMs ?: s.frameTimesMs,
+                currentTargetFps
+            ),
             monitorTimestampMs = s.ts,
             gamePackage = s.gamePackage
         )
         postAdaptiveUi()
         synchronized(sessionStateLock) {
-            if (sessStart == 0L) return
-            sessionSamples.add(
-                fps = s.fps,
-                tempC = s.tempC?.toInt(),
-                pingMs = s.pingMs,
-                ramMb = s.ramUsedMb.toInt().takeIf { it > 0 }
-            )
+            if (sessStart != 0L) {
+                sessionSamples.add(
+                    fps = s.fps,
+                    tempC = s.tempC?.toInt(),
+                    pingMs = s.pingMs,
+                    ramMb = s.ramUsedMb.toInt().takeIf { it > 0 }
+                )
+            }
         }
+        return enriched
     }
 
     private fun postAdaptiveUi() {

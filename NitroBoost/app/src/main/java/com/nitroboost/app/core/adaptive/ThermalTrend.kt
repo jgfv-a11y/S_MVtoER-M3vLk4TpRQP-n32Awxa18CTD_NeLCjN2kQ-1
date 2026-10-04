@@ -31,14 +31,18 @@ class ThermalTrend(private val windowMs: Long = 120_000L) {
         samples.clear()
     }
 
-    /** Slope in °C per minute over the buffered window; 0.0 with <2 samples. */
+    /** Slope in °C per minute over the buffered window; 0.0 with <2 samples (legacy API). */
     @Synchronized
-    fun slopePerMin(): Double {
-        if (samples.size < 2) return 0.0
+    fun slopePerMin(): Double = slopePerMinOrNull() ?: 0.0
+
+    /** Null until at least two time-separated temperature readings exist. */
+    @Synchronized
+    fun slopePerMinOrNull(): Double? {
+        if (samples.size < 2) return null
         val first = samples.first()
         val last = samples.last()
         val dt = (last.t - first.t) / 60_000.0
-        if (dt <= 0.0) return 0.0
+        if (dt <= 0.0) return null
         return (last.c - first.c) / dt
     }
 

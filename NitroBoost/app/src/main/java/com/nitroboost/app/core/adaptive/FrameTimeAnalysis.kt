@@ -1,14 +1,15 @@
 package com.nitroboost.app.core.adaptive
 
 import kotlin.math.ceil
-import kotlin.math.sqrt
 
 /** Pure parser/statistics so frame-time behavior is covered by JVM tests. */
 object GfxFrameStatsParser {
     data class Parsed(
         val frameTimesMs: List<Double>,
         val lastCompletedNs: Long,
-        val rowsSeen: Int
+        val rowsSeen: Int,
+        /** IntendedVsync timestamps corresponding to the valid measured durations. */
+        val intendedVsyncNs: List<Long> = emptyList()
     )
 
     /**
@@ -27,6 +28,7 @@ object GfxFrameStatsParser {
         var lastCompleted = afterCompletedNs
         val frameLimit = maxFrames.coerceAtLeast(0)
         val durations = ArrayList<Double>(minOf(frameLimit, 128))
+        val intendedVsyncs = ArrayList<Long>(minOf(frameLimit, 128))
 
         for (line in output.lineSequence()) {
             val trimmed = line.trim()
@@ -50,10 +52,14 @@ object GfxFrameStatsParser {
             if (completed <= intended) continue
             val durationMs = (completed - intended) / 1_000_000.0
             if (frameLimit == 0 || !durationMs.isFinite() || durationMs !in MIN_FRAME_MS..MAX_FRAME_MS) continue
-            if (durations.size == frameLimit) durations.removeAt(0)
+            if (durations.size == frameLimit) {
+                durations.removeAt(0)
+                intendedVsyncs.removeAt(0)
+            }
             durations.add(durationMs)
+            intendedVsyncs.add(intended)
         }
-        return Parsed(durations, lastCompleted, rowsSeen)
+        return Parsed(durations, lastCompleted, rowsSeen, intendedVsyncs)
     }
 
     private const val MIN_FRAME_MS = 0.1
@@ -61,6 +67,24 @@ object GfxFrameStatsParser {
 }
 
 object FrameTimeAnalysis {
+    /** Distribution of measured durations even when no target-FPS budget exists. */
+    fun distribution(frameTimesMs: List<Double>): FrameTimeDistribution? {
+        val sorted = frameTimesMs.filter { it.isFinite() && it in MIN_FRAME_MS..MAX_FRAME_MS }.sorted()
+        if (sorted.isEmpty()) return null
+        val mean = sorted.average()
+        val variance = if (sorted.size > 1) {
+            sorted.sumOf { (it - mean) * (it - mean) } / (sorted.size - 1)
+        } else 0.0
+        return FrameTimeDistribution(
+            frameCount = sorted.size,
+            meanMs = mean,
+            medianMs = median(sorted),
+            p95Ms = percentile(sorted, 0.95),
+            p99Ms = percentile(sorted, 0.99),
+            varianceMs2 = variance
+        )
+    }
+
     /**
      * Summarizes measured frame durations. A hitch is strictly longer than
      * two target frame budgets (e.g. >33.3ms at 60Hz); absent input returns
@@ -71,24 +95,21 @@ object FrameTimeAnalysis {
         targetFps: Int,
         hitchMultiplier: Double = HITCH_MULTIPLIER
     ): FrameTimeMetrics? {
-        val samples = frameTimesMs.filter { it.isFinite() && it in 0.1..1_000.0 }
-        if (samples.isEmpty() || targetFps <= 0) return null
-        val sorted = samples.sorted()
-        val mean = sorted.average()
-        val variance = if (sorted.size > 1) {
-            sorted.sumOf { (it - mean) * (it - mean) } / (sorted.size - 1)
-        } else 0.0
-        val threshold = (1_000.0 / targetFps) * hitchMultiplier
-        val hitches = sorted.count { it > threshold }
+        if (targetFps <= 0 || !hitchMultiplier.isFinite() || hitchMultiplier <= 0.0) return null
+        val distribution = distribution(frameTimesMs) ?: return null
+        val hitches = frameTimesMs.count {
+            it.isFinite() && it in MIN_FRAME_MS..MAX_FRAME_MS &&
+                it > (1_000.0 / targetFps) * hitchMultiplier
+        }
         return FrameTimeMetrics(
-            frameCount = sorted.size,
-            medianMs = median(sorted),
-            p95Ms = percentile(sorted, 0.95),
-            p99Ms = percentile(sorted, 0.99),
-            varianceMs2 = variance,
+            frameCount = distribution.frameCount,
+            medianMs = distribution.medianMs,
+            p95Ms = distribution.p95Ms,
+            p99Ms = distribution.p99Ms,
+            varianceMs2 = distribution.varianceMs2,
             hitchCount = hitches,
-            hitchRate = hitches.toDouble() / sorted.size,
-            hitchThresholdMs = threshold
+            hitchRate = hitches.toDouble() / distribution.frameCount,
+            hitchThresholdMs = (1_000.0 / targetFps) * hitchMultiplier
         )
     }
 
@@ -103,5 +124,7 @@ object FrameTimeAnalysis {
         return sorted[index]
     }
 
+    private const val MIN_FRAME_MS = 0.1
+    private const val MAX_FRAME_MS = 1_000.0
     const val HITCH_MULTIPLIER = 2.0
 }

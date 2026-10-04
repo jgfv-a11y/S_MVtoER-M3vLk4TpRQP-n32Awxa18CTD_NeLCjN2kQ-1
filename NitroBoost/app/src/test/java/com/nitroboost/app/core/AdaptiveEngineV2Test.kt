@@ -21,6 +21,7 @@ import com.nitroboost.app.core.adaptive.TrialContext
 import com.nitroboost.app.core.adaptive.TrialOutcome
 import com.nitroboost.app.core.adaptive.Variant
 import com.nitroboost.app.core.adaptive.WindowMetrics
+import com.nitroboost.app.core.telemetry.FramePacingMetrics
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -497,6 +498,47 @@ class AdaptiveEngineV2Test {
         assertEquals(2, arm.observations.count { it.qualityValid && it.score.score.isFinite() })
         assertEquals(0.1, arm.meanScore!!, 1e-9)
         assertEquals(2, ledger.validObservationCounts("task", context())["a"])
+    }
+
+    @Test fun `frame pacing metrics survive ledger round trip`() {
+        val file = tempFile("frame-pacing-ledger")
+        val ledger = DecisionLedger(file)
+        val context = context()
+        val pacing = FramePacingMetrics(
+            targetFps = 60,
+            averageFps = 58.5,
+            medianFps = 59.0,
+            meanFrameTimeMs = 17.0,
+            medianFrameTimeMs = 16.7,
+            p95FrameTimeMs = 25.0,
+            p99FrameTimeMs = 34.0,
+            frameTimeVarianceMs2 = 8.0,
+            jankRate = 0.02,
+            estimatedDroppedFrameRate = 0.01,
+            stabilityScore = 91.0,
+            smoothnessScore = 88.0,
+            fpsSampleCount = 8,
+            frameSampleCount = 600,
+            intendedVsyncIntervalCount = 598
+        )
+        val measured = metrics().copy(framePacing = pacing)
+        ledger.recordVariant(
+            "frame_pacing", "Frame pacing", "default", "default",
+            listOf(observation(
+                "default", "frame-session", 0, 0.1,
+                baseline = measured,
+                candidate = measured
+            )),
+            comparisonCount = 1,
+            context = context,
+            nowMs = 20_000L,
+            cfg = baseConfig
+        )
+
+        val loaded = DecisionLedger(file).also { it.load() }
+        val observation = loaded.entries["frame_pacing"]!!.variants["default"]!!.observations.single()
+        assertEquals(pacing, observation.baseline.framePacing)
+        assertEquals(pacing, observation.candidate.framePacing)
     }
 
     @Test fun `v1_10 ledger observations load with explicit safe legacy defaults`() {

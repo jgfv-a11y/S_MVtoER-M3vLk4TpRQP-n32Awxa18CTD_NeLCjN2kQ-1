@@ -203,14 +203,22 @@ class FpsOverlayService : Service() {
                 if (isNotEmpty()) append("  ")
                 append(c.getString(R.string.overlay_cpu))
                 append(" ")
-                append(s.cpuPct)
-                append("%")
+                if (s.cpuSampleAvailable) {
+                    append(s.cpuPct)
+                    append("%")
+                } else {
+                    append("--")
+                }
             }
             if (Prefs.getBool(c, Prefs.KEY_OV_RAM, true)) {
                 if (isNotEmpty()) append("  ")
                 append(c.getString(R.string.overlay_ram))
                 append(" ")
-                append((s.ramUsedMb / 1024.0)).append("GB")
+                if (s.ramSampleAvailable) {
+                    append(s.ramUsedMb / 1024.0).append("GB")
+                } else {
+                    append("--")
+                }
             }
             if (Prefs.getBool(c, Prefs.KEY_OV_TEMP, true)) {
                 if (isNotEmpty()) append("  ")

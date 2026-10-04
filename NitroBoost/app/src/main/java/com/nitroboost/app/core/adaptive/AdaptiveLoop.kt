@@ -10,6 +10,7 @@ import com.nitroboost.app.core.TaskResult
 import com.nitroboost.app.core.TaskStatus
 import com.nitroboost.app.core.tasks.GameApiTask
 import com.nitroboost.app.core.tasks.GovernorTask
+import com.nitroboost.app.core.telemetry.FrameSnapshot
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -47,7 +48,9 @@ data class AdaptiveSample(
     val processEpoch: Long = 0L,
     val thermalValid: Boolean = true,
     val monitorAgeMs: Long = 0L,
-    val targetFps: Int = 60
+    val targetFps: Int = 60,
+    /** Consecutive measured IntendedVsync gaps; empty means unavailable. */
+    val frameIntervalsMs: List<Double> = emptyList()
 )
 
 /** Legacy summary of one variant arm. Kept for callers; sweeps no longer select on this alone. */
@@ -369,6 +372,17 @@ class AdaptiveLoop(
         val epochs = samples.map { it.processEpoch }.distinct()
         val targetFps = samples.map { it.targetFps }.firstOrNull { it > 0 } ?: 60
         val frameTimes = samples.flatMap { it.frameTimesMs }
+        val framePacing = FramePacingAnalyzer.analyze(
+            samples.map { sample ->
+                FrameSnapshot(
+                    fps = sample.fps?.toDouble(),
+                    targetFps = sample.targetFps.takeIf { it > 0 },
+                    frameTimesMs = sample.frameTimesMs,
+                    intendedVsyncIntervalsMs = sample.frameIntervalsMs
+                )
+            },
+            targetFps
+        )
         return WindowMetrics(
             fpsMean = fpsMean ?: Double.NaN,
             lowFps = if (sortedFps.isEmpty()) Double.NaN else percentile(sortedFps, 0.10),
@@ -393,7 +407,8 @@ class AdaptiveLoop(
             gamePackage = packages.singleOrNull(),
             processEpoch = epochs.singleOrNull() ?: -1L,
             targetFps = targetFps,
-            fpsCoefficientOfVariation = fpsCoefficientOfVariation
+            fpsCoefficientOfVariation = fpsCoefficientOfVariation,
+            framePacing = framePacing
         )
     }
 
