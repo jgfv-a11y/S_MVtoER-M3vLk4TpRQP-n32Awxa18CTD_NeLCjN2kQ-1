@@ -29,20 +29,27 @@ object Prefs {
     const val KEY_ONBOARDING_DONE = "onboarding_shown"
     const val KEY_BOOST_LEVEL = "boost_level"
 
+    private fun edit(ctx: Context, block: SharedPreferences.Editor.() -> Unit) {
+        val editor = sp(ctx).edit()
+        block(editor)
+        editor.apply()
+    }
+
     fun sp(ctx: Context): SharedPreferences =
         ctx.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
     fun activeProfile(ctx: Context): String? = try {
-        sp(ctx).getString(KEY_ACTIVE_PROFILE, null)?.takeIf(ShellInput::isPackageName)
+        val pkg = sp(ctx).getString(KEY_ACTIVE_PROFILE, null)
+        if (pkg.isNullOrBlank()) null else pkg.takeIf(ShellInput::isPackageName)
     } catch (_: Exception) {
         null
     }
 
     fun setActiveProfile(ctx: Context, pkg: String?) {
-        sp(ctx).edit().apply {
+        edit(ctx) {
             if (pkg == null || !ShellInput.isPackageName(pkg)) remove(KEY_ACTIVE_PROFILE)
             else putString(KEY_ACTIVE_PROFILE, pkg)
-        }.apply()
+        }
     }
 
     fun getBool(ctx: Context, key: String, def: Boolean): Boolean = try {
@@ -52,7 +59,7 @@ object Prefs {
     }
 
     fun setBool(ctx: Context, key: String, value: Boolean) {
-        sp(ctx).edit().putBoolean(key, value).apply()
+        edit(ctx) { putBoolean(key, value) }
     }
 
     fun getInt(ctx: Context, key: String, def: Int): Int = try {
@@ -66,11 +73,12 @@ object Prefs {
         getInt(ctx, KEY_BOOST_LEVEL, 2).coerceIn(1, 3)
 
     fun putInt(ctx: Context, key: String, value: Int) {
-        sp(ctx).edit().putInt(key, value).apply()
+        edit(ctx) { putInt(key, value) }
     }
 
     fun putString(ctx: Context, key: String, value: String) {
-        sp(ctx).edit().putString(key, value).apply()
+        if (key.isBlank()) return
+        edit(ctx) { putString(key, value) }
     }
 
     fun taskEnabled(ctx: Context, taskId: String, def: Boolean): Boolean = try {
@@ -82,7 +90,7 @@ object Prefs {
 
     fun setTaskEnabled(ctx: Context, taskId: String, value: Boolean) {
         if (!taskId.matches(Regex("[A-Za-z0-9_]{1,80}"))) return
-        sp(ctx).edit().putBoolean(KEY_TASK_PREFIX + taskId, value).apply()
+        edit(ctx) { putBoolean(KEY_TASK_PREFIX + taskId, value) }
     }
 
     fun protectedList(ctx: Context): List<String> {
@@ -94,7 +102,7 @@ object Prefs {
         return raw.split(',', '\n')
             .asSequence()
             .map { it.trim() }
-            .filter(ShellInput::isPackageName)
+            .filter { it.isNotEmpty() && ShellInput.isPackageName(it) }
             .distinct()
             .take(ProfileValidation.MAX_PROTECTED_PACKAGES)
             .toList()
@@ -103,11 +111,11 @@ object Prefs {
     fun setProtectedList(ctx: Context, list: List<String>) {
         val safe = list.asSequence()
             .map { it.trim() }
-            .filter(ShellInput::isPackageName)
+            .filter { it.isNotEmpty() && ShellInput.isPackageName(it) }
             .distinct()
             .take(ProfileValidation.MAX_PROTECTED_PACKAGES)
             .toList()
-        sp(ctx).edit().putString(KEY_PROTECTED, safe.joinToString(",")).apply()
+        edit(ctx) { putString(KEY_PROTECTED, safe.joinToString(",")) }
     }
 
     fun lang(ctx: Context): String = try {
@@ -118,6 +126,6 @@ object Prefs {
 
     fun setLang(ctx: Context, lang: String) {
         if (lang !in setOf("ar", "en")) return
-        sp(ctx).edit().putString(KEY_LANG, lang).apply()
+        edit(ctx) { putString(KEY_LANG, lang) }
     }
 }
