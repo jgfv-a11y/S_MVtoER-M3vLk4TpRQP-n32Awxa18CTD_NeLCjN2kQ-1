@@ -12,7 +12,7 @@
 - **P5 UI foundations:** dashboard، profiles، settings، overlay، reports، state-preserving navigation، ورسائل capability الصادقة.
 
 ## Current Task
-إصدار v1.14.0: حماية قياس frame telemetry من إعادة تشغيل epoch في gfxinfo، مع اختبار regression وبناء CI.
+إغلاق إصلاح P1 في `BoostFragment.kt` ثم مراجعة `MonitorHub` و`SensorFusion` بعد نجاح CI.
 
 ## Completed This Session — 2026-10-04
 - راجعت `main` وتقارير التقدم؛ لم يكن ملف الاستمرارية موجودًا.
@@ -31,6 +31,13 @@
 - أصبح IntendedVsync tracker يعيد تأسيس epoch عند الطابع الزمني الراجع.
 - أضيفت اختبارات regression للـparser والـtracker.
 - الإصدار المستهدف `1.14.0` و`versionCode=17`.
+
+
+## Completed This Session — 2026-10-05
+- تم التأكد أن ScheduleTask اليومية موجودة ومفعلة يوميًا الساعة 08:00 بتوقيت `Africa/Cairo`؛ لم تُنشأ جدولة مكررة.
+- أُصلحت `BoostFragment.kt`: استخدام `Prefs.taskEnabled`, احترام اختيار اللغة `en/ar/auto`, وإزالة imports/state غير المستخدمة.
+- الفحص الساكن نجح: `43 XML`, `120 Kotlin`, `104 IDs`, `0 errors`; و`git diff --check` نجح.
+- Gradle المحلي غير متاح لغياب Android SDK؛ CI هو بوابة `test`, `lintDebug`, و`assembleDebug`.
 
 ## Architecture Decisions
 - القياسات غير المتاحة تبقى `null` ولا تُحوّل إلى أصفار مضللة.
@@ -52,13 +59,13 @@
 - تحتاج جلسة لاحقة إلى مراجعة regression مركزة على telemetry وMonitorHub بعد الدمج الكبير.
 
 ## Next Automatic Task
-1. بدء مراجعة P1 جديدة على MonitorHub وSensorFusion للبحث عن freshness أو null-semantics regressions.
-2. إضافة regression tests لأي خلل قابل للإعادة دون جهاز.
-3. عدم ادعاء benchmark أداء قبل توفر جهاز Android فعلي.
-4. تحديث هذا الملف والتقرير اليومي.
+1. قراءة CI لإصلاح `BoostFragment.kt` والتأكد من نجاح الاختبارات وlint وassembleDebug.
+2. مراجعة P1 مركزة على `MonitorHub` و`SensorFusion` للبحث عن freshness أو null-semantics regressions.
+3. إضافة regression test فقط إذا ظهر خلل قابل للإعادة دون جهاز Android.
+4. عدم ادعاء benchmark أداء قبل توفر جهاز Android فعلي.
 5. إذا لم توجد مشكلة P0/P1، الانتقال إلى benchmark harness محلي/قابل للتشغيل على جهاز Android دون ادعاء نتائج أداء.
 
 ## Overall Progress
 - **Phase:** 4 — القياس التكيفي والتحليل القابل للتدقيق
-- **Task:** v1.14.0 gfxinfo epoch recovery
-- **Completion:** مكتمل؛ CI نجح وتم نشر APK v1.14.0 غير الموقّع بمفتاح release.
+- **Task:** BoostFragment P1 correctness fix
+- **Completion:** الكود والفحص الساكن جاهزان؛ بانتظار CI ثم الانتقال لمراجعة telemetry التالية.
