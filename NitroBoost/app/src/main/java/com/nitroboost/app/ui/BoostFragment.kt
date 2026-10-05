@@ -6,14 +6,12 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.Observer
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
 import com.nitroboost.app.AppStore
 import com.nitroboost.app.R
-import com.nitroboost.app.core.Module
 import com.nitroboost.app.core.TaskState
 import com.nitroboost.app.data.Prefs
 import com.nitroboost.app.service.BoosterService
@@ -25,7 +23,6 @@ import com.nitroboost.app.service.BoosterService
 class BoostFragment : Fragment() {
 
     private lateinit var adapter: TaskAdapter
-    private var lastModule: Module? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -67,12 +64,14 @@ class BoostFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         AppStore.tasks.observe(viewLifecycleOwner, Observer { states ->
             adapter.submit(states)
-            lastModule = null
         })
     }
 
-    private fun isArabic(): Boolean =
-        java.util.Locale.getDefault().language == "ar" || Prefs.lang(requireContext()) == "ar"
+    private fun isArabic(): Boolean {
+        val language = Prefs.lang(requireContext())
+        return language == "ar" ||
+            (language == "auto" && java.util.Locale.getDefault().language == "ar")
+    }
 }
 
 /** Row adapter for the task list. */
@@ -124,8 +123,7 @@ class TaskAdapter(
         }
         holder.status.setTextColor(fg)
         holder.status.background.setTint(bg)
-        val enabled = c.getSharedPreferences("nitroboost_prefs", 0)
-            .getBoolean("task_enabled_" + t.id, true)
+        val enabled = Prefs.taskEnabled(c, t.id, true)
         holder.sw.setOnCheckedChangeListener(null)
         holder.sw.isChecked = enabled
         // Pending tasks can be pre-enabled — they activate once a

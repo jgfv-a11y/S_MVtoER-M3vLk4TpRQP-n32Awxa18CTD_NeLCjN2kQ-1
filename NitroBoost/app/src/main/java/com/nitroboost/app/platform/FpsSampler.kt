@@ -72,7 +72,18 @@ class FpsSampler(
             vsyncIntervals.reset()
             return FpsObservation(null, emptyList(), processEpoch, now, true)
         }
-        val parsed = GfxFrameStatsParser.parse(result.stdout, lastCompletedNs)
+        var parsed = GfxFrameStatsParser.parse(result.stdout, lastCompletedNs)
+        if (lastCompletedNs != Long.MIN_VALUE &&
+            parsed.rowsSeen > 0 &&
+            parsed.highestCompletedNs < lastCompletedNs
+        ) {
+            // A process/clock epoch restarted without the cumulative frame
+            // counter decreasing. Discard cross-epoch evidence and reparse.
+            processEpoch += 1L
+            lastCompletedNs = Long.MIN_VALUE
+            vsyncIntervals.reset()
+            parsed = GfxFrameStatsParser.parse(result.stdout)
+        }
         var fps: Int? = null
         if (frames != null) {
             val elapsed = now - lastTime

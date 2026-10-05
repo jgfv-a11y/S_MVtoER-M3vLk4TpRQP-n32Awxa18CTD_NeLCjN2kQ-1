@@ -1,13 +1,19 @@
 # Changelog
+## v1.14.0 — gfxinfo epoch recovery
+- **Frame telemetry recovery:** detects backward `FrameCompleted` timestamps when a game process or gfxinfo clock epoch restarts without resetting the cumulative frame counter.
+- **Vsync tracker recovery:** starts a clean IntendedVsync epoch after backward timestamps instead of silently discarding all later intervals.
+- **Regression coverage:** added parser and tracker tests for timestamp-reset behavior.
+- **Version code 17**.
 
-## Unreleased — v1.14.0 candidate (versionCode 17): competitive guidance and security regression gate
+
+## Unreleased — v1.15.0 candidate (versionCode 18): competitive guidance and security regression gate
 - Added bilingual, evidence-aware next-step guidance for all nine performance states. Advice is manual only; it does not change CPU/GPU/network/display/thermal settings or promise an FPS gain.
 - Added dependency-free security regression checks for manifest permissions/exported components, backup/cleartext policy, pinned dependencies/actions, obvious source secrets, and least-privilege release workflow; added Python unit tests for those checks.
 - Split release into a secret-free read-only unsigned build, an `apksigner`-only signing job, and a main-only publish job. Keystore secrets are isolated from Gradle; only the publish job has `contents: write`. Action refs are pinned to verified full commit SHAs and Dependabot updates GitHub Actions weekly.
 - Added `docs/COMPETITIVE_ROADMAP.md`; performance gains still require measured device-specific A/B. Android/Kotlin tests and build are not verified in this local environment.
 - Added task-scoped write-ahead journaling for supported reversible mutations, including adaptive KEEP reapplication; mutations fail closed if the reversal cannot be persisted. One-way trim/force-stop operations remain explicitly non-reversible.
 
-## Unreleased — v1.14.0 candidate: Phase 1 performance-state diagnostics
+## Unreleased — v1.15.0 candidate: Phase 1 performance-state diagnostics
 - Added a bounded, evidence-based `PerformanceStateEngine` over existing snapshots, with confidence, source freshness/data quality, timestamps, and the nine requested states. GPU remains unknown without direct telemetry; packet loss remains unavailable; TCP probe scope is explicit.
 - Connected the result to the existing adaptive status panel without changing boost policy. Removed the legacy GPU-by-elimination bottleneck from live UI and new session-report generation; retained old report parsing for compatibility.
 - Added 14 deterministic JVM tests and corrected the Journal rotation test to preserve active rollback entries. Tests, lint, and Android assembly remain unverified here because Java/Gradle and the wrapper are unavailable.
