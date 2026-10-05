@@ -10,13 +10,15 @@ import com.nitroboost.app.core.TaskResult
 import com.nitroboost.app.core.TaskStatus
 
 /**
- * Official Android 12+ Game Manager: ask the platform to downscale the
- * game's rendering (default 80% — the GPU does 36% less pixel work →
- * cooler device, steadier frames on mid/low SoCs).
+ * Official Android 12+ Game Manager: request a platform rendering
+ * downscale for the selected game package. The default factor is 0.8;
+ * whether the ROM/game honors it and any resulting performance or thermal
+ * effect are device- and game-specific, and are not guaranteed here.
  *
- * [level] is injectable because the adaptive engine SWEEPS the legal
- * levels (0.9 / 0.8 / 0.7) on the real device and keeps whichever yields
- * the best measured FPS/thermal balance for THIS SoC.
+ * [level] is injectable because the adaptive engine can compare the legal
+ * levels (0.9 / 0.8 / 0.7) using its measured, quality-gated observations.
+ * A request being accepted does not prove that the game rendered at that
+ * scale or that FPS/temperature improved.
  *
  * Guarded end-to-end:
  *  - Android 12+ (SDK 31) and a privileged shell only;
@@ -37,8 +39,8 @@ class GameApiTask(
     override val id = "game_api_downscale"
     override val titleAr = "تخفيف دقة الرسوميات (Game API)"
     override val titleEn = "Render downscale (Game API)"
-    override val descAr = "يطلب من النظام رسم اللعبة بنسبة 80% — أبرد وجوٌد إطارات أكثر ثباتًا"
-    override val descEn = "Ask the platform to render the game at 80% — cooler, steadier frames"
+    override val descAr = "يطلب عامل تخفيض رسم 80%؛ دعم النظام والأثر الفعلي يختلفان حسب اللعبة والجهاز"
+    override val descEn = "Request 80% render downscale; support and actual effect vary by game and device"
     override val module = Module.GPU
     override val requiresPrivilege = true
 

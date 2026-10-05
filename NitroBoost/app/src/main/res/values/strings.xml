@@ -41,7 +41,7 @@ The app keeps checking by itself until connected. On rooted devices, Root is use
     <string name="sw_ov_cpu_label">CPU</string>
     <string name="sw_ov_ram_label">RAM</string>
     <string name="sw_ov_temp_label">Temp</string>
-    <string name="sw_ov_ping_label">Ping</string>
+    <string name="sw_ov_ping_label">TCP probe</string>
     <string name="sw_adaptive_label">Adaptive A/B engine</string>
     <string name="adaptive_desc">Measures every tweak on your real device and keeps only what statistically wins (12s windows, outlier trimming, thermal-aware).</string>
     <string name="btn_refresh">Refresh</string>
@@ -76,7 +76,7 @@ The app keeps checking by itself until connected. On rooted devices, Root is use
     <string name="stat_temp">TEMP</string>
     <string name="stat_bat">BATTERY</string>
     <string name="stat_fps">FPS</string>
-    <string name="stat_ping">PING</string>
+    <string name="stat_ping">TCP</string>
     <string name="btn_overlay">Overlay</string>
     <string name="btn_restore">Restore</string>
     <string name="btn_perms">Permissions</string>
@@ -92,7 +92,7 @@ The app keeps checking by itself until connected. On rooted devices, Root is use
     <string name="overlay_cpu">CPU</string>
     <string name="overlay_ram">RAM</string>
     <string name="overlay_temp">TEMP</string>
-    <string name="overlay_ping">PING</string>
+    <string name="overlay_ping">TCP</string>
 
     <!-- Permissions guide -->
     <string name="perm_title">Permissions</string>
@@ -167,7 +167,7 @@ The app keeps checking by itself until connected. On rooted devices, Root is use
     <string name="ov_cpu_label">CPU</string>
     <string name="ov_ram_label">RAM</string>
     <string name="ov_temp_label">Temperature</string>
-    <string name="ov_ping_label">Ping</string>
+    <string name="ov_ping_label">TCP probe</string>
     <string name="sec_shizuku">SHIZUKU (POWER)</string>
     <string name="shizuku_ready">Shizuku is connected — full power unlocked</string>
     <string name="shizuku_missing">Shizuku is not connected. CPU governor, Game Mode, RAM clean and refresh rate need it.</string>
@@ -189,7 +189,7 @@ The app keeps checking by itself until connected. On rooted devices, Root is use
     <string name="report_fps_delta">(%1$d vs previous session)</string>
     <string name="report_fps_none">Avg FPS: -- (needs Shizuku + gfxinfo)</string>
     <string name="report_temp">Peak temp: %1$d°C</string>
-    <string name="report_ping">Min ping: %1$dms</string>
+    <string name="report_ping">Minimum TCP probe latency: %1$dms (not game-server latency)</string>
     <string name="report_tasks">Tasks applied: %1$d, failed: %2$d</string>
     <string name="report_duration">Duration: %1$d s</string>
 
@@ -199,8 +199,49 @@ The app keeps checking by itself until connected. On rooted devices, Root is use
     <!-- Adaptive engine -->
     <string name="adaptive_label">Adaptive engine (A/B test every tweak on your device)</string>
     <string name="adaptive_title">Adaptive engine</string>
-    <string name="adaptive_bottleneck">Bottleneck</string>
+    <string name="adaptive_bottleneck">Measured performance state</string>
     <string name="adaptive_state">State</string>
+    <string name="performance_state_waiting">Performance state: collecting reliable telemetry…</string>
+    <string name="performance_state_summary">Performance state: %1$s · confidence %2$d%% · data quality %3$d%%</string>
+    <string name="performance_state_cpu_bound">CPU-bound</string>
+    <string name="performance_state_gpu_bound">GPU-bound</string>
+    <string name="performance_state_memory_bound">Memory-bound</string>
+    <string name="performance_state_thermal_bound">Thermal pressure observed</string>
+    <string name="performance_state_network_bound">Network-bound (TCP probe)</string>
+    <string name="performance_state_display_bound">Display-bound</string>
+    <string name="performance_state_mixed_bound">Mixed-bound</string>
+    <string name="performance_state_healthy">Healthy at measured target</string>
+    <string name="performance_state_unknown">Unknown — insufficient reliable data</string>
+    <string name="performance_advice_title">Suggested next step · guidance only; no automatic changes</string>
+    <string name="performance_advice_cpu">System-wide CPU pressure does not prove the game itself is CPU-bound. Try one CPU-heavy in-game setting or manually close an unused app; NitroBoost makes no change here.</string>
+    <string name="performance_advice_gpu">Reported GPU and frame evidence suggests graphics pressure. If needed, lower render scale or effects inside the game; NitroBoost does not control the GPU or change this setting.</string>
+    <string name="performance_advice_memory">Android reports system-wide memory pressure. Manually close apps you do not need; NitroBoost will not stop apps automatically.</string>
+    <string name="performance_advice_thermal">Reduce boost intensity or pause and let the device cool. Thermal safeguards take priority; no thermal override is suggested.</string>
+    <string name="performance_advice_network">TCP probes and system retransmissions do not measure the game-server route or packet-loss percentage. Check the game server/network before changing anything.</string>
+    <string name="performance_advice_display">Match the game frame cap or configured target to the active display refresh rate; NitroBoost does not force a refresh rate.</string>
+    <string name="performance_advice_mixed">Several domains are involved. Adjust one in-game setting at a time and re-check measurements; keep thermal protection in priority.</string>
+    <string name="performance_advice_healthy">Measurements are within the configured target. Keep settings unchanged unless fresh evidence shows a different state.</string>
+    <string name="performance_advice_unknown">Reliable, fresh data is not available yet. Wait for more samples or check sensor/usage access; no bottleneck is inferred.</string>
+    <string name="performance_evidence_summary">Evidence: %1$s</string>
+    <string name="performance_evidence_none">No strong current evidence; one or more sources may be unavailable.</string>
+    <string name="performance_evidence_cpu">CPU/system</string>
+    <string name="performance_evidence_gpu">GPU</string>
+    <string name="performance_evidence_memory">System memory</string>
+    <string name="performance_evidence_thermal">Thermal</string>
+    <string name="performance_evidence_network">TCP probe</string>
+    <string name="performance_evidence_display">Display</string>
+    <string name="performance_evidence_frame">Frame pacing</string>
+    <string name="performance_evidence_scope_system">system-wide</string>
+    <string name="performance_evidence_scope_gpu">reported GPU telemetry</string>
+    <string name="performance_evidence_scope_thermal_zone">readable thermal zone</string>
+    <string name="performance_evidence_scope_system_network">system network</string>
+    <string name="performance_evidence_scope_tcp">TCP probe (not game traffic)</string>
+    <string name="performance_evidence_scope_display">active display mode</string>
+    <string name="performance_evidence_scope_gfxinfo">gfxinfo</string>
+    <string name="performance_evidence_sample_scope">%1$s · %2$s · n=%3$d</string>
+    <string name="performance_evidence_low_memory">Android reports system-wide low memory</string>
+    <string name="performance_evidence_display_cap">Configured target %1$d FPS exceeds active refresh %2$d Hz</string>
+    <string name="performance_evidence_display_cadence">Measured cadence %1$s near refresh %2$s Hz</string>
     <string name="adaptive_off">off (enable in Settings)</string>
     <string name="adaptive_paused">paused: %1$s</string>
     <string name="adaptive_done">all candidates measured</string>

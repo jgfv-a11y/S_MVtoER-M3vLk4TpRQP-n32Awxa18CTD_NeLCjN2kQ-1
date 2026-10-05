@@ -20,6 +20,7 @@ class FakeExecutor : SystemExecutor {
     var physicalDensity = 420
     var densityOverride: Int? = null
     override var privileged: Boolean = true
+    override var thermalSafetyAvailable: Boolean = false
 
     override fun shell(cmd: String): ShellResult {
         shellLog.add(cmd)
@@ -153,11 +154,21 @@ class FakeExecutor : SystemExecutor {
         written.add("secure:$key")
         return true
     }
+    override fun secureSettingDelete(key: String): Boolean {
+        secure.remove(key)
+        written.add("secure-delete:$key")
+        return true
+    }
 
     override fun globalSettingGet(key: String): String? = global[key]
     override fun globalSettingPut(key: String, value: String): Boolean {
         global[key] = value
         written.add("global:$key")
+        return true
+    }
+    override fun globalSettingDelete(key: String): Boolean {
+        global.remove(key)
+        written.add("global-delete:$key")
         return true
     }
 

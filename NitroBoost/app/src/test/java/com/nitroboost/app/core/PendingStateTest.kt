@@ -22,6 +22,7 @@ class PendingStateTest {
         ex.privileged = privileged
         if (withGovernorFile) ex.sysfs[govPath] = "schedutil"
         val f = File.createTempFile("nitro_pending", ".json")
+        f.delete()
         f.deleteOnExit()
         return BoostContext(testProfile(Module.CPU), ex, Journal(f))
     }
@@ -52,6 +53,7 @@ class PendingStateTest {
         val ex = FakeExecutor()
         ex.privileged = true
         val f = File.createTempFile("nitro_pending2", ".json")
+        f.delete()
         f.deleteOnExit()
         val ctx = BoostContext(testProfile(Module.DND, dnd = false), ex, Journal(f))
         val engine = BoostEngine(listOf(com.nitroboost.app.core.tasks.DndTask()))

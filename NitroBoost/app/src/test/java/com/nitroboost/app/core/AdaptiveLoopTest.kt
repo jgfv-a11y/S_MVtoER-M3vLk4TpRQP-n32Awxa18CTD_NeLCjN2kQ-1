@@ -37,7 +37,7 @@ class AdaptiveLoopTest {
     }
 
     private fun tempFile(tag: String): File =
-        File.createTempFile("nitro_$tag", ".json").also { it.deleteOnExit() }
+        File.createTempFile("nitro_$tag", ".json").also { it.delete(); it.deleteOnExit() }
 
     private fun makeLoop(
         sampler: StubSampler,

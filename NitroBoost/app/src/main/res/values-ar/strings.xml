@@ -41,7 +41,7 @@
     <string name="sw_ov_cpu_label">المعالج</string>
     <string name="sw_ov_ram_label">الذاكرة</string>
     <string name="sw_ov_temp_label">الحرارة</string>
-    <string name="sw_ov_ping_label">الاستجابة Ping</string>
+    <string name="sw_ov_ping_label">اختبار TCP</string>
     <string name="sw_adaptive_label">المحرك التكيفي A/B</string>
     <string name="adaptive_desc">يقس كل تعديل على جهازك الحقيقي ولا يحتفظ إلا بما يفوز إحصائيًا (نوافذ 12 ثانية، قصّ القيم الشاذة، قرارات واعية بالحرارة).</string>
     <string name="btn_refresh">تحديث</string>
@@ -76,7 +76,7 @@
     <string name="stat_temp">الحرارة</string>
     <string name="stat_bat">البطارية</string>
     <string name="stat_fps">الإطار/ث</string>
-    <string name="stat_ping">الزمن</string>
+    <string name="stat_ping">TCP</string>
     <string name="btn_overlay">المؤشر العائم</string>
     <string name="btn_restore">استعادة</string>
     <string name="btn_perms">الصلاحيات</string>
@@ -92,7 +92,7 @@
     <string name="overlay_cpu">معالج</string>
     <string name="overlay_ram">ذاكرة</string>
     <string name="overlay_temp">حرارة</string>
-    <string name="overlay_ping">زمن</string>
+    <string name="overlay_ping">TCP</string>
 
     <!-- Permissions guide -->
     <string name="perm_title">الصلاحيات</string>
@@ -167,7 +167,7 @@
     <string name="ov_cpu_label">المعالج</string>
     <string name="ov_ram_label">الذاكرة</string>
     <string name="ov_temp_label">الحرارة</string>
-    <string name="ov_ping_label">زمن الاستجابة</string>
+    <string name="ov_ping_label">اختبار TCP</string>
     <string name="sec_shizuku">شيزوكو (القوة)</string>
     <string name="shizuku_ready">شيزوكو متصل — كل القوة مفعلة</string>
     <string name="shizuku_missing">شيزوكو غير متصل. وضع المعالج ووضع اللعبة وتنظيف الذاكرة ومعدل التحديث يتطلبونه.</string>
@@ -189,7 +189,7 @@
     <string name="report_fps_delta">(%1$d مقارنة بآخر جلسة)</string>
     <string name="report_fps_none">متوسط FPS: -- (يتطلب شيزوكو + gfxinfo)</string>
     <string name="report_temp">ذروة الحرارة: %1$d°م</string>
-    <string name="report_ping">أقل Ping: %1$dms</string>
+    <string name="report_ping">أقل زمن لمسبار TCP: %1$dms (ليس زمن خادم اللعبة)</string>
     <string name="report_tasks">المهام المنفّذة: %1$d، الفاشلة: %2$d</string>
     <string name="report_duration">المدة: %1$d ث</string>
 
@@ -199,8 +199,49 @@
     <!-- Adaptive engine -->
     <string name="adaptive_label">المحرك التكيفي (اختبار أ/ب لكل تعديل على جهازك)</string>
     <string name="adaptive_title">المحرك التكيفي</string>
-    <string name="adaptive_bottleneck">نقطة الاختناق</string>
+    <string name="adaptive_bottleneck">حالة الأداء المقاسة</string>
     <string name="adaptive_state">الحالة</string>
+    <string name="performance_state_waiting">حالة الأداء: جارٍ جمع قياسات موثوقة…</string>
+    <string name="performance_state_summary">حالة الأداء: %1$s · الثقة %2$d%% · جودة البيانات %3$d%%</string>
+    <string name="performance_state_cpu_bound">مقيّد بالمعالج</string>
+    <string name="performance_state_gpu_bound">مقيّد بمعالج الرسوميات</string>
+    <string name="performance_state_memory_bound">مقيّد بضغط الذاكرة</string>
+    <string name="performance_state_thermal_bound">ضغط حراري مرصود</string>
+    <string name="performance_state_network_bound">مقيّد بالشبكة (اختبار TCP)</string>
+    <string name="performance_state_display_bound">مقيّد بالشاشة</string>
+    <string name="performance_state_mixed_bound">اختناقات متعددة</string>
+    <string name="performance_state_healthy">سليم عند الهدف المقاس</string>
+    <string name="performance_state_unknown">غير معروف — البيانات الموثوقة غير كافية</string>
+    <string name="performance_advice_title">الخطوة الآمنة التالية · إرشاد فقط، دون تغييرات تلقائية</string>
+    <string name="performance_advice_cpu">ضغط المعالج المقاس على مستوى النظام لا يثبت أن اللعبة نفسها مقيّدة به. جرّب خفض إعداد واحد يستهلك المعالج داخل اللعبة أو أغلق تطبيقًا غير مستخدم يدويًا؛ لن يغيّر NitroBoost الإعدادات هنا.</string>
+    <string name="performance_advice_gpu">تشير بيانات الرسوميات والإطارات المبلّغ عنها إلى ضغط رسومي. عند الحاجة، اخفض دقة العرض أو المؤثرات من إعدادات اللعبة؛ لا يتحكم NitroBoost بمعالج الرسوميات ولا يغيّر هذا الإعداد.</string>
+    <string name="performance_advice_memory">يرصد Android ضغطًا على ذاكرة النظام. أغلق يدويًا التطبيقات التي لا تحتاج إليها؛ لن يوقف NitroBoost التطبيقات تلقائيًا.</string>
+    <string name="performance_advice_thermal">خفّض مستوى التحسين أو أوقف اللعب قليلًا حتى يبرد الجهاز. الحماية الحرارية لها الأولوية؛ لا يُنصح بتجاوزها.</string>
+    <string name="performance_advice_network">لا تقيس اختبارات TCP أو إعادة الإرسال على مستوى النظام مسار خادم اللعبة أو نسبة فقد الحزم. تحقّق من خادم اللعبة والشبكة قبل تغيير أي شيء.</string>
+    <string name="performance_advice_display">طابق حد الإطارات داخل اللعبة أو الهدف المضبوط مع معدل تحديث الشاشة النشط؛ لا يفرض NitroBoost معدل تحديث.</string>
+    <string name="performance_advice_mixed">توجد ضغوط في أكثر من مجال. غيّر إعدادًا واحدًا داخل اللعبة كل مرة ثم أعد القياس، مع إبقاء الحماية الحرارية أولوية.</string>
+    <string name="performance_advice_healthy">القياسات ضمن الهدف المضبوط. اترك الإعدادات كما هي ما لم تُظهر قياسات جديدة حالة مختلفة.</string>
+    <string name="performance_advice_unknown">لا تتوفر بيانات حديثة وموثوقة بعد. انتظر عينات إضافية أو تحقّق من صلاحيات المستشعرات والاستخدام؛ لن نفترض وجود اختناق.</string>
+    <string name="performance_evidence_summary">الأدلة: %1$s</string>
+    <string name="performance_evidence_none">لا توجد أدلة حالية قوية؛ قد يكون مصدر أو أكثر غير متاح.</string>
+    <string name="performance_evidence_cpu">المعالج/النظام</string>
+    <string name="performance_evidence_gpu">الرسوميات</string>
+    <string name="performance_evidence_memory">ذاكرة النظام</string>
+    <string name="performance_evidence_thermal">الحرارة</string>
+    <string name="performance_evidence_network">اختبار TCP</string>
+    <string name="performance_evidence_display">الشاشة</string>
+    <string name="performance_evidence_frame">إيقاع الإطارات</string>
+    <string name="performance_evidence_scope_system">على مستوى النظام</string>
+    <string name="performance_evidence_scope_gpu">قياس الرسوميات المبلغ عنه</string>
+    <string name="performance_evidence_scope_thermal_zone">منطقة حرارية مقروءة</string>
+    <string name="performance_evidence_scope_system_network">شبكة النظام</string>
+    <string name="performance_evidence_scope_tcp">اختبار TCP (ليس اتصال اللعبة)</string>
+    <string name="performance_evidence_scope_display">وضع الشاشة الحالي</string>
+    <string name="performance_evidence_scope_gfxinfo">gfxinfo</string>
+    <string name="performance_evidence_sample_scope">%1$s · %2$s · عدد العينات %3$d</string>
+    <string name="performance_evidence_low_memory">أندرويد يرصد ضغطًا منخفضًا على ذاكرة النظام</string>
+    <string name="performance_evidence_display_cap">الهدف المضبوط %1$d FPS أعلى من التحديث الحالي %2$d Hz</string>
+    <string name="performance_evidence_display_cadence">الإيقاع المقاس %1$s قريب من التحديث %2$s Hz</string>
     <string name="adaptive_off">متوقف (فعّله من الإعدادات)</string>
     <string name="adaptive_paused">متوقف مؤقتًا: %1$s</string>
     <string name="adaptive_done">قُيست جميع المرشحات</string>

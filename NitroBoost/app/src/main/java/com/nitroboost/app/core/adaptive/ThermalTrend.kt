@@ -10,21 +10,34 @@ package com.nitroboost.app.core.adaptive
  * device is still nominal but clearly heating up (e.g. +2°C/min during a
  * boss fight that started on a cold boot).
  */
-class ThermalTrend(private val windowMs: Long = 120_000L) {
+class ThermalTrend(windowMs: Long = 120_000L) {
 
     private class Sample(val t: Long, val c: Double)
 
+    private val windowMs = windowMs.coerceAtLeast(0L)
     private val samples = ArrayList<Sample>()
 
-    /** Record a temperature reading; trims samples outside the window. */
+    /** Record a bounded, physical sensor reading; reject time regressions. */
     @Synchronized
     fun record(nowMs: Long, tempC: Double?) {
-        if (tempC == null) return
-        samples.add(Sample(nowMs, tempC))
+        if (nowMs < 0L || tempC == null || !tempC.isFinite() || tempC !in MIN_TEMP_C..MAX_TEMP_C) return
+        val last = samples.lastOrNull()
+        when {
+            last != null && nowMs < last.t -> samples.clear()
+            last != null && nowMs == last.t -> {
+                samples[samples.lastIndex] = Sample(nowMs, tempC)
+                return
+            }
+        }
         while (samples.isNotEmpty() && nowMs - samples.first().t > windowMs) {
             samples.removeAt(0)
         }
+        if (samples.size == MAX_SAMPLES) samples.removeAt(0)
+        samples.add(Sample(nowMs, tempC))
     }
+
+    @Synchronized
+    internal fun retainedSampleCount(): Int = samples.size
 
     @Synchronized
     fun clear() {
@@ -70,6 +83,10 @@ class ThermalTrend(private val windowMs: Long = 120_000L) {
         slopePerMin() <= -0.3 || currentStatus <= 1
 
     companion object {
+        private const val MAX_SAMPLES = 128
+        private const val MIN_TEMP_C = -40.0
+        private const val MAX_TEMP_C = 200.0
+
         /** °C per minute considered an early warning. */
         const val EARLY_WARN_SLOPE = 1.2
         /** Rapid rise escalates at least to MODERATE even from nominal OS status. */

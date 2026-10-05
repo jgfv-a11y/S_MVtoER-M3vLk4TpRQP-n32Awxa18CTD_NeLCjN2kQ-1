@@ -11,6 +11,7 @@ class CpuOnlineTaskTest {
 
     private fun journal(): Journal {
         val f = File.createTempFile("nitro_cpu", ".json")
+        f.delete()
         f.deleteOnExit()
         return Journal(f)
     }

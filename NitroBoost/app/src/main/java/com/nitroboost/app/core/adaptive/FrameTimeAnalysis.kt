@@ -69,7 +69,9 @@ object GfxFrameStatsParser {
 object FrameTimeAnalysis {
     /** Distribution of measured durations even when no target-FPS budget exists. */
     fun distribution(frameTimesMs: List<Double>): FrameTimeDistribution? {
-        val sorted = frameTimesMs.filter { it.isFinite() && it in MIN_FRAME_MS..MAX_FRAME_MS }.sorted()
+        val sorted = frameTimesMs.asSequence()
+            .filter { it.isFinite() && it in MIN_FRAME_MS..MAX_FRAME_MS }
+            .take(MAX_ANALYSIS_SAMPLES).toList().sorted()
         if (sorted.isEmpty()) return null
         val mean = sorted.average()
         val variance = if (sorted.size > 1) {
@@ -95,12 +97,12 @@ object FrameTimeAnalysis {
         targetFps: Int,
         hitchMultiplier: Double = HITCH_MULTIPLIER
     ): FrameTimeMetrics? {
-        if (targetFps <= 0 || !hitchMultiplier.isFinite() || hitchMultiplier <= 0.0) return null
-        val distribution = distribution(frameTimesMs) ?: return null
-        val hitches = frameTimesMs.count {
-            it.isFinite() && it in MIN_FRAME_MS..MAX_FRAME_MS &&
-                it > (1_000.0 / targetFps) * hitchMultiplier
-        }
+        if (targetFps !in 1..1_000 || !hitchMultiplier.isFinite() || hitchMultiplier <= 0.0) return null
+        val validFrames = frameTimesMs.asSequence()
+            .filter { it.isFinite() && it in MIN_FRAME_MS..MAX_FRAME_MS }
+            .take(MAX_ANALYSIS_SAMPLES).toList()
+        val distribution = distribution(validFrames) ?: return null
+        val hitches = validFrames.count { it > (1_000.0 / targetFps) * hitchMultiplier }
         return FrameTimeMetrics(
             frameCount = distribution.frameCount,
             medianMs = distribution.medianMs,
@@ -126,5 +128,6 @@ object FrameTimeAnalysis {
 
     private const val MIN_FRAME_MS = 0.1
     private const val MAX_FRAME_MS = 1_000.0
+    private const val MAX_ANALYSIS_SAMPLES = 20_000
     const val HITCH_MULTIPLIER = 2.0
 }

@@ -28,7 +28,7 @@ import com.nitroboost.app.ui.MainActivity
 import kotlin.concurrent.Volatile
 
 /**
- * Floating FPS / CPU / RAM / thermal / ping monitor.
+ * Floating FPS / CPU / RAM / thermal / TCP-probe monitor.
  * Draggable; a tap (no drag) opens the app. Content is refreshed from
  * AppStore.monitor once per second.
  */
@@ -115,7 +115,7 @@ class FpsOverlayService : Service() {
         val v = LayoutInflater.from(this).inflate(R.layout.view_overlay, null)
         val t = v.findViewById<TextView>(R.id.overlay_text)
         // Wrap instead of running off the screen edge — on narrow devices
-        // the full line (FPS CPU RAM temp ping) must stay readable.
+        // the full line (FPS CPU RAM temp TCP) must stay readable.
         t.maxWidth = (300 * resources.displayMetrics.density).toInt()
         view = v
         text = t

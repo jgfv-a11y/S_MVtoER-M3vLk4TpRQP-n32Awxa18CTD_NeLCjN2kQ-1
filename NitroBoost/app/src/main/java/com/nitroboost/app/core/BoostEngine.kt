@@ -38,6 +38,44 @@ class BoostEngine(private val tasks: List<BoostTask>) {
     fun tasks(): List<BoostTask> = tasks
 
     /**
+     * Apply one task while write-ahead journaling every supported mutation.
+     * Adaptive candidates and ledger-selected variants use the same path as a
+     * normal boost so cancellation/exception cleanup sees partial writes.
+     */
+    fun applyWithJournal(
+        taskId: String,
+        ctx: BoostContext,
+        apply: (BoostContext) -> TaskResult
+    ): TaskResult = withTaskLock(taskId) {
+        recordMissingEntries(ctx, apply(ctx.forTask(taskId)))
+    }
+
+    private fun recordMissingEntries(ctx: BoostContext, result: TaskResult): TaskResult {
+        val missing = result.entries.filterNot { entry ->
+            ctx.journal.containsTaskKey(entry.taskId, entry.key)
+        }
+        if (missing.isEmpty()) return result
+        if (ctx.journal.add(missing)) return result
+
+        var restored = true
+        for (entry in missing.asReversed()) {
+            if (!Journal.restore(entry, ctx.executor)) restored = false
+        }
+        val journalCleared = restored && ctx.journal.remove(missing)
+        val detail = if (restored && journalCleared) {
+            "journal persistence failed; change was rolled back"
+        } else {
+            "journal persistence failed; rollback incomplete and reversal retained"
+        }
+        return TaskResult(
+            taskId = result.taskId,
+            status = TaskStatus.Failed(detail),
+            detail = detail,
+            entries = if (restored && journalCleared) emptyList() else missing
+        )
+    }
+
+    /**
      * Apply every task enabled by the profile. Idempotent and
      * failure-tolerant. [exclude] lists task ids that must NOT be touched
      * right now (e.g. the candidate the adaptive engine is currently
@@ -49,7 +87,9 @@ class BoostEngine(private val tasks: List<BoostTask>) {
         for (task in tasks) {
             val r = withTaskLock(task.id) {
                 try {
-                    if (task.id in exclude) {
+                    if (ctx.journal.recoveryBlocked) {
+                        TaskResult(task.id, TaskStatus.Failed("journal recovery is blocked by corrupt or unreadable data"))
+                    } else if (task.id in exclude) {
                         TaskResult(task.id, TaskStatus.Skipped, "reserved by adaptive trial")
                     } else if (task.boostLevel > maxLevel) {
                         TaskResult(task.id, TaskStatus.Skipped,
@@ -59,14 +99,10 @@ class BoostEngine(private val tasks: List<BoostTask>) {
                     } else if (task.requiresPrivilege && !ctx.executor.privileged) {
                         TaskResult(task.id, TaskStatus.Skipped, "needs Shizuku or root")
                     } else {
-                        task.apply(ctx)
+                        applyWithJournal(task.id, ctx) { taskContext -> task.apply(taskContext) }
                     }
                 } catch (e: Exception) {
                     TaskResult(task.id, TaskStatus.Failed("unexpected: ${e.message}"))
-                }.also { result ->
-                    if (result.entries.isNotEmpty() && result.status.success) {
-                        ctx.journal.add(result.entries)
-                    }
                 }
             }
             results[task.id] = r
@@ -82,6 +118,10 @@ class BoostEngine(private val tasks: List<BoostTask>) {
      */
     @Synchronized
     fun restoreAll(ctx: BoostContext): Report {
+        if (ctx.journal.recoveryBlocked) {
+            ctx.log("restore blocked: journal recovery state is corrupt or unreadable")
+            return Report(emptyMap(), 0, 0, 0, 1)
+        }
         val pending = ctx.journal.snapshot().asReversed()
         val restored = mutableListOf<JournalEntry>()
         val failed = mutableListOf<JournalEntry>()
@@ -89,14 +129,18 @@ class BoostEngine(private val tasks: List<BoostTask>) {
             val ok = withTaskLock(e.taskId) { Journal.restore(e, ctx.executor) }
             if (ok) restored.add(e) else failed.add(e)
         }
-        if (restored.isNotEmpty()) ctx.journal.remove(restored)
+        var journalCommitFailed = false
+        if (restored.isNotEmpty() && !ctx.journal.remove(restored)) {
+            journalCommitFailed = true
+            ctx.log("restore completed but journal removal was not durable; entries retained for retry")
+        }
         for (e in failed) ctx.log("restore failed: ${e.taskId}/${e.key}")
         return Report(
             results = emptyMap(),
             appliedCount = restored.size,
             noChangeCount = 0,
             skippedCount = 0,
-            failedCount = failed.size
+            failedCount = failed.size + if (journalCommitFailed) restored.size.coerceAtLeast(1) else 0
         )
     }
 
@@ -117,7 +161,9 @@ class BoostEngine(private val tasks: List<BoostTask>) {
             val ok = withTaskLock(e.taskId) { Journal.restore(e, ctx.executor) }
             if (ok) restored.add(e) else failed.add(e)
         }
-        if (restored.isNotEmpty()) ctx.journal.remove(restored)
+        if (restored.isNotEmpty() && !ctx.journal.remove(restored)) {
+            ctx.log("thermal de-escalation restored changes but could not durably remove journal entries")
+        }
         for (e in failed) ctx.log("thermal de-escalate failed: ${e.taskId}/${e.key}")
         ctx.log("thermal de-escalation: dropped modules $modules")
         return restored.size

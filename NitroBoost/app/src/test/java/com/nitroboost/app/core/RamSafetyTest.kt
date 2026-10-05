@@ -10,6 +10,7 @@ import java.io.File
 class RamSafetyTest {
     private fun journal(): Journal {
         val file = File.createTempFile("nitro_ram", ".json")
+        file.delete()
         file.deleteOnExit()
         return Journal(file)
     }

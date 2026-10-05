@@ -11,6 +11,7 @@ import java.io.File
 class DisplayTaskTest {
     private fun journal(): Journal {
         val file = File.createTempFile("nitro_display", ".json")
+        file.delete()
         file.deleteOnExit()
         return Journal(file)
     }

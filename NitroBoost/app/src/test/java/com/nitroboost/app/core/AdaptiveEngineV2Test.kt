@@ -38,7 +38,7 @@ class AdaptiveEngineV2Test {
     private val baseConfig = TrialConfig(minPairs = 8, maxPairs = 40)
 
     private fun tempFile(tag: String): File =
-        File.createTempFile("nitro_$tag", ".json").also { it.deleteOnExit() }
+        File.createTempFile("nitro_$tag", ".json").also { it.delete(); it.deleteOnExit() }
 
     private fun metrics(
         fps: Double = 60.0,

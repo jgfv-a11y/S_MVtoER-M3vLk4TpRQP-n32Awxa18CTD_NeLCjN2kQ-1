@@ -91,7 +91,8 @@ class JournalTest {
         }
 
         journal.add(entries)
-        assertTrue(journal.isEmpty())
+        // Rotation is for diagnosis only; active rollback records must remain live.
+        assertEquals(entries.size, journal.entries.size)
 
         val archiveFiles = tmpDir.listFiles { f ->
             f.name.startsWith("rotating_journal.json_")
@@ -99,7 +100,7 @@ class JournalTest {
         assertTrue(archiveFiles?.isNotEmpty() == true)
         // Archived snapshot must still be loadable (audit / manual restore).
         val archived = Journal(archiveFiles!!.first { it.length() > 0 })
-        assertTrue(archived.entries.size >= Journal.ROTATE_AFTER)
+        assertEquals(entries.size, archived.entries.size)
     }
 
     @Test
@@ -165,10 +166,12 @@ class JournalTest {
         val tmpDir = createTempDirectory().toFile()
         val missing = Journal(File(tmpDir, "nope.json"))
         assertTrue(missing.isEmpty())
+        assertFalse(missing.recoveryBlocked)
 
         val blank = File(tmpDir, "blank.json")
         blank.writeText("   \n")
         val journal = Journal(blank)
         assertTrue(journal.isEmpty())
+        assertTrue(journal.recoveryBlocked)
     }
 }

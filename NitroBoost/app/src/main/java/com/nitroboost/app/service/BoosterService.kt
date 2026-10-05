@@ -261,10 +261,15 @@ class BoosterService : Service() {
                     // Hard floor: raw thermistor temperature. The OS status
                     // is blind while the (opt-in) thermal override is active
                     // — the raw floor is the heat limit nothing can disable.
-                    val raw = ThermalGuard.rawStatusFor(
+                    val rawTemperature =
                         com.nitroboost.app.platform.ThermalSampler(this@BoosterService).tempC()
-                    )
-                    val eff = maxOf(status, predictive, raw)
+                    val thermalOverrideActive = AppStore.journal().containsTask("thermal_override")
+                    val raw = ThermalGuard.rawStatusFor(rawTemperature)
+                    // Losing the only unmodified heat source while the OS
+                    // governor is overridden is unsafe; fail closed and revert it.
+                    val rawSensorLostUnderOverride = thermalOverrideActive && rawTemperature == null
+                    val eff = if (rawSensorLostUnderOverride) ThermalGuard.STATUS_CRITICAL
+                    else maxOf(status, predictive, raw)
                     val drop = ThermalGuard.modulesToDrop(eff)
                     if (drop.isNotEmpty()) {
                         val bctx = BoostContext(
@@ -277,7 +282,7 @@ class BoosterService : Service() {
                         SessionLog.log(
                             this@BoosterService,
                             "thermal_deescalate",
-                            "status=$status dropped=$drop"
+                            "status=$status dropped=$drop rawSensorLostUnderOverride=$rawSensorLostUnderOverride"
                         )
                     }
                 } catch (e: Exception) {

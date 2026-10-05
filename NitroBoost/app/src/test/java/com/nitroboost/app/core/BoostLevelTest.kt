@@ -15,6 +15,7 @@ class BoostLevelTest {
 
     private fun tempJournal(): Journal {
         val f = File.createTempFile("nitro_level", ".json")
+        f.delete()
         f.deleteOnExit()
         return Journal(f)
     }

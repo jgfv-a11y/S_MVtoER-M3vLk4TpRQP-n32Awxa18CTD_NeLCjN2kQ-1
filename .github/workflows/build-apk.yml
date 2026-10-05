@@ -5,18 +5,30 @@ on:
     branches:
       - main
       - 'arena/**'
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 
+# Safe default for every job. Only publish-release overrides contents access.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build-apk:
+  verify-build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      name: ${{ steps.ver.outputs.name }}
+      code: ${{ steps.ver.outputs.code }}
+      tag: ${{ steps.ver.outputs.tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Read app version
         id: ver
@@ -24,10 +36,10 @@ jobs:
         run: |
           python3 - <<'PY'
           import os, re
-          text = open("app/build.gradle.kts").read()
+          text = open("app/build.gradle.kts", encoding="utf-8").read()
           name = re.search(r'versionName\s*=\s*"([^"]+)"', text).group(1)
           code = re.search(r'versionCode\s*=\s*(\d+)', text).group(1)
-          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
               fh.write(f"name={name}\n")
               fh.write(f"code={code}\n")
               fh.write(f"tag=nitroboost-v{name}\n")
@@ -35,16 +47,23 @@ jobs:
           PY
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Run static verifier
+      - name: Run static and security regression checks
         working-directory: NitroBoost
-        run: python3 tools/verify.py
+        run: |
+          python3 tools/verify.py
+          python3 tools/security_verify.py
+          python3 -m unittest discover -s tools -p 'test_*.py' -v
+
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          gradle-version: '8.7'
+          cache-provider: basic
 
       - name: Install required Android SDK components
         run: |
@@ -60,13 +79,15 @@ jobs:
             gradle wrapper --gradle-version 8.7 --no-daemon
           fi
 
-      - name: Run unit tests + build debug APK
+      - name: Run unit tests, lint, and build debug APK
         working-directory: NitroBoost
         run: |
-          ./gradlew test lintDebug assembleDebug --no-daemon --stacktrace > nitroboost-build.log 2>&1
-          rc=$?
-          tail -150 nitroboost-build.log
-          exit $rc
+          if ! ./gradlew test lintDebug assembleDebug --no-daemon --stacktrace > nitroboost-build.log 2>&1; then
+            tail -150 nitroboost-build.log
+            exit 1
+          fi
+          tail -80 nitroboost-build.log
+          mv app/build/outputs/apk/debug/app-debug.apk nitroboost-debug.apk
 
       - name: Summarize build log on failure
         if: failure()
@@ -83,103 +104,205 @@ jobs:
 
       - name: Upload build log artifact on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: build-fail-log
           path: NitroBoost/nitroboost-build.log
 
-      - name: Build signed release APK (if signing secrets are configured)
-        # NOTE: `secrets` may not appear in step `if:` expressions, so the
-        # no-secret case is handled inside the script (empty env = skip).
-        # Set the repo secrets NITRO_KEYSTORE_BASE64 (base64 of the .jks),
-        # NITRO_KEYSTORE_PASSWORD, NITRO_KEY_ALIAS, NITRO_KEY_PASSWORD and a
-        # real signed release is built + published alongside the debug APK.
-        # See NitroBoost/docs/DISTRIBUTION.md.
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nitroboost-debug-apk
+          path: NitroBoost/nitroboost-debug.apk
+          if-no-files-found: error
+
+  prepare-release:
+    if: github.ref == 'refs/heads/main'
+    needs: verify-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          gradle-version: '8.7'
+          cache-provider: basic
+
+      - name: Install required Android SDK components
+        run: |
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-/usr/lib/android-sdk}"
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Generate Gradle wrapper (jar not shipped in repo)
+        working-directory: NitroBoost
+        run: |
+          if [ ! -f gradlew ]; then
+            gradle wrapper --gradle-version 8.7 --no-daemon
+          fi
+
+      # Build unsigned in a secret-free, read-only job. The signing job below only runs apksigner.
+      - name: Build unsigned release APK
+        working-directory: NitroBoost
+        run: |
+          if ! ./gradlew assembleRelease --no-daemon --stacktrace > nitroboost-release-build.log 2>&1; then
+            tail -150 nitroboost-release-build.log
+            exit 1
+          fi
+          tail -80 nitroboost-release-build.log
+          APK=app/build/outputs/apk/release/app-release-unsigned.apk
+          if [ ! -f "$APK" ]; then
+            echo "::error::Expected unsigned release APK not found: $APK"
+            find app/build/outputs/apk/release -maxdepth 1 -type f -print || true
+            exit 1
+          fi
+          mv "$APK" nitroboost-release-unsigned.apk
+
+      - name: Upload unsigned release APK
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nitroboost-unsigned-release-apk
+          path: NitroBoost/nitroboost-release-unsigned.apk
+          if-no-files-found: error
+
+  sign-release:
+    if: github.ref == 'refs/heads/main'
+    needs: prepare-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      signed: ${{ steps.sign.outputs.signed }}
+    steps:
+      - name: Download unsigned release APK
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: nitroboost-unsigned-release-apk
+          path: NitroBoost
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android Build Tools before exposing signing secrets
+        run: |
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-/usr/lib/android-sdk}"
+          yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "build-tools;34.0.0"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+
+      - name: Sign APK only (no Gradle/build scripts in signing job)
+        id: sign
         env:
           KEYSTORE_BASE64: ${{ secrets.NITRO_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.NITRO_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.NITRO_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.NITRO_KEY_PASSWORD }}
-        working-directory: NitroBoost
         run: |
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "No NITRO_KEYSTORE_BASE64 secret — skipping release build"
+          if [ -z "$KEYSTORE_BASE64" ] && [ -z "$KEYSTORE_PASSWORD" ] && [ -z "$KEY_ALIAS" ] && [ -z "$KEY_PASSWORD" ]; then
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "Signing secrets are not configured; the debug APK will still be published."
             exit 0
           fi
-          echo "$KEYSTORE_BASE64" | base64 -d > release.jks
-          export KEYSTORE_FILE=$(pwd)/release.jks
-          ./gradlew assembleRelease --no-daemon --stacktrace >> nitroboost-build.log 2>&1
-          tail -30 nitroboost-build.log
-          mv app/build/outputs/apk/release/app-release.apk nitroboost-release.apk
-          rm -f release.jks
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::Signing secrets are incomplete; refusing to publish a release APK."
+            exit 1
+          fi
 
-      - name: Guard — release APK must never be debuggable
-        if: ${{ hashFiles('NitroBoost/nitroboost-release.apk') != '' }}
-        run: |
-          AAPT2="${ANDROID_SDK_ROOT:-/usr/lib/android-sdk}/build-tools/34.0.0/aapt2"
-          if "$AAPT2" dump badging NitroBoost/nitroboost-release.apk | grep -q "application-debuggable"; then
+          BUILD_TOOLS="${ANDROID_SDK_ROOT:-/usr/lib/android-sdk}/build-tools/34.0.0"
+          trap 'rm -f release.jks' EXIT
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > release.jks
+          "$BUILD_TOOLS/zipalign" -c -v 4 NitroBoost/nitroboost-release-unsigned.apk
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks release.jks \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:KEYSTORE_PASSWORD \
+            --key-pass env:KEY_PASSWORD \
+            --out NitroBoost/nitroboost-release.apk \
+            NitroBoost/nitroboost-release-unsigned.apk
+          "$BUILD_TOOLS/apksigner" verify --verbose NitroBoost/nitroboost-release.apk
+          if "$BUILD_TOOLS/aapt2" dump badging NitroBoost/nitroboost-release.apk | grep -q "application-debuggable"; then
             echo "::error::Release APK is debuggable — refusing to publish"
             exit 1
           fi
-          echo "release APK is not debuggable OK"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
 
-      - name: Rename APK
-        run: mv NitroBoost/app/build/outputs/apk/debug/app-debug.apk NitroBoost/nitroboost-debug.apk
+      - name: Upload signed release APK
+        if: steps.sign.outputs.signed == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nitroboost-signed-release-apk
+          path: NitroBoost/nitroboost-release.apk
+          if-no-files-found: error
 
-      - name: Collect APK artifacts
+  publish-release:
+    # Only this job writes GitHub releases; it does not build or hold signing secrets.
+    if: github.ref == 'refs/heads/main'
+    needs: [verify-build, sign-release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download verified debug APK
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: nitroboost-debug-apk
+          path: NitroBoost
+
+      - name: Download signed release APK when available
+        if: ${{ needs['sign-release'].outputs.signed == 'true' }}
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: nitroboost-signed-release-apk
+          path: NitroBoost
+
+      - name: Collect release assets
         id: collect
         run: |
           FILES="NitroBoost/nitroboost-debug.apk"
           if [ -f NitroBoost/nitroboost-release.apk ]; then
-            FILES="$FILES, NitroBoost/nitroboost-release.apk"
+            FILES="$FILES\nNitroBoost/nitroboost-release.apk"
           fi
-          echo "paths=$FILES" >> "$GITHUB_OUTPUT"
+          {
+            echo 'files<<EOF'
+            printf '%b\n' "$FILES"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
+      - name: Publish release from main only
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
-          name: nitroboost-debug-apk
-          path: ${{ steps.collect.outputs.paths }}
-
-      - name: Publish release with APK
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.ver.outputs.tag }}
+          tag_name: ${{ needs['verify-build'].outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: NitroBoost v${{ steps.ver.outputs.name }}
+          name: NitroBoost v${{ needs['verify-build'].outputs.name }}
           body: |
-            NitroBoost v${{ steps.ver.outputs.name }} (versionCode ${{ steps.ver.outputs.code }})
-            — journal-based game booster with a full adaptive A/B engine.
+            NitroBoost v${{ needs['verify-build'].outputs.name }} (versionCode ${{ needs['verify-build'].outputs.code }}).
 
-            Install on a real device (Shizuku required for the full feature
-            set; the app degrades gracefully without it). Debug-signed build
-            for direct install; a signed release APK is published
-            automatically once the signing secrets are configured — see
-            `NitroBoost/docs/DISTRIBUTION.md`.
+            This release passed the repository's configured tests, lint, build, and security regression checks. Device-specific gameplay performance has not been independently benchmarked here; no universal FPS gain is claimed.
 
-            ## v1.13.0 — unified telemetry and frame pacing
-            - Added a pure-Kotlin PerformanceSnapshot/SensorFusion layer; unavailable readings remain null, and optional CPU-frequency, battery, memory-pressure, and public device/display data are included only when exposed.
-            - Added measured IntendedVsync gaps and FramePacingAnalyzer diagnostics: observed FPS mean/median, measured frame-time percentiles/variance, jank rate, and an explicitly estimated missed-vsync rate.
-            - Stability/smoothness scores require at least five measured frame-time samples. Existing A/B weights/decisions, Journal/rollback, privilege checks, and thermal guard are unchanged.
-            - GPU utilization/renderer and energy stay null without a trustworthy source; no cloud inference or device benchmark claim is added.
-
-            ## v1.12.0 — safety and session efficiency
-            - Profiles/preferences validate package names and ranges, sanitize legacy data, and save custom profiles atomically.
-            - Background cleanup excludes the selected game, the booster, protected packages, and resumed activities when Usage Access is available; it is opt-in and requires privilege.
-            - Display policy is preserved by default; explicit refresh rates are capped to the reported panel peak and original settings are journaled for restore.
-            - Maximum brightness is opt-in at boost level 3 due to its battery and heat cost.
-            - Shell output is bounded; interpolated packages, sysfs/settings inputs, and persisted reversal commands are validated before use.
-            - Session summaries use constant memory and monitoring stops when no UI/session/overlay consumer remains.
-            - CI tests/build and device-specific benchmark status are reported separately; no universal FPS claim is made.
-
-            ## v1.11.0 — adaptive experiment hardening
-            - Quality-gated paired baseline/candidate windows alternate measurement order; incomplete, stale, unstable, or thermally contaminated blocks add no evidence.
-            - Bounded normalized objective weights and context-bound decisions; unavailable FPS, frame-time, energy, or other metrics are omitted rather than inferred.
-            - Session-lifecycle fixes use UsageEvents instead of last-use timestamps, retry transient adaptive-loop failures, and roll back failed boost starts through the journal.
-            - Privileged shell commands have bounded execution; thermal safety remains higher priority than performance.
-            - Paired interleaving reduces confounding but does not prove identical game workload; no device benchmark claims are made.
-            Previous notes: see NitroBoost/CHANGELOG.md and earlier GitHub releases.
-          files: ${{ steps.collect.outputs.paths }}
+            See `NitroBoost/CHANGELOG.md` and `NitroBoost/docs/DISTRIBUTION.md` for feature history and installation notes. The attached debug APK is for testing; a signed release APK is attached only when all signing secrets are configured.
+          files: ${{ steps.collect.outputs.files }}
+          fail_on_unmatched_files: true
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

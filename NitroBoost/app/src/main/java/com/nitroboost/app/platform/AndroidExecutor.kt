@@ -31,6 +31,14 @@ class AndroidExecutor(private val context: Context) : SystemExecutor {
     private var privCache: Pair<Boolean, Long> = (false to 0L)
     private val PRIV_TTL_MS = 2_000L
 
+    /** A thermal override is refused unless a raw, unmodified sensor can backstop it. */
+    override val thermalSafetyAvailable: Boolean
+        get() = try {
+            ThermalSampler(context).tempC() != null
+        } catch (_: Exception) {
+            false
+        }
+
     override val privileged: Boolean
         get() {
             val (cached, at) = privCache
@@ -176,6 +184,19 @@ class AndroidExecutor(private val context: Context) : SystemExecutor {
         return r.ok && secureSettingGet(key) == value
     }
 
+    override fun secureSettingDelete(key: String): Boolean {
+        if (!ShellInput.isSettingKey(key)) return false
+        try {
+            if (Settings.Secure.putString(context.contentResolver, key, null) &&
+                Settings.Secure.getString(context.contentResolver, key) == null
+            ) return true
+        } catch (_: Exception) {
+            // Fall back to the privileged command.
+        }
+        val result = runPriv("settings delete secure $key")
+        return result.ok && secureSettingGet(key) == null
+    }
+
     // ---------------- Settings.Global ----------------
 
     override fun globalSettingGet(key: String): String? {
@@ -207,6 +228,19 @@ class AndroidExecutor(private val context: Context) : SystemExecutor {
         }
         val r = runPriv("settings put global $key $value")
         return r.ok && globalSettingGet(key) == value
+    }
+
+    override fun globalSettingDelete(key: String): Boolean {
+        if (!ShellInput.isSettingKey(key)) return false
+        try {
+            if (Settings.Global.putString(context.contentResolver, key, null) &&
+                Settings.Global.getString(context.contentResolver, key) == null
+            ) return true
+        } catch (_: Exception) {
+            // Fall back to the privileged command.
+        }
+        val result = runPriv("settings delete global $key")
+        return result.ok && globalSettingGet(key) == null
     }
 
     // ---------------- DND ----------------

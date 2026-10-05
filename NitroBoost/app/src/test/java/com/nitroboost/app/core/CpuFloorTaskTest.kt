@@ -11,6 +11,7 @@ class CpuFloorTaskTest {
 
     private fun journal(): Journal {
         val file = File.createTempFile("nitro_cpu_floor", ".json")
+        file.delete()
         file.deleteOnExit()
         return Journal(file)
     }

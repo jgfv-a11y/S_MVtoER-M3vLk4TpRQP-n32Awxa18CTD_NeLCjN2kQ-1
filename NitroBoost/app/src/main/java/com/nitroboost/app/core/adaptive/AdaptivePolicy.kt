@@ -122,6 +122,10 @@ object AdaptivePolicy {
     const val SLOPE_EFFECT_SCALE_C_PER_MIN = 1.2
     const val MIN_HITCH_RATE_SCALE = 0.02
     const val SOFT_THERMAL_HEADROOM_C = 6.0
+    private const val MIN_VALID_FPS = 1
+    private const val MAX_VALID_FPS = 1_000
+    private const val MAX_VALID_DELTA_FPS = 999.0
+    private const val MAX_COMPARISONS = 1_000
 
     /** Legacy one-comparison 95% critical value. */
     fun tQuantile(df: Int): Double = tCritical(df, comparisons = 1)
@@ -152,14 +156,21 @@ object AdaptivePolicy {
     /** Paired differences (arm - baseline), truncated to the shorter list. */
     fun deltasOf(baseline: List<Int>, arm: List<Int>): List<Double> {
         val n = minOf(baseline.size, arm.size)
-        return (0 until n).map { arm[it].toDouble() - baseline[it].toDouble() }
+        return (0 until n).mapNotNull { index ->
+            val before = baseline[index]
+            val after = arm[index]
+            if (before in MIN_VALID_FPS..MAX_VALID_FPS && after in MIN_VALID_FPS..MAX_VALID_FPS) {
+                after.toDouble() - before.toDouble()
+            } else null
+        }
     }
 
     /** Retained for the legacy FPS-only ledger format; v2 block scores are not trimmed. */
     fun trimmedDeltas(deltas: List<Double>): List<Double> {
-        if (deltas.size < 6) return deltas
-        val sorted = deltas.sorted()
-        val k = deltas.size / 10
+        val valid = deltas.filter(::isValidFpsDelta)
+        if (valid.size < 6) return valid
+        val sorted = valid.sorted()
+        val k = valid.size / 10
         return sorted.subList(k, sorted.size - k)
     }
 
@@ -292,20 +303,29 @@ object AdaptivePolicy {
         cfg: TrialConfig,
         comparisons: Int = 1
     ): TrialOutcome {
-        val values = scores.filter { it.isFinite() }
+        val safeComparisons = comparisons.coerceIn(1, MAX_COMPARISONS)
+        if (!isValidStatConfig(cfg)) {
+            return TrialOutcome(
+                Decision.MORE_DATA, null, null, null, 0,
+                "invalid statistical configuration",
+                confidenceLevel = FAMILY_WISE_CONFIDENCE,
+                comparisonCount = safeComparisons
+            )
+        }
+        val values = scores.filter { it.isFinite() && it in -1.0..1.0 }
         val n = values.size
         if (n < 2) {
             return TrialOutcome(
                 Decision.MORE_DATA, null, null, null, n,
                 "need at least two valid paired score blocks",
                 confidenceLevel = FAMILY_WISE_CONFIDENCE,
-                comparisonCount = comparisons.coerceAtLeast(1)
+                comparisonCount = safeComparisons
             )
         }
         val mean = values.average()
         val variance = values.sumOf { (it - mean) * (it - mean) } / (n - 1)
         val sd = sqrt(variance)
-        val critical = tCritical(n - 1, comparisons)
+        val critical = tCritical(n - 1, safeComparisons)
         val half = critical * sd / sqrt(n.toDouble())
         val lo = mean - half
         val hi = mean + half
@@ -334,18 +354,23 @@ object AdaptivePolicy {
             reason = reason,
             meanScore = mean,
             confidenceLevel = FAMILY_WISE_CONFIDENCE,
-            comparisonCount = comparisons.coerceAtLeast(1)
+            comparisonCount = safeComparisons
         )
     }
 
     /** Legacy paired FPS assessment, retained for stored v1.x entries/tests. */
     fun assess(rawDeltas: List<Double>, cfg: TrialConfig): TrialOutcome {
-        val deltas = trimmedDeltas(rawDeltas)
+        if (!isValidStatConfig(cfg)) {
+            return TrialOutcome(Decision.MORE_DATA, null, null, null, 0,
+                "invalid statistical configuration")
+        }
+        val validDeltas = rawDeltas.filter(::isValidFpsDelta)
+        val deltas = trimmedDeltas(validDeltas)
         val n = deltas.size
-        val rawN = rawDeltas.size
+        val rawN = validDeltas.size
         if (n < 2) {
             return TrialOutcome(Decision.MORE_DATA, null, null, null, rawN,
-                "need >= 2 paired samples")
+                "need >= 2 valid paired samples")
         }
         val mean = deltas.sum() / n
         val variance = deltas.sumOf { (it - mean) * (it - mean) } / (n - 1)
@@ -375,6 +400,15 @@ object AdaptivePolicy {
                     "confidence interval too wide or effect is inconclusive")
         }
     }
+
+    private fun isValidFpsDelta(value: Double): Boolean =
+        value.isFinite() && value in -MAX_VALID_DELTA_FPS..MAX_VALID_DELTA_FPS
+
+    private fun isValidStatConfig(cfg: TrialConfig): Boolean =
+        cfg.minPairs in 2..1_000 && cfg.maxPairs in cfg.minPairs..1_000 &&
+            cfg.minEffectFps.isFinite() && cfg.minEffectFps in 0.0..MAX_VALID_FPS.toDouble() &&
+            cfg.minEffectScore.isFinite() && cfg.minEffectScore in 0.0..1.0 &&
+            cfg.maxScoreStdDev.isFinite() && cfg.maxScoreStdDev in 0.0..2.0
 
     private fun normalizedGain(delta: Double, baseline: Double): Double =
         (delta / max(abs(baseline), 1.0)).coerceIn(-1.0, 1.0)
