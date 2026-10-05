@@ -12,7 +12,7 @@
 - **P5 UI foundations:** dashboard، profiles، settings، overlay، reports، state-preserving navigation، ورسائل capability الصادقة.
 
 ## Current Task
-إغلاق إصلاح P1 في `BoostFragment.kt` ثم مراجعة `MonitorHub` و`SensorFusion` بعد نجاح CI.
+مراجعة P1 telemetry أعمق عند التشغيل القادم؛ إصلاح BoostFragment ومراجعة MonitorHub/SensorFusion الحالية مكتملان.
 
 ## Completed This Session — 2026-10-04
 - راجعت `main` وتقارير التقدم؛ لم يكن ملف الاستمرارية موجودًا.
@@ -39,6 +39,12 @@
 - الفحص الساكن نجح: `43 XML`, `120 Kotlin`, `104 IDs`, `0 errors`; و`git diff --check` نجح.
 - Gradle المحلي غير متاح لغياب Android SDK؛ CI هو بوابة `test`, `lintDebug`, و`assembleDebug`.
 
+
+## Completion Update — 2026-10-05
+- CI لإصلاح `BoostFragment.kt` نجح بالكامل على commit `bb914c3`: `test`, `lintDebug`, و`assembleDebug`.
+- تمت مراجعة `MonitorHub.kt` و`SensorFusion.kt` بحثًا عن stale timestamps وnull-semantics؛ لم يظهر خلل مؤكد قابل للإصلاح دون جهاز Android، لذلك لم يُدخل تعديل تخميني.
+- بقيت تغييرات الكود محصورة في إصلاح واجهة Boost، مع توثيق التشغيل فقط.
+
 ## Architecture Decisions
 - القياسات غير المتاحة تبقى `null` ولا تُحوّل إلى أصفار مضللة.
 - لا يتم الادعاء بتحسن FPS دون benchmark على جهاز فعلي.
@@ -59,13 +65,13 @@
 - تحتاج جلسة لاحقة إلى مراجعة regression مركزة على telemetry وMonitorHub بعد الدمج الكبير.
 
 ## Next Automatic Task
-1. قراءة CI لإصلاح `BoostFragment.kt` والتأكد من نجاح الاختبارات وlint وassembleDebug.
-2. مراجعة P1 مركزة على `MonitorHub` و`SensorFusion` للبحث عن freshness أو null-semantics regressions.
-3. إضافة regression test فقط إذا ظهر خلل قابل للإعادة دون جهاز Android.
+1. إجراء مراجعة telemetry أعمق تشمل دورة start/stop وfreshness عبر جلسات المراقبة.
+2. إضافة regression test فقط إذا ظهر خلل قابل للإعادة داخل JVM.
+3. عدم تعديل MonitorHub/SensorFusion دون دليل سلوكي أو اختبار يثبت الخلل.
 4. عدم ادعاء benchmark أداء قبل توفر جهاز Android فعلي.
 5. إذا لم توجد مشكلة P0/P1، الانتقال إلى benchmark harness محلي/قابل للتشغيل على جهاز Android دون ادعاء نتائج أداء.
 
 ## Overall Progress
 - **Phase:** 4 — القياس التكيفي والتحليل القابل للتدقيق
-- **Task:** BoostFragment P1 correctness fix
-- **Completion:** الكود والفحص الساكن جاهزان؛ بانتظار CI ثم الانتقال لمراجعة telemetry التالية.
+- **Task:** BoostFragment P1 correctness fix + telemetry review
+- **Completion:** مكتمل؛ CI نجح، ولم يُثبت خلل إضافي في MonitorHub/SensorFusion.
