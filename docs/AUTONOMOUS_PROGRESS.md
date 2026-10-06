@@ -12,7 +12,7 @@
 - **P5 UI foundations:** dashboard، profiles، settings، overlay، reports، state-preserving navigation، ورسائل capability الصادقة.
 
 ## Current Task
-إصدار maintenance v1.14.1 بعد مراجعة الاستقرار؛ لا توجد مشكلة P0/P1 مؤكدة حاليًا.
+استمرار مراجعة الاستقرار؛ v1.14.1 منشور ولا توجد مشكلة P0/P1 مؤكدة حاليًا.
 
 ## Completed This Session — 2026-10-04
 - راجعت `main` وتقارير التقدم؛ لم يكن ملف الاستمرارية موجودًا.
@@ -49,7 +49,8 @@
 ## Stability Review — 2026-10-06
 - تمت مراجعة MonitorDemand، دورة AppStore monitor clients، MonitorHub start/stop، وfreshness في SensorFusion.
 - لم يظهر خلل P0/P1 مؤكد؛ لم تُجرَ تغييرات تخمينية على telemetry.
-- تم تجهيز maintenance release `1.14.1` و`versionCode=18` دون ميزات جديدة، بهدف بناء APK جديد بعد تحقق CI.
+- تم تجهيز maintenance release `1.14.1` و`versionCode=18` دون ميزات جديدة.
+- CI نجح ونشر APK: `6,428,830 bytes`, SHA-256 `37ef8abbbb14fffcc3815e8654680eebbb49b950ba47c83a0b4cb2371886ba29`.
 - Measurement unavailable: لا يوجد جهاز Android لقياسات أداء حقيقية.
 
 ## Architecture Decisions
@@ -80,4 +81,4 @@
 ## Overall Progress
 - **Phase:** 4 — القياس التكيفي والتحليل القابل للتدقيق
 - **Task:** Stability maintenance review + v1.14.1 APK
-- **Completion:** المراجعة مكتملة؛ بانتظار CI وبصمة APK.
+- **Completion:** مكتمل؛ CI نجح وAPK منشور ومتحقق من البصمة.
