@@ -314,7 +314,7 @@ class PerformanceStateEngine(
             { snapshot ->
                 val frame = snapshot.frame
                 FrameSnapshot(
-                    fps = frame.fps?.takeIf { it.isFinite() && it in 0.0..MAX_FPS && it > 0.0 },
+                    fps = frame.fps?.takeIf { it.isFinite() && it in 0.0..MAX_FPS.toDouble() && it > 0.0 },
                     targetFps = frame.targetFps?.takeIf { it in 1..MAX_FPS.toInt() },
                     frameTimesMs = frame.frameTimesMs?.filter { it.isFinite() && it in MIN_FRAME_MS..MAX_FRAME_MS }
                         ?.takeIf { it.isNotEmpty() },
