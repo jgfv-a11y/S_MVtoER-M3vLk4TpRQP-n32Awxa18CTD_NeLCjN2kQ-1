@@ -1,4 +1,22 @@
 # Changelog
+
+## v1.15.0 — evidence-based diagnostics and release hardening (2026-10-06)
+- **Version code 19.** Published by GitHub Actions after static/security checks, JVM tests, lint, debug APK assembly, and unsigned release APK build. The GitHub Release contains the debug APK for testing; no signed APK is attached.
+- No physical-device A/B benchmark was run; no gameplay FPS gain is claimed.
+
+### Competitive guidance and security regression gate
+- Added bilingual, evidence-aware next-step guidance for all nine performance states. Advice is manual only; it does not change CPU/GPU/network/display/thermal settings or promise an FPS gain.
+- Added dependency-free security regression checks for manifest permissions/exported components, backup/cleartext policy, pinned dependencies/actions, obvious source secrets, and least-privilege release workflow; added Python unit tests for those checks.
+- Split release into a secret-free read-only unsigned build, an `apksigner`-only signing job, and a main-only publish job. Keystore secrets are isolated from Gradle; only the publish job has `contents: write`. Action refs are pinned to verified full commit SHAs and Dependabot updates GitHub Actions weekly.
+- Added `docs/COMPETITIVE_ROADMAP.md`; GitHub Actions passed the security gates, tests, lint, and APK assembly. Device-specific gains still require physical A/B testing.
+- Added task-scoped write-ahead journaling for supported reversible mutations, including adaptive KEEP reapplication; mutations fail closed if the reversal cannot be persisted. One-way trim/force-stop operations remain explicitly non-reversible.
+
+### Phase 1 performance-state diagnostics
+- Added a bounded, evidence-based `PerformanceStateEngine` over existing snapshots, with confidence, source freshness/data quality, timestamps, and the nine requested states. GPU remains unknown without direct telemetry; packet loss remains unavailable; TCP probe scope is explicit.
+- Connected the result to the existing adaptive status panel without changing boost policy. Removed the legacy GPU-by-elimination bottleneck from live UI and new session-report generation; retained old report parsing for compatibility.
+- Added 14 deterministic JVM tests and corrected the Journal rotation test to preserve active rollback entries; CI passed JVM tests, lint, and APK assembly.
+- Corrected Game API/network/report wording so platform requests and system/TCP measurements are not described as guaranteed game-performance outcomes.
+
 ## v1.14.1 — stability maintenance release
 - No new features. Revalidated monitoring lifecycle, telemetry freshness boundaries, and the existing BoostFragment correctness fix.
 - CI remains the build gate for tests, lint, and debug APK publication.
@@ -10,19 +28,6 @@
 - **Regression coverage:** added parser and tracker tests for timestamp-reset behavior.
 - **Version code 17**.
 
-
-## Unreleased — v1.15.0 candidate (versionCode 19): competitive guidance and security regression gate
-- Added bilingual, evidence-aware next-step guidance for all nine performance states. Advice is manual only; it does not change CPU/GPU/network/display/thermal settings or promise an FPS gain.
-- Added dependency-free security regression checks for manifest permissions/exported components, backup/cleartext policy, pinned dependencies/actions, obvious source secrets, and least-privilege release workflow; added Python unit tests for those checks.
-- Split release into a secret-free read-only unsigned build, an `apksigner`-only signing job, and a main-only publish job. Keystore secrets are isolated from Gradle; only the publish job has `contents: write`. Action refs are pinned to verified full commit SHAs and Dependabot updates GitHub Actions weekly.
-- Added `docs/COMPETITIVE_ROADMAP.md`; performance gains still require measured device-specific A/B. Android/Kotlin tests and build are not verified in this local environment.
-- Added task-scoped write-ahead journaling for supported reversible mutations, including adaptive KEEP reapplication; mutations fail closed if the reversal cannot be persisted. One-way trim/force-stop operations remain explicitly non-reversible.
-
-## Unreleased — v1.15.0 candidate: Phase 1 performance-state diagnostics
-- Added a bounded, evidence-based `PerformanceStateEngine` over existing snapshots, with confidence, source freshness/data quality, timestamps, and the nine requested states. GPU remains unknown without direct telemetry; packet loss remains unavailable; TCP probe scope is explicit.
-- Connected the result to the existing adaptive status panel without changing boost policy. Removed the legacy GPU-by-elimination bottleneck from live UI and new session-report generation; retained old report parsing for compatibility.
-- Added 14 deterministic JVM tests and corrected the Journal rotation test to preserve active rollback entries. Tests, lint, and Android assembly remain unverified here because Java/Gradle and the wrapper are unavailable.
-- Corrected Game API/network/report wording so platform requests and system/TCP measurements are not described as guaranteed game-performance outcomes.
 
 ## v1.13.0 — Unified telemetry and frame pacing
 - **Version code 16**; GitHub Actions is the release gate and publishes the debug APK after verification, JVM tests, lint, and assemble succeed. A signed release APK still requires the configured signing secrets.
