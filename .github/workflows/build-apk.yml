@@ -100,6 +100,15 @@ jobs:
               tail -120 "$LOG"
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
+            python3 - "$LOG" <<'PY'
+          from pathlib import Path
+          import sys
+
+          lines = Path(sys.argv[1]).read_text(errors="replace").splitlines()
+          diagnostic = "\n".join(lines[-60:])
+          diagnostic = diagnostic.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(f"::error title=Gradle build diagnostics::{diagnostic}")
+          PY
           fi
 
       - name: Upload build log artifact on failure
