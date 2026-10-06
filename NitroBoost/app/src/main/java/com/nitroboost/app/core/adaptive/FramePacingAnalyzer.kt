@@ -24,13 +24,16 @@ object FramePacingAnalyzer {
         targetFps: Int? = samples.mapNotNull { it.targetFps }.firstOrNull { it in 1..MAX_FPS }
     ): FramePacingMetrics? {
         val safeTarget = targetFps?.takeIf { it in 1..MAX_FPS }
-        val fpsValues = samples.mapNotNull { sample ->
+        val fpsValues = samples.asSequence().mapNotNull { sample ->
             sample.fps?.takeIf { it.isFinite() && it in MIN_FPS..MAX_FPS.toDouble() && it > 0.0 }
-        }.sorted()
-        val frameTimes = samples.flatMap { it.frameTimesMs.orEmpty() }
+        }.take(MAX_INPUT_SAMPLES).toList().sorted()
+        val frameTimes = samples.asSequence().flatMap { it.frameTimesMs.orEmpty().asSequence() }
             .filter { it.isFinite() && it in MIN_FRAME_MS..MAX_FRAME_MS }
-        val intervals = samples.flatMap { it.intendedVsyncIntervalsMs.orEmpty() }
+            .take(MAX_INPUT_FRAME_SAMPLES).toList()
+        val intervals = samples.asSequence()
+            .flatMap { it.intendedVsyncIntervalsMs.orEmpty().asSequence() }
             .filter { it.isFinite() && it in MIN_FRAME_MS..MAX_FRAME_MS }
+            .take(MAX_INPUT_FRAME_SAMPLES).toList()
         val distribution = FrameTimeAnalysis.distribution(frameTimes)
         val targetFrameMetrics = safeTarget?.let { FrameTimeAnalysis.summarize(frameTimes, it) }
         val dropRate = estimateDroppedFrameRate(intervals, safeTarget)
@@ -128,4 +131,6 @@ object FramePacingAnalyzer {
     private const val MAX_FPS = 1_000
     private const val MIN_FRAME_MS = 0.1
     private const val MAX_FRAME_MS = 1_000.0
+    private const val MAX_INPUT_SAMPLES = 4_096
+    private const val MAX_INPUT_FRAME_SAMPLES = 20_000
 }

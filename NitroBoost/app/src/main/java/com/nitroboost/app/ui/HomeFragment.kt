@@ -23,8 +23,14 @@ import com.nitroboost.app.core.AppProfile
 import com.nitroboost.app.core.FpsDisplayCache
 import com.nitroboost.app.core.GameSpaceDetector
 import com.nitroboost.app.core.SessionReport
-import com.nitroboost.app.core.adaptive.Bottleneck
 import com.nitroboost.app.core.adaptive.Decision
+import com.nitroboost.app.core.performance.EvidenceDomain
+import com.nitroboost.app.core.performance.EvidenceScope
+import com.nitroboost.app.core.performance.PerformanceAdviceCode
+import com.nitroboost.app.core.performance.PerformanceAdviceResolver
+import com.nitroboost.app.core.performance.PerformanceEvidence
+import com.nitroboost.app.core.performance.PerformanceState
+import com.nitroboost.app.core.performance.PerformanceStateResult
 import com.nitroboost.app.data.Prefs
 import com.nitroboost.app.data.ProfileStore
 import com.nitroboost.app.platform.MonitorSnapshot
@@ -57,6 +63,9 @@ class HomeFragment : Fragment() {
     private var gameSpaceHint: TextView? = null
     private var adaptiveStatus: TextView? = null
     private var adaptiveBottleneck: TextView? = null
+    private var adaptiveEvidence: TextView? = null
+    private var adaptiveAdviceTitle: TextView? = null
+    private var adaptiveAdvice: TextView? = null
     private var adaptiveDecisions: TextView? = null
     private var shizukuCard: View? = null
     private var shizukuStatus: TextView? = null
@@ -100,6 +109,9 @@ class HomeFragment : Fragment() {
         gameSpaceHint = view.findViewById(R.id.game_space_hint)
         adaptiveStatus = view.findViewById(R.id.adaptive_status)
         adaptiveBottleneck = view.findViewById(R.id.adaptive_bottleneck)
+        adaptiveEvidence = view.findViewById(R.id.adaptive_evidence)
+        adaptiveAdviceTitle = view.findViewById(R.id.adaptive_advice_title)
+        adaptiveAdvice = view.findViewById(R.id.adaptive_advice)
         adaptiveDecisions = view.findViewById(R.id.adaptive_decisions)
         shizukuCard = view.findViewById(R.id.shizuku_card)
         shizukuStatus = view.findViewById(R.id.shizuku_card_status)
@@ -339,23 +351,6 @@ class HomeFragment : Fragment() {
         rep.minFps?.let { lines.add(getString(R.string.report_min_fps, it)) }
         if (rep.peakRamMb > 0) lines.add(getString(R.string.report_peak_ram, rep.peakRamMb / 1024))
         rep.minPingMs?.let { lines.add(getString(R.string.report_ping, it)) }
-        rep.endBottleneck?.let {
-            if (it != Bottleneck.UNKNOWN && it != Bottleneck.NONE) {
-                lines.add(
-                    getString(
-                        R.string.report_end_bottleneck,
-                        when (it) {
-                            Bottleneck.CPU -> "CPU"
-                            Bottleneck.GPU -> "GPU"
-                            Bottleneck.MEMORY -> getString(R.string.bottleneck_memory)
-                            Bottleneck.NETWORK -> getString(R.string.bottleneck_network)
-                            Bottleneck.THERMAL -> getString(R.string.bottleneck_thermal)
-                            else -> it.name
-                        }
-                    )
-                )
-            }
-        }
         reportText?.text = lines.joinToString("\n")
         card.visibility = View.VISIBLE
     }
@@ -374,24 +369,26 @@ class HomeFragment : Fragment() {
         val eta = if (ui.etaMinutes > 0)
             "  · " + getString(R.string.adaptive_eta, ui.etaMinutes) else ""
         adaptiveStatus?.text = adaptiveStatus?.text?.toString() + eta
-        adaptiveBottleneck?.text = buildString {
-            append(getString(R.string.adaptive_bottleneck))
-            append(": ")
-            append(
-                when (ui.bottleneck) {
-                    Bottleneck.UNKNOWN -> getString(R.string.bottleneck_unknown)
-                    Bottleneck.NONE -> getString(R.string.bottleneck_none)
-                    Bottleneck.CPU -> "CPU"
-                    Bottleneck.GPU -> "GPU"
-                    Bottleneck.MEMORY -> getString(R.string.bottleneck_memory)
-                    Bottleneck.NETWORK -> getString(R.string.bottleneck_network)
-                    Bottleneck.THERMAL -> getString(R.string.bottleneck_thermal)
-                }
+        ui.performanceState?.let { result ->
+            val summary = getString(
+                R.string.performance_state_summary,
+                performanceStateLabel(result.state),
+                (result.confidence.score * 100.0).toInt(),
+                (result.dataQuality.score * 100.0).toInt()
             )
-            if (ui.effectiveThermal > ui.osThermal) {
-                append("  ")
-                append(getString(R.string.thermal_predicted))
-            }
+            adaptiveBottleneck?.text = if (ui.effectiveThermal > ui.osThermal) {
+                "$summary · ${getString(R.string.thermal_predicted)}"
+            } else summary
+            adaptiveEvidence?.text = evidenceSummary(result)
+            adaptiveEvidence?.visibility = View.VISIBLE
+            adaptiveAdviceTitle?.visibility = View.VISIBLE
+            adaptiveAdvice?.setText(performanceAdviceLabel(result.state))
+            adaptiveAdvice?.visibility = View.VISIBLE
+        } ?: run {
+            adaptiveBottleneck?.text = getString(R.string.performance_state_waiting)
+            adaptiveEvidence?.visibility = View.GONE
+            adaptiveAdviceTitle?.visibility = View.GONE
+            adaptiveAdvice?.visibility = View.GONE
         }
         val dec = adaptiveDecisions ?: return
         if (ui.decisions.isEmpty()) {
@@ -418,6 +415,128 @@ class HomeFragment : Fragment() {
         dec.text = sb.toString().trimEnd()
         dec.visibility = View.VISIBLE
     }
+
+    private fun performanceStateLabel(state: PerformanceState): String = getString(
+        when (state) {
+            PerformanceState.CPU_BOUND -> R.string.performance_state_cpu_bound
+            PerformanceState.GPU_BOUND -> R.string.performance_state_gpu_bound
+            PerformanceState.MEMORY_BOUND -> R.string.performance_state_memory_bound
+            PerformanceState.THERMAL_BOUND -> R.string.performance_state_thermal_bound
+            PerformanceState.NETWORK_BOUND -> R.string.performance_state_network_bound
+            PerformanceState.DISPLAY_BOUND -> R.string.performance_state_display_bound
+            PerformanceState.MIXED_BOUND -> R.string.performance_state_mixed_bound
+            PerformanceState.HEALTHY -> R.string.performance_state_healthy
+            PerformanceState.UNKNOWN -> R.string.performance_state_unknown
+        }
+    )
+
+    private fun performanceAdviceLabel(state: PerformanceState): Int = when (
+        PerformanceAdviceResolver.resolve(state)
+    ) {
+        PerformanceAdviceCode.REVIEW_CPU_HEAVY_GAME_SETTINGS -> R.string.performance_advice_cpu
+        PerformanceAdviceCode.REVIEW_IN_GAME_GRAPHICS -> R.string.performance_advice_gpu
+        PerformanceAdviceCode.REVIEW_UNUSED_APPS -> R.string.performance_advice_memory
+        PerformanceAdviceCode.COOL_DEVICE_AND_REDUCE_BOOST -> R.string.performance_advice_thermal
+        PerformanceAdviceCode.VERIFY_GAME_NETWORK_PATH -> R.string.performance_advice_network
+        PerformanceAdviceCode.MATCH_TARGET_TO_REFRESH -> R.string.performance_advice_display
+        PerformanceAdviceCode.CHANGE_ONE_SETTING_AT_A_TIME -> R.string.performance_advice_mixed
+        PerformanceAdviceCode.KEEP_CURRENT_SETTINGS -> R.string.performance_advice_healthy
+        PerformanceAdviceCode.WAIT_FOR_RELIABLE_DATA -> R.string.performance_advice_unknown
+    }
+
+    private fun evidenceSummary(result: PerformanceStateResult): String {
+        val domains = when (result.state) {
+            PerformanceState.CPU_BOUND -> setOf(EvidenceDomain.CPU, EvidenceDomain.FRAME_PACING)
+            PerformanceState.GPU_BOUND -> setOf(EvidenceDomain.GPU, EvidenceDomain.FRAME_PACING)
+            PerformanceState.MEMORY_BOUND -> setOf(EvidenceDomain.MEMORY, EvidenceDomain.FRAME_PACING)
+            PerformanceState.THERMAL_BOUND -> setOf(EvidenceDomain.THERMAL, EvidenceDomain.FRAME_PACING)
+            PerformanceState.NETWORK_BOUND -> setOf(EvidenceDomain.NETWORK)
+            PerformanceState.DISPLAY_BOUND -> setOf(EvidenceDomain.DISPLAY, EvidenceDomain.FRAME_PACING)
+            PerformanceState.MIXED_BOUND -> EvidenceDomain.entries.toSet()
+            PerformanceState.HEALTHY -> setOf(EvidenceDomain.FRAME_PACING)
+            PerformanceState.UNKNOWN -> EvidenceDomain.entries.toSet()
+        }
+        val supportedEvidence = result.evidence
+            .filter { it.domain in domains && it.supportsClassification }
+        val selectedEvidence = if (result.state == PerformanceState.MIXED_BOUND) {
+            supportedEvidence.distinctBy { it.domain }.take(3)
+        } else supportedEvidence.take(3)
+        val details = selectedEvidence.map(::formatEvidence)
+        return if (details.isEmpty()) {
+            getString(R.string.performance_evidence_none)
+        } else {
+            getString(R.string.performance_evidence_summary, details.joinToString(" · "))
+        }
+    }
+
+    private fun formatEvidence(evidence: PerformanceEvidence): String {
+        val domain = getString(
+            when (evidence.domain) {
+                EvidenceDomain.CPU -> R.string.performance_evidence_cpu
+                EvidenceDomain.GPU -> R.string.performance_evidence_gpu
+                EvidenceDomain.MEMORY -> R.string.performance_evidence_memory
+                EvidenceDomain.THERMAL -> R.string.performance_evidence_thermal
+                EvidenceDomain.NETWORK -> R.string.performance_evidence_network
+                EvidenceDomain.DISPLAY -> R.string.performance_evidence_display
+                EvidenceDomain.FRAME_PACING -> R.string.performance_evidence_frame
+            }
+        )
+        if (evidence.code == "ANDROID_LOW_MEMORY_FLAG") {
+            return withEvidenceMetadata(getString(R.string.performance_evidence_low_memory), evidence)
+        }
+        if (evidence.code == "CONFIGURED_TARGET_ABOVE_ACTIVE_REFRESH") {
+            val value = getString(
+                R.string.performance_evidence_display_cap,
+                evidence.observedValue?.toInt() ?: 0,
+                evidence.comparisonValue?.toInt() ?: 0
+            )
+            return withEvidenceMetadata(value, evidence)
+        }
+        if (evidence.code == "MEASURED_FRAME_CADENCE_NEAR_ACTIVE_REFRESH") {
+            val value = getString(
+                R.string.performance_evidence_display_cadence,
+                evidence.observedValue?.let { formatNumber(it) } ?: "--",
+                evidence.comparisonValue?.let { formatNumber(it) } ?: "--"
+            )
+            return withEvidenceMetadata(value, evidence)
+        }
+        val value = evidence.observedValue ?: return withEvidenceMetadata(domain, evidence)
+        val formatted = when (evidence.unit) {
+            "%", "% below target", "% (estimated)" -> formatNumber(value) + "%"
+            "°C" -> formatNumber(value) + "°C"
+            "°C/min" -> formatNumber(value) + "°C/min"
+            "ms" -> formatNumber(value) + "ms"
+            "FPS" -> formatNumber(value) + "fps"
+            "Hz from measured vsync interval" -> formatNumber(value) + "Hz"
+            "kHz" -> formatNumber(value) + "kHz"
+            "bytes" -> formatNumber(value / (1024.0 * 1024.0)) + "MB"
+            "segments/s" -> formatNumber(value) + "/s"
+            "status" -> "#${value.toInt()}"
+            else -> formatNumber(value)
+        }
+        return withEvidenceMetadata("$domain $formatted", evidence)
+    }
+
+    private fun withEvidenceMetadata(text: String, evidence: PerformanceEvidence): String = getString(
+        R.string.performance_evidence_sample_scope,
+        text,
+        getString(
+            when (evidence.scope) {
+                EvidenceScope.SYSTEM_WIDE -> R.string.performance_evidence_scope_system
+                EvidenceScope.GPU_TELEMETRY -> R.string.performance_evidence_scope_gpu
+                EvidenceScope.THERMAL_ZONE -> R.string.performance_evidence_scope_thermal_zone
+                EvidenceScope.SYSTEM_NETWORK -> R.string.performance_evidence_scope_system_network
+                EvidenceScope.TCP_PROBE -> R.string.performance_evidence_scope_tcp
+                EvidenceScope.DISPLAY_MODE -> R.string.performance_evidence_scope_display
+                EvidenceScope.GFXINFO -> R.string.performance_evidence_scope_gfxinfo
+            }
+        ),
+        evidence.sampleCount.coerceAtLeast(0)
+    )
+
+    private fun formatNumber(value: Double): String = String.format(
+        requireContext().resources.configuration.locales[0], "%.1f", value
+    )
 
     // ---------------- Observers ----------------
 

@@ -129,6 +129,19 @@ class AdaptiveLoop(
         const val IDLE_RETRY_MS = 15_000L
         const val MATERIAL_THERMAL_RISE_C = 2.0
         const val SEVERE_THERMAL_RISE_C = 3.0
+        const val MAX_WINDOW_MS = 300_000L
+        const val MIN_SAMPLE_INTERVAL_MS = 100L
+        const val MAX_SAMPLE_INTERVAL_MS = 60_000L
+        const val MAX_WINDOW_MONITOR_SAMPLES = 4_096
+        const val MAX_FRAME_SAMPLES_PER_MONITOR = 1_000
+        const val MAX_WINDOW_FRAME_SAMPLES = 20_000
+        const val MAX_VALID_FPS = 1_000
+        const val MIN_VALID_TEMP_C = -40.0
+        const val MAX_VALID_TEMP_C = 200.0
+        const val MAX_VALID_SLOPE_C_PER_MIN = 100.0
+        const val MAX_VALID_ENERGY_MAH = 1_000_000_000.0
+        const val MIN_VALID_FRAME_MS = 0.1
+        const val MAX_VALID_FRAME_MS = 1_000.0
     }
 
     @Volatile var phase: String = "idle"
@@ -320,11 +333,16 @@ class AdaptiveLoop(
     )
 
     private suspend fun collectWindow(windowMs: Long): CollectedWindow {
+        if (windowMs !in 0L..MAX_WINDOW_MS || cfg.sampleIntervalMs !in MIN_SAMPLE_INTERVAL_MS..MAX_SAMPLE_INTERVAL_MS) {
+            return CollectedWindow(emptyList(), false, "invalid sampling configuration")
+        }
+        val sampleInterval = cfg.sampleIntervalMs
         val samples = ArrayList<AdaptiveSample>(
-            (windowMs / cfg.sampleIntervalMs.coerceAtLeast(1L)).toInt().coerceIn(1, 32)
+            (windowMs / sampleInterval).toInt().coerceIn(1, 32)
         )
         val start = clockMs()
-        val end = start + windowMs.coerceAtLeast(0L)
+        if (start < 0L) return CollectedWindow(samples, false, "invalid monotonic clock")
+        val end = if (start > Long.MAX_VALUE - windowMs) Long.MAX_VALUE else start + windowMs
         var lastTs = Long.MIN_VALUE
         while (clockMs() < end) {
             currentCoroutineContext().ensureActive()
@@ -334,15 +352,51 @@ class AdaptiveLoop(
                 return CollectedWindow(samples, false, "thermal safety floor reached ($status)")
             }
             val sample = sampler.poll()
-            if (sample != null && sample.timestampMs != lastTs) {
-                lastTs = sample.timestampMs
-                samples += sample
-                if (sample.thermalValid && sample.thermal >= ThermalGuard.STATUS_MODERATE) {
-                    return CollectedWindow(samples, false, "thermal status changed during window")
+            if (sample != null) {
+                val capturedNow = clockMs()
+                if (sample.timestampMs <= 0L || sample.timestampMs > capturedNow || sample.monitorAgeMs < 0L) {
+                    return CollectedWindow(samples, false, "invalid or future monitor timestamp")
+                }
+                if (sample.timestampMs < lastTs) {
+                    return CollectedWindow(samples, false, "monitor timestamps regressed")
+                }
+                if (sample.timestampMs > lastTs) {
+                    if (sample.thermalValid && sample.thermal !in 0..6) {
+                        return CollectedWindow(samples, false, "invalid thermal status sample")
+                    }
+                    if (sample.tempC?.let { !it.isFinite() || it !in MIN_VALID_TEMP_C..MAX_VALID_TEMP_C } == true) {
+                        return CollectedWindow(samples, false, "invalid temperature sample")
+                    }
+                    if (sample.targetFps !in 1..MAX_VALID_FPS) {
+                        return CollectedWindow(samples, false, "invalid target FPS")
+                    }
+                    if (sample.thermalValid && sample.thermal >= ThermalGuard.STATUS_MODERATE) {
+                        return CollectedWindow(samples + sample, false, "thermal status changed during window")
+                    }
+                    if (samples.size >= MAX_WINDOW_MONITOR_SAMPLES) {
+                        return CollectedWindow(samples, false, "monitor sample limit exceeded")
+                    }
+                    lastTs = sample.timestampMs
+                    samples += sample.copy(
+                        fps = sample.fps?.takeIf { it in 1..MAX_VALID_FPS },
+                        thermalSlopeCPerMin = sample.thermalSlopeCPerMin?.takeIf {
+                            it.isFinite() && it in -MAX_VALID_SLOPE_C_PER_MIN..MAX_VALID_SLOPE_C_PER_MIN
+                        },
+                        ramPct = sample.ramPct?.takeIf { it in 0..100 },
+                        energyMah = sample.energyMah?.takeIf {
+                            it.isFinite() && it in 0.0..MAX_VALID_ENERGY_MAH
+                        },
+                        frameTimesMs = sample.frameTimesMs.asSequence()
+                            .filter { it.isFinite() && it in MIN_VALID_FRAME_MS..MAX_VALID_FRAME_MS }
+                            .take(MAX_FRAME_SAMPLES_PER_MONITOR).toList(),
+                        frameIntervalsMs = sample.frameIntervalsMs.asSequence()
+                            .filter { it.isFinite() && it in MIN_VALID_FRAME_MS..MAX_VALID_FRAME_MS }
+                            .take(MAX_FRAME_SAMPLES_PER_MONITOR).toList()
+                    )
                 }
             }
             val remaining = end - clockMs()
-            if (remaining > 0L) wait(min(cfg.sampleIntervalMs.coerceAtLeast(1L), remaining))
+            if (remaining > 0L) wait(min(sampleInterval, remaining))
         }
         return CollectedWindow(samples, clockMs() >= end)
     }
@@ -352,36 +406,51 @@ class AdaptiveLoop(
         complete: Boolean,
         requestedWindowMs: Long
     ): WindowMetrics {
-        val fps = samples.mapNotNull { it.fps?.takeIf { v -> v > 0 }?.toDouble() }
-        val sortedFps = fps.sorted()
+        val sortedFps = samples.mapNotNull {
+            it.fps?.takeIf { value -> value in 1..MAX_VALID_FPS }?.toDouble()
+        }.sorted()
         val fpsMean = sortedFps.takeIf { it.isNotEmpty() }?.average()
         val fpsCoefficientOfVariation = if (sortedFps.size >= 2 && fpsMean != null && fpsMean > 0.0) {
             val variance = sortedFps.sumOf { (it - fpsMean) * (it - fpsMean) } /
                 (sortedFps.size - 1)
             sqrt(variance) / fpsMean
         } else null
-        val thermalSamples = samples.filter { it.thermalValid }
+        val thermalSamples = samples.filter { it.thermalValid && it.thermal in 0..6 }
         val tiers = thermalSamples.map { it.thermal }
-        val temperatures = samples.mapNotNull { it.tempC?.takeIf { v -> v.isFinite() } }
-        val slopes = samples.mapNotNull { it.thermalSlopeCPerMin?.takeIf { v -> v.isFinite() } }
-        val memory = samples.mapNotNull { it.ramPct?.takeIf { v -> v in 0..100 }?.toDouble() }
-        val energy = samples.mapNotNull { it.energyMah?.takeIf { v -> v.isFinite() && v >= 0.0 } }
-        val times = samples.map { it.timestampMs }.sorted()
-        val maxGap = times.zipWithNext().maxOfOrNull { (a, b) -> (b - a).coerceAtLeast(0L) } ?: 0L
+        val temperatures = samples.mapNotNull {
+            it.tempC?.takeIf { value -> value.isFinite() && value in MIN_VALID_TEMP_C..MAX_VALID_TEMP_C }
+        }
+        val slopes = samples.mapNotNull {
+            it.thermalSlopeCPerMin?.takeIf {
+                value -> value.isFinite() && value in -MAX_VALID_SLOPE_C_PER_MIN..MAX_VALID_SLOPE_C_PER_MIN
+            }
+        }
+        val memory = samples.mapNotNull { it.ramPct?.takeIf { value -> value in 0..100 }?.toDouble() }
+        val energy = samples.mapNotNull {
+            it.energyMah?.takeIf { value -> value.isFinite() && value in 0.0..MAX_VALID_ENERGY_MAH }
+        }
+        // Collection rejects regressions; keep their observed order here so a
+        // malformed sequence cannot be hidden by sorting before validation.
+        val times = samples.map { it.timestampMs }
+        val maxGap = times.zipWithNext().maxOfOrNull { (a, b) ->
+            if (b < a) Long.MAX_VALUE else b - a
+        } ?: 0L
         val packages = samples.map { it.gamePackage }.distinct()
         val epochs = samples.map { it.processEpoch }.distinct()
-        val targetFps = samples.map { it.targetFps }.firstOrNull { it > 0 } ?: 60
-        val frameTimes = samples.flatMap { it.frameTimesMs }
+        val targetFps = samples.map { it.targetFps }.firstOrNull { it in 1..MAX_VALID_FPS } ?: 60
+        val frameTimes = samples.asSequence().flatMap { it.frameTimesMs.asSequence() }
+            .filter { it.isFinite() && it in MIN_VALID_FRAME_MS..MAX_VALID_FRAME_MS }
+            .take(MAX_WINDOW_FRAME_SAMPLES).toList()
         val framePacing = FramePacingAnalyzer.analyze(
             samples.map { sample ->
                 FrameSnapshot(
-                    fps = sample.fps?.toDouble(),
-                    targetFps = sample.targetFps.takeIf { it > 0 },
-                    frameTimesMs = sample.frameTimesMs,
-                    intendedVsyncIntervalsMs = sample.frameIntervalsMs
+                    fps = sample.fps?.takeIf { it in 1..MAX_VALID_FPS }?.toDouble(),
+                    targetFps = sample.targetFps.takeIf { it in 1..MAX_VALID_FPS },
+                    frameTimesMs = sample.frameTimesMs.take(MAX_FRAME_SAMPLES_PER_MONITOR),
+                    intendedVsyncIntervalsMs = sample.frameIntervalsMs.take(MAX_FRAME_SAMPLES_PER_MONITOR)
                 )
             },
-            targetFps
+            targetFps.takeIf { it in 1..MAX_VALID_FPS }
         )
         return WindowMetrics(
             fpsMean = fpsMean ?: Double.NaN,
@@ -403,7 +472,7 @@ class AdaptiveLoop(
             windowComplete = complete,
             requestedWindowMs = requestedWindowMs,
             maxSampleGapMs = maxGap,
-            maxMonitorAgeMs = samples.maxOfOrNull { it.monitorAgeMs.coerceAtLeast(0L) } ?: Long.MAX_VALUE,
+            maxMonitorAgeMs = samples.maxOfOrNull { it.monitorAgeMs } ?: Long.MAX_VALUE,
             gamePackage = packages.singleOrNull(),
             processEpoch = epochs.singleOrNull() ?: -1L,
             targetFps = targetFps,
@@ -494,7 +563,7 @@ class AdaptiveLoop(
         taskId: String,
         title: String,
         variantId: String,
-        applyVariant: () -> TaskResult,
+        applyVariant: (BoostContext) -> TaskResult,
         attempt: PairAttempt,
         trialContext: TrialContext,
         weights: ObjectiveWeights,
@@ -616,7 +685,7 @@ class AdaptiveLoop(
                     taskId = task.id,
                     title = task.titleEn,
                     variantId = DEFAULT_VARIANT_ID,
-                    applyVariant = { task.apply(ctx) },
+                    applyVariant = { taskContext -> task.apply(taskContext) },
                     attempt = attempt,
                     trialContext = trialContext,
                     weights = policy.weights,
@@ -689,7 +758,9 @@ class AdaptiveLoop(
                 )
                 return
             }
-            val applyResult = applyAndJournal(task.id, task.titleEn, ctx) { task.apply(ctx) }
+            val applyResult = applyAndJournal(task.id, task.titleEn, ctx) { taskContext ->
+                task.apply(taskContext)
+            }
             if (!isSafelyApplied(applyResult)) {
                 ledger.markMoreData(
                     task.id, task.titleEn, trialContext,
@@ -784,7 +855,7 @@ class AdaptiveLoop(
                         taskId = task.id,
                         title = task.titleEn,
                         variantId = variant.detail,
-                        applyVariant = { variant.apply(ctx) },
+                        applyVariant = { taskContext -> variant.apply(taskContext) },
                         attempt = attempt,
                         trialContext = trialContext,
                         weights = policy.weights,
@@ -862,7 +933,9 @@ class AdaptiveLoop(
                     )
                 } else {
                     val appliedWinner = selected?.let { variant ->
-                        applyAndJournal(task.id, task.titleEn, ctx) { variant.apply(ctx) }
+                        applyAndJournal(task.id, task.titleEn, ctx) { taskContext ->
+                            variant.apply(taskContext)
+                        }
                     }
                     if (appliedWinner == null || !isSafelyApplied(appliedWinner)) {
                         allPairsQualityChecked = false
@@ -924,24 +997,21 @@ class AdaptiveLoop(
         taskId: String,
         title: String,
         ctx: BoostContext,
-        apply: () -> TaskResult
+        apply: (BoostContext) -> TaskResult
     ): TaskResult {
-        return engine.withTaskLock(taskId) {
-            val result = try {
-                apply()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // A well-behaved task returns its reversible entries. Any
-                // partial entries already appended by a task remain restorable.
-                TaskResult(taskId, TaskStatus.Failed("adaptive candidate: ${e.message}"))
-            }
-            if (result.entries.isNotEmpty() && result.status.success) {
-                ctx.journal.add(result.entries)
-                ctx.log("adaptive journaled $taskId: ${result.entries.size} change(s)")
-            }
-            result
+        val result = try {
+            engine.applyWithJournal(taskId, ctx, apply)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // A write-ahead entry created before the exception remains available
+            // to the NonCancellable restore path.
+            TaskResult(taskId, TaskStatus.Failed("adaptive candidate: ${e.message}"))
         }
+        if (result.entries.isNotEmpty() && result.status.success) {
+            ctx.log("adaptive journaled $taskId: ${result.entries.size} change(s)")
+        }
+        return result
     }
 
     /** Thermal risks may downgrade statistical KEEP, never upgrade MORE_DATA/DROP. */
@@ -981,7 +1051,7 @@ class AdaptiveLoop(
         for (entry in entries) {
             if (Journal.restore(entry, ctx.executor)) restored += entry else allRestored = false
         }
-        if (restored.isNotEmpty()) ctx.journal.remove(restored)
+        if (restored.isNotEmpty() && !ctx.journal.remove(restored)) allRestored = false
         allRestored
     }
 

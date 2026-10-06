@@ -23,11 +23,14 @@ data class FpsObservation(
  * monitor/UI ticks do not run a heavy dumpsys on every tick.
  */
 class FpsSampler(
-    private val minPollIntervalMs: Long = MIN_POLL_INTERVAL_MS
+    minPollIntervalMs: Long = MIN_POLL_INTERVAL_MS,
+    private val clockMs: () -> Long = { SystemClock.elapsedRealtime() }
 ) {
+    private val pollIntervalMs = minPollIntervalMs.coerceAtLeast(0L)
     private var lastFrames: Long = -1L
     private var lastTime = 0L
     private var lastPollAt = 0L
+    private var hasPolled = false
     private var lastCompletedNs = Long.MIN_VALUE
     private val vsyncIntervals = IntendedVsyncIntervalTracker()
     private var lastPackage: String? = null
@@ -41,7 +44,8 @@ class FpsSampler(
         gamePackage: String,
         executor: SystemExecutor
     ): FpsObservation {
-        val now = SystemClock.elapsedRealtime()
+        val now = clockMs()
+        if (now < 0L) return FpsObservation(null, emptyList(), processEpoch, 0L, false)
         if (!ShellInput.isPackageName(gamePackage)) {
             resetForPackage(null)
             return FpsObservation(null, emptyList(), processEpoch, now, false)
@@ -49,10 +53,11 @@ class FpsSampler(
         if (gamePackage != lastPackage) {
             resetForPackage(gamePackage)
         }
-        if (lastPollAt != 0L && now - lastPollAt < minPollIntervalMs) {
+        if (hasPolled && (now < lastPollAt || now - lastPollAt < pollIntervalMs)) {
             return FpsObservation(null, emptyList(), processEpoch, now, false)
         }
         lastPollAt = now
+        hasPolled = true
         val result = executor.shell("dumpsys gfxinfo \"$gamePackage\" framestats 2>/dev/null")
         if (!result.ok) return FpsObservation(null, emptyList(), processEpoch, now, false)
 
@@ -81,9 +86,12 @@ class FpsSampler(
         }
         var fps: Int? = null
         if (frames != null) {
-            if (lastFrames >= 0L && frames > lastFrames && now - lastTime >= MIN_RATE_INTERVAL_MS) {
-                fps = ((frames - lastFrames) * 1_000L / (now - lastTime))
-                    .toInt().coerceIn(1, 240)
+            val elapsed = now - lastTime
+            if (lastFrames >= 0L && frames > lastFrames && elapsed >= MIN_RATE_INTERVAL_MS) {
+                val measured = (frames - lastFrames).toDouble() * 1_000.0 / elapsed.toDouble()
+                if (measured.isFinite() && measured >= 1.0 && measured <= MAX_FPS) {
+                    fps = measured.toInt()
+                }
             }
             lastFrames = frames
             lastTime = now
@@ -107,6 +115,7 @@ class FpsSampler(
         lastFrames = -1L
         lastTime = 0L
         lastPollAt = 0L
+        hasPolled = false
         lastCompletedNs = Long.MIN_VALUE
         vsyncIntervals.reset()
     }
@@ -115,5 +124,6 @@ class FpsSampler(
         private val TOTAL_FRAMES = Regex("Total frames rendered:\\s*(\\d+)")
         const val MIN_POLL_INTERVAL_MS = 2_000L
         const val MIN_RATE_INTERVAL_MS = 800L
+        const val MAX_FPS = 1_000
     }
 }

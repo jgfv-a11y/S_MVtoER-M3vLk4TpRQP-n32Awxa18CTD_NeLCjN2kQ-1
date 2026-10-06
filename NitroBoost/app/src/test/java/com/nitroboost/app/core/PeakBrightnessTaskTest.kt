@@ -11,6 +11,7 @@ class PeakBrightnessTaskTest {
 
     private fun journal(): Journal {
         val f = File.createTempFile("nitro_peak", ".json")
+        f.delete()
         f.deleteOnExit()
         return Journal(f)
     }

@@ -11,6 +11,7 @@ class GameApiTaskTest {
 
     private fun journal(): Journal {
         val f = File.createTempFile("nitro_gameapi", ".json")
+        f.delete()
         f.deleteOnExit()
         return Journal(f)
     }

@@ -6,4 +6,9 @@ data class BoostContext(
     val executor: SystemExecutor,
     val journal: Journal,
     val log: (String) -> Unit = {}
-)
+) {
+    /** A task-scoped context that durably records each supported mutation before writing it. */
+    fun forTask(taskId: String): BoostContext = copy(
+        executor = JournaledSystemExecutor(executor, journal, taskId)
+    )
+}

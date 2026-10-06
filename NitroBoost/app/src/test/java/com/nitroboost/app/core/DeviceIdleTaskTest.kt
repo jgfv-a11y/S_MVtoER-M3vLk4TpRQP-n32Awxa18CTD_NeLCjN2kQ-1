@@ -11,6 +11,7 @@ class DeviceIdleTaskTest {
 
     private fun journal(): Journal {
         val f = File.createTempFile("nitro_doze", ".json")
+        f.delete()
         f.deleteOnExit()
         return Journal(f)
     }

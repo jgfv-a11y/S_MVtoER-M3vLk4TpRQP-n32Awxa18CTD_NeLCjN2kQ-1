@@ -38,9 +38,16 @@ interface SystemExecutor {
 
     fun secureSettingGet(key: String): String?
     fun secureSettingPut(key: String, value: String): Boolean
+    /** Delete a secure setting when its pre-session value was absent. */
+    fun secureSettingDelete(key: String): Boolean = false
 
     fun globalSettingGet(key: String): String?
     fun globalSettingPut(key: String, value: String): Boolean
+    /** Delete a global setting when its pre-session value was absent. */
+    fun globalSettingDelete(key: String): Boolean = false
+
+    /** True only when an unmodified raw temperature source is available for override safety. */
+    val thermalSafetyAvailable: Boolean get() = false
 
     /** Current notification interruption filter (see [DndFilters]). */
     fun dndFilterGet(): Int

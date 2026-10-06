@@ -18,13 +18,24 @@ import java.nio.file.StandardCopyOption
  *  - a corrupt live file is copied to `.corrupt` and the last known-good
  *    `.bak` is recovered when available;
  *  - unknown/partial entries are skipped instead of discarding the whole file;
- *  - if the live journal grows past [ROTATE_AFTER] entries (a leak of failed
- *    restores), a snapshot is archived as `{filename}_{timestamp}` and the
- *    live list is cleared so storage cannot grow without bound.
+ *  - if the live journal grows past [ROTATE_AFTER] entries, a snapshot is
+ *    archived as `{filename}_{timestamp}` for diagnosis; active reversals
+ *    remain in the live list and archives are not part of startup recovery.
  */
 class Journal(val file: File) {
 
     private val mutableEntries: MutableList<JournalEntry> = mutableListOf()
+    private var archivedForCurrentHighWater = false
+
+    /** Non-null when startup found damage and had to recover or could not recover. */
+    @Volatile
+    var loadIssue: String? = null
+        private set
+
+    /** True when the durable reversal state is unknown; writes must fail closed. */
+    @Volatile
+    var recoveryBlocked: Boolean = false
+        private set
 
     /** Mutable copy retained for source compatibility; mutating it cannot bypass durable Journal APIs. */
     val entries: MutableList<JournalEntry>
@@ -40,28 +51,56 @@ class Journal(val file: File) {
     @Synchronized
     fun load() {
         mutableEntries.clear()
+        loadIssue = null
+        recoveryBlocked = false
+        archivedForCurrentHighWater = false
         if (!file.exists()) return
         val text = try {
             file.readText()
         } catch (_: Exception) {
+            preserveCorruptFile()
+            recoverBackup("journal could not be read")
+            return
+        }
+        if (text.isBlank()) {
+            // A successful clear is always the explicit JSON value []. A blank
+            // existing file is therefore truncation/corruption, not an empty journal.
+            preserveCorruptFile()
+            recoverBackup("journal file is blank")
             return
         }
         try {
             mutableEntries.addAll(parseEntries(text))
-            return
         } catch (_: Exception) {
-            // Preserve the corrupt live journal, then recover the last known-good snapshot.
-            val corrupt = File(file.parentFile, file.name + ".corrupt")
-            try {
-                Files.copy(file.toPath(), corrupt.toPath(), StandardCopyOption.REPLACE_EXISTING)
-            } catch (_: Exception) {
-            }
+            preserveCorruptFile()
+            recoverBackup("journal file is corrupt")
         }
-        val backup = File(file.parentFile, file.name + ".bak")
+    }
+
+    private fun preserveCorruptFile() {
+        val corrupt = File(file.parentFile, file.name + ".corrupt")
         try {
-            if (backup.exists()) mutableEntries.addAll(parseEntries(backup.readText()))
+            Files.copy(file.toPath(), corrupt.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun recoverBackup(problem: String) {
+        val backup = File(file.parentFile, file.name + ".bak")
+        if (!backup.exists()) {
+            recoveryBlocked = true
+            loadIssue = "$problem; no backup is available"
+            return
+        }
+        try {
+            val text = backup.readText()
+            if (text.isBlank()) throw IllegalStateException("blank backup")
+            mutableEntries.addAll(parseEntries(text))
+            loadIssue = "$problem; recovered the last known-good backup"
         } catch (_: Exception) {
             mutableEntries.clear()
+            recoveryBlocked = true
+            loadIssue = "$problem; backup is also corrupt"
         }
     }
 
@@ -95,8 +134,9 @@ class Journal(val file: File) {
     }
 
     @Synchronized
-    fun add(newEntries: List<JournalEntry>) {
-        if (newEntries.isEmpty()) return
+    fun add(newEntries: List<JournalEntry>): Boolean {
+        if (newEntries.isEmpty()) return !recoveryBlocked
+        if (recoveryBlocked) return false
         for (entry in newEntries) {
             val alreadyRecorded = mutableEntries.any {
                 it.taskId == entry.taskId && it.kind == entry.kind && it.key == entry.key
@@ -105,20 +145,31 @@ class Journal(val file: File) {
             // pre-session state and duplicate entries must not restore twice.
             if (!alreadyRecorded) mutableEntries.add(entry)
         }
-        save()
+        // Keep the in-memory intent on failure: callers can still attempt an
+        // immediate rollback, and the failure is never reported as durable.
+        return save()
     }
 
     @Synchronized
-    fun remove(newEntries: List<JournalEntry>) {
+    fun remove(newEntries: List<JournalEntry>): Boolean {
+        if (recoveryBlocked) return false
+        val before = mutableEntries.toList()
         val set = newEntries.toHashSet()
         mutableEntries.removeAll { it in set }
-        save()
+        if (save()) return true
+        mutableEntries.clear()
+        mutableEntries.addAll(before)
+        return false
     }
 
     @Synchronized
-    fun clear() {
+    fun clear(): Boolean {
+        if (recoveryBlocked) return false
+        val before = mutableEntries.toList()
         mutableEntries.clear()
-        save()
+        if (save()) return true
+        mutableEntries.addAll(before)
+        return false
     }
 
     @Synchronized
@@ -132,57 +183,71 @@ class Journal(val file: File) {
         mutableEntries.any { it.taskId == taskId && it.key == key }
 
     @Synchronized
-    fun save() {
-        try {
-            persistLocked()
-            // Overflow protection for leaked failed-restores. The archive
-            // name MUST be `{originalFilename}_{timestamp}` — JournalTest
-            // (and operators grepping the files dir) key off that prefix.
-            if (mutableEntries.size > ROTATE_AFTER) {
+    fun save(): Boolean {
+        if (recoveryBlocked) return false
+        return try {
+            if (!persistLocked()) return false
+            // Archive oversized journals for diagnosis, but NEVER clear active
+            // reversals: an archive is not part of startup recovery.
+            if (mutableEntries.size <= ROTATE_AFTER) {
+                archivedForCurrentHighWater = false
+            } else if (!archivedForCurrentHighWater) {
                 val archived = File(file.parentFile, file.name + "_" + System.currentTimeMillis())
                 try {
-                    if (file.exists()) file.copyTo(archived, overwrite = true)
+                    if (file.exists()) {
+                        file.copyTo(archived, overwrite = true)
+                        archivedForCurrentHighWater = true
+                    }
                 } catch (_: Exception) {
+                    // Archive failure must not affect the durable live journal.
                 }
-                mutableEntries.clear()
-                persistLocked()
             }
-        } catch (e: Exception) {
-            // Never let persistence break the boost flow.
+            true
+        } catch (_: Exception) {
+            false
         }
     }
 
-    private fun persistLocked() {
-        file.parentFile?.mkdirs()
-        val arr = JSONArray()
-        for (e in mutableEntries) {
-            val o = JSONObject()
-            o.put("taskId", e.taskId)
-            o.put("kind", e.kind.name)
-            o.put("key", e.key)
-            o.put("oldValue", e.oldValue ?: JSONObject.NULL)
-            o.put("newValue", e.newValue ?: JSONObject.NULL)
-            o.put("revertCmd", e.revertCmd ?: JSONObject.NULL)
-            o.put("ts", e.ts)
-            arr.put(o)
-        }
-
-        val data = arr.toString(2).toByteArray(Charsets.UTF_8)
-        val tmp = File(file.parentFile, file.name + ".tmp")
-        val backup = File(file.parentFile, file.name + ".bak")
-
-        if (file.exists() && runCatching { parseEntries(file.readText()) }.isSuccess) {
-            val backupTmp = File(file.parentFile, file.name + ".bak.tmp")
-            try {
-                writeAndSync(backupTmp, file.readBytes())
-                atomicReplace(backupTmp, backup)
-            } catch (_: Exception) {
-                backupTmp.delete()
-                // The existing live journal remains intact until the new temp is synced.
+    private fun persistLocked(): Boolean {
+        return try {
+            file.parentFile?.mkdirs()
+            val arr = JSONArray()
+            for (e in mutableEntries) {
+                val o = JSONObject()
+                o.put("taskId", e.taskId)
+                o.put("kind", e.kind.name)
+                o.put("key", e.key)
+                o.put("oldValue", e.oldValue ?: JSONObject.NULL)
+                o.put("newValue", e.newValue ?: JSONObject.NULL)
+                o.put("revertCmd", e.revertCmd ?: JSONObject.NULL)
+                o.put("ts", e.ts)
+                arr.put(o)
             }
+
+            val data = arr.toString(2).toByteArray(Charsets.UTF_8)
+            val tmp = File(file.parentFile, file.name + ".tmp")
+            val backup = File(file.parentFile, file.name + ".bak")
+
+            if (file.exists() && runCatching { parseEntries(file.readText()) }.isSuccess) {
+                val backupTmp = File(file.parentFile, file.name + ".bak.tmp")
+                try {
+                    writeAndSync(backupTmp, file.readBytes())
+                    atomicReplace(backupTmp, backup)
+                } catch (_: Exception) {
+                    backupTmp.delete()
+                    // The existing live journal remains intact until the new temp is synced.
+                }
+            }
+            writeAndSync(tmp, data)
+            atomicReplace(tmp, file)
+            true
+        } catch (_: Exception) {
+            try {
+                File(file.parentFile, file.name + ".tmp").delete()
+            } catch (_: Exception) {
+            }
+            false
         }
-        writeAndSync(tmp, data)
-        atomicReplace(tmp, file)
     }
 
     private fun writeAndSync(target: File, data: ByteArray) {
@@ -205,7 +270,7 @@ class Journal(val file: File) {
     }
 
     companion object {
-        /** Live-journal size that triggers an archive + clear. */
+        /** Live-journal size that triggers an archive snapshot. */
         const val ROTATE_AFTER = 250
 
         private fun safeRevertCommand(entry: JournalEntry): String? {
@@ -274,26 +339,70 @@ class Journal(val file: File) {
         fun restore(entry: JournalEntry, ex: SystemExecutor): Boolean {
             return try {
                 when (entry.kind) {
-                    JournalEntry.Kind.SYS_SETTING ->
-                        if (entry.taskId == "display" && entry.key == "min_refresh_rate" && entry.oldValue == null)
-                            ex.sysSettingDelete(entry.key)
-                        else ex.sysSettingPut(entry.key, entry.oldValue ?: "0")
-                    JournalEntry.Kind.SECURE_SETTING ->
-                        ex.secureSettingPut(entry.key, entry.oldValue ?: "0")
-                    JournalEntry.Kind.GLOBAL_SETTING ->
-                        ex.globalSettingPut(entry.key, entry.oldValue ?: "0")
-                    JournalEntry.Kind.SYSFS ->
-                        ex.writeSys(entry.key, entry.oldValue ?: "0")
-                    JournalEntry.Kind.DND ->
-                        ex.dndFilterSet(entry.oldValue?.toIntOrNull() ?: DndFilters.ALL)
+                    JournalEntry.Kind.SYS_SETTING -> {
+                        val old = entry.oldValue
+                        if (ex.sysSettingGet(entry.key) == old) true
+                        else if (old == null) ex.sysSettingDelete(entry.key)
+                        else ex.sysSettingPut(entry.key, old) && ex.sysSettingGet(entry.key) == old
+                    }
+                    JournalEntry.Kind.SECURE_SETTING -> {
+                        val old = entry.oldValue
+                        if (ex.secureSettingGet(entry.key) == old) true
+                        else if (old == null) ex.secureSettingDelete(entry.key)
+                        else ex.secureSettingPut(entry.key, old) && ex.secureSettingGet(entry.key) == old
+                    }
+                    JournalEntry.Kind.GLOBAL_SETTING -> {
+                        val old = entry.oldValue
+                        if (ex.globalSettingGet(entry.key) == old) true
+                        else if (old == null) ex.globalSettingDelete(entry.key)
+                        else ex.globalSettingPut(entry.key, old) && ex.globalSettingGet(entry.key) == old
+                    }
+                    JournalEntry.Kind.SYSFS -> {
+                        val old = entry.oldValue ?: return false
+                        if (ex.readSys(entry.key)?.trim() == old) true
+                        else ex.writeSys(entry.key, old) && ex.readSys(entry.key)?.trim() == old
+                    }
+                    JournalEntry.Kind.DND -> {
+                        val old = entry.oldValue?.toIntOrNull()
+                            ?.takeIf { it in DndFilters.ALL..DndFilters.NONE } ?: return false
+                        if (ex.dndFilterGet() == old) true
+                        else ex.dndFilterSet(old) && ex.dndFilterGet() == old
+                    }
                     JournalEntry.Kind.THERMAL_OVERRIDE, JournalEntry.Kind.CMD -> {
                         val command = safeRevertCommand(entry) ?: return false
-                        ex.shell(command).ok
+                        if (entry.taskId == "display" && entry.key == "wm_density") {
+                            restoreDensity(entry, ex, command)
+                        } else {
+                            ex.shell(command).ok
+                        }
                     }
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 false
             }
+        }
+
+        private fun restoreDensity(entry: JournalEntry, ex: SystemExecutor, command: String): Boolean {
+            fun currentOverride(): Pair<Boolean, String?> {
+                val result = ex.shell("wm density")
+                if (!result.ok) return false to null
+                val physical = Regex("Physical density:\\s*(\\d+)").find(result.stdout)
+                    ?.groupValues?.getOrNull(1)?.toIntOrNull()
+                if (physical == null || physical !in 72..1000) return false to null
+                val overrideText = Regex("Override density:\\s*(\\d+)").find(result.stdout)
+                    ?.groupValues?.getOrNull(1)
+                val override = overrideText?.toIntOrNull()
+                if (overrideText != null && (override == null || override !in 72..1000)) return false to null
+                return true to override?.toString()
+            }
+
+            val oldOverride = entry.oldValue
+            val before = currentOverride()
+            if (!before.first) return false
+            if (before.second == oldOverride) return true
+            if (!ex.shell(command).ok) return false
+            val after = currentOverride()
+            return after.first && after.second == oldOverride
         }
     }
 }

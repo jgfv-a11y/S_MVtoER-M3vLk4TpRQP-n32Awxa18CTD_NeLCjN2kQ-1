@@ -17,6 +17,7 @@ class GovernorTaskTest {
 
     private fun journal(): Journal {
         val f = File.createTempFile("nitro_gov", ".json")
+        f.delete()
         f.deleteOnExit()
         return Journal(f)
     }

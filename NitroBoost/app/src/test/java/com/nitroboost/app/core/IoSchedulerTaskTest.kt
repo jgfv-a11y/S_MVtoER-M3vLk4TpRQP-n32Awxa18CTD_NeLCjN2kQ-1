@@ -11,6 +11,7 @@ class IoSchedulerTaskTest {
 
     private fun journal(): Journal {
         val f = File.createTempFile("nitro_io", ".json")
+        f.delete()
         f.deleteOnExit()
         return Journal(f)
     }

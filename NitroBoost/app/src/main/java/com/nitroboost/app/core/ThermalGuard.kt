@@ -35,6 +35,8 @@ object ThermalGuard {
     const val RAW_MODERATE_C = 44.0
     const val RAW_SEVERE_C = 48.0
     const val RAW_CRITICAL_C = 52.0
+    private const val MIN_RAW_SENSOR_C = -40.0
+    private const val MAX_RAW_SENSOR_C = 200.0
 
     /**
      * Predictive thermal threshold. This is the "heat is rising too quickly"
@@ -48,6 +50,7 @@ object ThermalGuard {
     /** Pure mapping: raw max-zone temperature -> guard status. */
     fun rawStatusFor(tempC: Double?): Int = when {
         tempC == null -> STATUS_NOMINAL
+        !tempC.isFinite() || tempC !in MIN_RAW_SENSOR_C..MAX_RAW_SENSOR_C -> STATUS_CRITICAL
         tempC >= RAW_CRITICAL_C -> STATUS_CRITICAL
         tempC >= RAW_SEVERE_C -> STATUS_SEVERE
         tempC >= RAW_MODERATE_C -> STATUS_MODERATE

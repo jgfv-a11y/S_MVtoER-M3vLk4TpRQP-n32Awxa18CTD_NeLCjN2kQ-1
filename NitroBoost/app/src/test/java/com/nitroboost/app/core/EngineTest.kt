@@ -16,6 +16,7 @@ class EngineTest {
 
     private fun tempJournal(): Journal {
         val f = File.createTempFile("nitro_test", ".json")
+        f.delete()
         f.deleteOnExit()
         return Journal(f)
     }
@@ -104,6 +105,7 @@ class EngineTest {
         val ex = FakeExecutor()
         ex.dndFilter = DndFilters.NONE
         val f = File.createTempFile("nitro_test", ".json")
+        f.delete()
         f.deleteOnExit()
         val profile = testProfile(Module.DND)
         val engine = BoostEngine(listOf(DndTask()))

@@ -11,6 +11,7 @@ class GamePerfModeTaskTest {
 
     private fun journal(): Journal {
         val f = File.createTempFile("nitro_mode", ".json")
+        f.delete()
         f.deleteOnExit()
         return Journal(f)
     }
