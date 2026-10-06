@@ -12,7 +12,7 @@
 - **P5 UI foundations:** dashboard، profiles، settings، overlay، reports، state-preserving navigation، ورسائل capability الصادقة.
 
 ## Current Task
-مراجعة P1 telemetry أعمق عند التشغيل القادم؛ إصلاح BoostFragment ومراجعة MonitorHub/SensorFusion الحالية مكتملان.
+إصدار maintenance v1.14.1 بعد مراجعة الاستقرار؛ لا توجد مشكلة P0/P1 مؤكدة حاليًا.
 
 ## Completed This Session — 2026-10-04
 - راجعت `main` وتقارير التقدم؛ لم يكن ملف الاستمرارية موجودًا.
@@ -45,6 +45,13 @@
 - تمت مراجعة `MonitorHub.kt` و`SensorFusion.kt` بحثًا عن stale timestamps وnull-semantics؛ لم يظهر خلل مؤكد قابل للإصلاح دون جهاز Android، لذلك لم يُدخل تعديل تخميني.
 - بقيت تغييرات الكود محصورة في إصلاح واجهة Boost، مع توثيق التشغيل فقط.
 
+
+## Stability Review — 2026-10-06
+- تمت مراجعة MonitorDemand، دورة AppStore monitor clients، MonitorHub start/stop، وfreshness في SensorFusion.
+- لم يظهر خلل P0/P1 مؤكد؛ لم تُجرَ تغييرات تخمينية على telemetry.
+- تم تجهيز maintenance release `1.14.1` و`versionCode=18` دون ميزات جديدة، بهدف بناء APK جديد بعد تحقق CI.
+- Measurement unavailable: لا يوجد جهاز Android لقياسات أداء حقيقية.
+
 ## Architecture Decisions
 - القياسات غير المتاحة تبقى `null` ولا تُحوّل إلى أصفار مضللة.
 - لا يتم الادعاء بتحسن FPS دون benchmark على جهاز فعلي.
@@ -65,13 +72,12 @@
 - تحتاج جلسة لاحقة إلى مراجعة regression مركزة على telemetry وMonitorHub بعد الدمج الكبير.
 
 ## Next Automatic Task
-1. إجراء مراجعة telemetry أعمق تشمل دورة start/stop وfreshness عبر جلسات المراقبة.
-2. إضافة regression test فقط إذا ظهر خلل قابل للإعادة داخل JVM.
-3. عدم تعديل MonitorHub/SensorFusion دون دليل سلوكي أو اختبار يثبت الخلل.
-4. عدم ادعاء benchmark أداء قبل توفر جهاز Android فعلي.
+1. قراءة CI والتحقق من نشر APK v1.14.1.
+2. استمرار مراجعة safety/rollback قبل أي تغيير سلوكي.
+3. عدم إضافة ميزات أو ادعاء benchmark دون جهاز Android فعلي.
 5. إذا لم توجد مشكلة P0/P1، الانتقال إلى benchmark harness محلي/قابل للتشغيل على جهاز Android دون ادعاء نتائج أداء.
 
 ## Overall Progress
 - **Phase:** 4 — القياس التكيفي والتحليل القابل للتدقيق
-- **Task:** BoostFragment P1 correctness fix + telemetry review
-- **Completion:** مكتمل؛ CI نجح، ولم يُثبت خلل إضافي في MonitorHub/SensorFusion.
+- **Task:** Stability maintenance review + v1.14.1 APK
+- **Completion:** المراجعة مكتملة؛ بانتظار CI وبصمة APK.

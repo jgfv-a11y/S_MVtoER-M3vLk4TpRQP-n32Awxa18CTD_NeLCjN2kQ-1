@@ -1,4 +1,9 @@
 # Changelog
+## v1.14.1 — stability maintenance release
+- No new features. Revalidated monitoring lifecycle, telemetry freshness boundaries, and the existing BoostFragment correctness fix.
+- CI remains the build gate for tests, lint, and debug APK publication.
+- Version code 18.
+
 ## v1.14.0 — gfxinfo epoch recovery
 - **Frame telemetry recovery:** detects backward `FrameCompleted` timestamps when a game process or gfxinfo clock epoch restarts without resetting the cumulative frame counter.
 - **Vsync tracker recovery:** starts a clean IntendedVsync epoch after backward timestamps instead of silently discarding all later intervals.

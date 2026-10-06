@@ -110,7 +110,7 @@ gradle wrapper --gradle-version 8.7   # إذا كان Gradle 8.7 مثبتًا
 
 APK الناتج في `app/build/outputs/apk/debug/`.
 
-> 📲 **APK الإصدار v1.14.0**: [تنزيل nitroboost-debug.apk](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases/download/nitroboost-v1.14.0/nitroboost-debug.apk) — ينشره GitHub Actions بعد نجاح verifier والاختبارات وlint والبناء؛ تحقق من [Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) للتأكد من اكتمال النشر.
+> 📲 **APK الإصدار v1.14.1**: [تنزيل nitroboost-debug.apk](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases/download/nitroboost-v1.14.1/nitroboost-debug.apk) — ينشره GitHub Actions بعد نجاح verifier والاختبارات وlint والبناء؛ تحقق من [Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) للتأكد من اكتمال النشر.
 > (أو من صفحة [Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) —
 > يُعاد بناؤه تلقائيًا عبر GitHub Actions عند كل تغيير).
 
