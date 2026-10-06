@@ -1,4 +1,9 @@
 # Changelog
+## v1.14.1 — stability maintenance release
+- No new features. Revalidated monitoring lifecycle, telemetry freshness boundaries, and the existing BoostFragment correctness fix.
+- CI remains the build gate for tests, lint, and debug APK publication.
+- Version code 18.
+
 ## v1.14.0 — gfxinfo epoch recovery
 - **Frame telemetry recovery:** detects backward `FrameCompleted` timestamps when a game process or gfxinfo clock epoch restarts without resetting the cumulative frame counter.
 - **Vsync tracker recovery:** starts a clean IntendedVsync epoch after backward timestamps instead of silently discarding all later intervals.
@@ -6,7 +11,7 @@
 - **Version code 17**.
 
 
-## Unreleased — v1.15.0 candidate (versionCode 18): competitive guidance and security regression gate
+## Unreleased — v1.15.0 candidate (versionCode 19): competitive guidance and security regression gate
 - Added bilingual, evidence-aware next-step guidance for all nine performance states. Advice is manual only; it does not change CPU/GPU/network/display/thermal settings or promise an FPS gain.
 - Added dependency-free security regression checks for manifest permissions/exported components, backup/cleartext policy, pinned dependencies/actions, obvious source secrets, and least-privilege release workflow; added Python unit tests for those checks.
 - Split release into a secret-free read-only unsigned build, an `apksigner`-only signing job, and a main-only publish job. Keystore secrets are isolated from Gradle; only the publish job has `contents: write`. Action refs are pinned to verified full commit SHAs and Dependabot updates GitHub Actions weekly.

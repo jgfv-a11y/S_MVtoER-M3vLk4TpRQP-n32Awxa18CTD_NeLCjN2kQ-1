@@ -1,7 +1,7 @@
 # 🚀 NitroBoost — Game Booster
 
 
-**نسخة البناء المرشحة على هذا الفرع: v1.15.0 (versionCode 18)**؛ آخر GitHub Release منشور هو v1.14.0.
+**نسخة البناء المرشحة على هذا الفرع: v1.15.0 (versionCode 19)**؛ أحدث GitHub Release منشور هو v1.14.1.
 تطبيق معزّز ألعاب Android احترافي، عربي + إنجليزي، مبني بـ **Kotlin** و**Material 3**
 (بدون Compose) على Shizuku API 13.1.5.
 
@@ -114,7 +114,7 @@ gradle wrapper --gradle-version 8.7   # إذا كان Gradle 8.7 مثبتًا
 
 APK الناتج في `app/build/outputs/apk/debug/`.
 
-> 📲 **آخر APK منشور (v1.14.0)**: [تنزيل nitroboost-debug.apk](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases/download/nitroboost-v1.14.0/nitroboost-debug.apk) — أحدث إصدار GitHub Release منشور؛ نسخة v1.15.0 على هذا الفرع لا تزال مرشحًا قيد التحقق.
+> 📲 **آخر APK منشور (v1.14.1)**: [تنزيل nitroboost-debug.apk](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases/download/nitroboost-v1.14.1/nitroboost-debug.apk) — نسخة v1.15.0 (versionCode 19) على هذا الفرع مرشح قيد التحقق ولم يُنشر بعد.
 > (أو من صفحة [Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) —
 > يُعاد بناؤه تلقائيًا عبر GitHub Actions عند كل تغيير).
 
@@ -380,8 +380,5 @@ app/src/main/java/com/nitroboost/app/
 ## 📄 الترخيص
 
 مشروع تعليمي/بحثي. استخدام Shizuku يخضع لشروطه. لا نتحمل مسؤولية تعديلات
-النظام على الأجهزة غير المدعومة — استخدم على مسؤوليتك، والأمان هنا
-(السجل + الاستعادة) موجودًا لهذا السبب.
-�روطه. لا نتحمل مسؤولية تعديلات
 النظام على الأجهزة غير المدعومة — استخدم على مسؤوليتك، والأمان هنا
 (السجل + الاستعادة) موجودًا لهذا السبب.
