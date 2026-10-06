@@ -102,10 +102,13 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             python3 - "$LOG" <<'PY'
           from pathlib import Path
+          import re
           import sys
 
           lines = Path(sys.argv[1]).read_text(errors="replace").splitlines()
-          diagnostic = "\n".join(lines[-60:])
+          pattern = re.compile(r"(^e:\s|^w:\s|\berror:|FAILURE: Build failed|What went wrong|Execution failed|Compilation error|\.kt:\d+:\d+:|FAILED$)", re.IGNORECASE)
+          matches = [line for line in lines if pattern.search(line)]
+          diagnostic = "\n".join(matches[-35:] if matches else lines[-25:])
           diagnostic = diagnostic.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
           print(f"::error title=Gradle build diagnostics::{diagnostic}")
           PY
