@@ -12,7 +12,7 @@
 - **P5 UI foundations:** dashboard، profiles، settings، overlay، reports، state-preserving navigation، ورسائل capability الصادقة.
 
 ## Current Task
-استمرار مراجعة الاستقرار؛ v1.14.1 منشور ولا توجد مشكلة P0/P1 مؤكدة حاليًا.
+مراجعة v1.15.0 بعد الدمج؛ الإصدار منشور ولا توجد مشكلة P0/P1 مؤكدة حاليًا.
 
 ## Completed This Session — 2026-10-04
 - راجعت `main` وتقارير التقدم؛ لم يكن ملف الاستمرارية موجودًا.
@@ -53,6 +53,17 @@
 - CI نجح ونشر APK: `6,428,830 bytes`, SHA-256 `37ef8abbbb14fffcc3815e8654680eebbb49b950ba47c83a0b4cb2371886ba29`.
 - Measurement unavailable: لا يوجد جهاز Android لقياسات أداء حقيقية.
 
+
+## Stability Review — 2026-10-07
+- تم دمج v1.15.0 الموجود مسبقًا على `origin/main` باستخدام fast-forward فقط؛ لم تتم إعادة تنفيذ تغييرات التشغيل الآلي.
+- شملت المراجعة إضافات `JournaledSystemExecutor` و`PerformanceStateEngine` وsecurity regression gate وقيود workflow الأقل صلاحية.
+- Static verifier نجح: `43 XML`, `126 Kotlin`, `107 IDs`, `0 errors`.
+- Security verifier نجح: `12 security regression check groups`, `0 findings`، مع تحذيري Play policy المعروفين فقط.
+- اختبار Python الكامل عبر discovery نجح: `25 tests`.
+- CI و`assembleDebug` نجحا مسبقًا على commit `018ab36`، وAPK v1.15.0 منشور.
+- فشل أمر unittest الأول بسبب تشغيله من جذر المستودع؛ إعادة التشغيل من `NitroBoost/` بالطريقة المطابقة لـCI نجحت، ولا يوجد خلل كودي.
+- Measurement unavailable: لا يوجد جهاز Android فعلي لقياس FPS/CPU/RAM/الحرارة.
+
 ## Architecture Decisions
 - القياسات غير المتاحة تبقى `null` ولا تُحوّل إلى أصفار مضللة.
 - لا يتم الادعاء بتحسن FPS دون benchmark على جهاز فعلي.
@@ -73,12 +84,11 @@
 - تحتاج جلسة لاحقة إلى مراجعة regression مركزة على telemetry وMonitorHub بعد الدمج الكبير.
 
 ## Next Automatic Task
-1. قراءة CI والتحقق من نشر APK v1.14.1.
-2. استمرار مراجعة safety/rollback قبل أي تغيير سلوكي.
-3. عدم إضافة ميزات أو ادعاء benchmark دون جهاز Android فعلي.
-5. إذا لم توجد مشكلة P0/P1، الانتقال إلى benchmark harness محلي/قابل للتشغيل على جهاز Android دون ادعاء نتائج أداء.
+1. مراجعة safety/rollback في تغييرات v1.15.0 دون إضافة ميزات جديدة.
+2. الحفاظ على بوابة security regression وleast-privilege workflow.
+3. عدم ادعاء benchmark دون جهاز Android فعلي.
 
 ## Overall Progress
 - **Phase:** 4 — القياس التكيفي والتحليل القابل للتدقيق
-- **Task:** Stability maintenance review + v1.14.1 APK
-- **Completion:** مكتمل؛ CI نجح وAPK منشور ومتحقق من البصمة.
+- **Task:** v1.15.0 stability review
+- **Completion:** مكتمل؛ CI وAPK منشوران، والاختبارات المحلية المستقلة ناجحة.
