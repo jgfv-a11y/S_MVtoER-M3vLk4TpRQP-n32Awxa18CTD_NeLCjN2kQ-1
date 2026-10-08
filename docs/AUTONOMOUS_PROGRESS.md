@@ -12,7 +12,7 @@
 - **P5 UI foundations:** dashboard، profiles، settings، overlay، reports، state-preserving navigation، ورسائل capability الصادقة.
 
 ## Current Task
-التحقق من إصلاح rollback في v1.15.1 عبر CI ثم نشر APK إذا نجح.
+استمرار مراجعة safety/rollback؛ v1.15.1 منشور ولا توجد مشكلة P0/P1 مؤكدة.
 
 ## Completed This Session — 2026-10-04
 - راجعت `main` وتقارير التقدم؛ لم يكن ملف الاستمرارية موجودًا.
@@ -70,6 +70,7 @@
 - أُصلح التحقق بعد الحذف، وأضيف regression test لمنصة تبلغ نجاحًا كاذبًا.
 - التحقق الساكن والأمني واختبارات Python المحلية نجحت؛ Gradle محجوب محليًا بغياب Android SDK.
 - تم تجهيز v1.15.1/versionCode 20 دون إضافة ميزات.
+- CI نجح ونشر APK: `6,527,642 bytes`, SHA-256 `df16d4f400de2b7226629ed8efeaba4ecf7d6ef333f7d43e759f6a7154b68f87`.
 
 ## Architecture Decisions
 - القياسات غير المتاحة تبقى `null` ولا تُحوّل إلى أصفار مضللة.
@@ -91,11 +92,11 @@
 - تحتاج جلسة لاحقة إلى مراجعة regression مركزة على telemetry وMonitorHub بعد الدمج الكبير.
 
 ## Next Automatic Task
-1. قراءة CI والتحقق من Kotlin tests/lint/assembleDebug لإصلاح rollback.
-2. التحقق من APK v1.15.1 وبصمته إذا نجح CI.
-3. الاستمرار في stability-only وعدم ادعاء benchmark دون جهاز Android فعلي.
+1. استمرار مراجعة safety/rollback دون إضافة ميزات جديدة.
+2. الحفاظ على security regression وleast-privilege workflow.
+3. عدم ادعاء benchmark دون جهاز Android فعلي.
 
 ## Overall Progress
 - **Phase:** 4 — القياس التكيفي والتحليل القابل للتدقيق
 - **Task:** v1.15.1 rollback verification
-- **Completion:** الإصلاح والاختبارات المحلية جاهزة؛ بانتظار CI وAPK.
+- **Completion:** مكتمل؛ الاختبارات المحلية وCI نجحت، وAPK منشور ومتحقق من البصمة.
