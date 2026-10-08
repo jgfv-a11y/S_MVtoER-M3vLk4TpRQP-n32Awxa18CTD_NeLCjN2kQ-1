@@ -1,4 +1,9 @@
 # Changelog
+## v1.15.1 — rollback verification fix
+- Verify system/secure/global setting deletion after the delete operation before marking a journal entry restored.
+- Added regression coverage for a platform delete that reports success while leaving the changed value behind.
+- No new optimization behavior.
+
 
 ## v1.15.0 — evidence-based diagnostics and release hardening (2026-10-06)
 - **Version code 19.** Published by GitHub Actions after static/security checks, JVM tests, lint, debug APK assembly, and unsigned release APK build. The GitHub Release contains the debug APK for testing; no signed APK is attached.

@@ -12,7 +12,7 @@
 - **P5 UI foundations:** dashboard، profiles، settings، overlay، reports، state-preserving navigation، ورسائل capability الصادقة.
 
 ## Current Task
-مراجعة v1.15.0 بعد الدمج؛ الإصدار منشور ولا توجد مشكلة P0/P1 مؤكدة حاليًا.
+التحقق من إصلاح rollback في v1.15.1 عبر CI ثم نشر APK إذا نجح.
 
 ## Completed This Session — 2026-10-04
 - راجعت `main` وتقارير التقدم؛ لم يكن ملف الاستمرارية موجودًا.
@@ -64,6 +64,13 @@
 - فشل أمر unittest الأول بسبب تشغيله من جذر المستودع؛ إعادة التشغيل من `NitroBoost/` بالطريقة المطابقة لـCI نجحت، ولا يوجد خلل كودي.
 - Measurement unavailable: لا يوجد جهاز Android فعلي لقياس FPS/CPU/RAM/الحرارة.
 
+
+## P1 Rollback Fix — 2026-10-08
+- اكتُشف خلل مؤكد في `Journal.restore`: حذف system/secure/global لم يكن يتحقق من اختفاء القيمة بعد نجاح delete.
+- أُصلح التحقق بعد الحذف، وأضيف regression test لمنصة تبلغ نجاحًا كاذبًا.
+- التحقق الساكن والأمني واختبارات Python المحلية نجحت؛ Gradle محجوب محليًا بغياب Android SDK.
+- تم تجهيز v1.15.1/versionCode 20 دون إضافة ميزات.
+
 ## Architecture Decisions
 - القياسات غير المتاحة تبقى `null` ولا تُحوّل إلى أصفار مضللة.
 - لا يتم الادعاء بتحسن FPS دون benchmark على جهاز فعلي.
@@ -84,11 +91,11 @@
 - تحتاج جلسة لاحقة إلى مراجعة regression مركزة على telemetry وMonitorHub بعد الدمج الكبير.
 
 ## Next Automatic Task
-1. مراجعة safety/rollback في تغييرات v1.15.0 دون إضافة ميزات جديدة.
-2. الحفاظ على بوابة security regression وleast-privilege workflow.
-3. عدم ادعاء benchmark دون جهاز Android فعلي.
+1. قراءة CI والتحقق من Kotlin tests/lint/assembleDebug لإصلاح rollback.
+2. التحقق من APK v1.15.1 وبصمته إذا نجح CI.
+3. الاستمرار في stability-only وعدم ادعاء benchmark دون جهاز Android فعلي.
 
 ## Overall Progress
 - **Phase:** 4 — القياس التكيفي والتحليل القابل للتدقيق
-- **Task:** v1.15.0 stability review
-- **Completion:** مكتمل؛ CI وAPK منشوران، والاختبارات المحلية المستقلة ناجحة.
+- **Task:** v1.15.1 rollback verification
+- **Completion:** الإصلاح والاختبارات المحلية جاهزة؛ بانتظار CI وAPK.

@@ -162,6 +162,24 @@ class JournalTest {
     }
 
     @Test
+    fun `restore rejects a delete that reports success but leaves the setting`() {
+        val executor = FakeExecutor().apply {
+            sys["temporary"] = "changed"
+            preserveSysDelete = true
+        }
+        val entry = JournalEntry(
+            taskId = "settings",
+            kind = JournalEntry.Kind.SYS_SETTING,
+            key = "temporary",
+            oldValue = null,
+            newValue = "changed"
+        )
+
+        assertFalse(Journal.restore(entry, executor))
+        assertEquals("changed", executor.sys["temporary"])
+    }
+
+    @Test
     fun testEmptyAndMissingFilesAreEmptyJournals() {
         val tmpDir = createTempDirectory().toFile()
         val missing = Journal(File(tmpDir, "nope.json"))

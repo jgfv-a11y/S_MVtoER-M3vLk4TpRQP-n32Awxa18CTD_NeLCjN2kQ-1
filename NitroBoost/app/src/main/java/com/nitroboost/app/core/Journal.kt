@@ -342,19 +342,25 @@ class Journal(val file: File) {
                     JournalEntry.Kind.SYS_SETTING -> {
                         val old = entry.oldValue
                         if (ex.sysSettingGet(entry.key) == old) true
-                        else if (old == null) ex.sysSettingDelete(entry.key)
+                        else if (old == null) {
+                            ex.sysSettingDelete(entry.key) && ex.sysSettingGet(entry.key) == null
+                        }
                         else ex.sysSettingPut(entry.key, old) && ex.sysSettingGet(entry.key) == old
                     }
                     JournalEntry.Kind.SECURE_SETTING -> {
                         val old = entry.oldValue
                         if (ex.secureSettingGet(entry.key) == old) true
-                        else if (old == null) ex.secureSettingDelete(entry.key)
+                        else if (old == null) {
+                            ex.secureSettingDelete(entry.key) && ex.secureSettingGet(entry.key) == null
+                        }
                         else ex.secureSettingPut(entry.key, old) && ex.secureSettingGet(entry.key) == old
                     }
                     JournalEntry.Kind.GLOBAL_SETTING -> {
                         val old = entry.oldValue
                         if (ex.globalSettingGet(entry.key) == old) true
-                        else if (old == null) ex.globalSettingDelete(entry.key)
+                        else if (old == null) {
+                            ex.globalSettingDelete(entry.key) && ex.globalSettingGet(entry.key) == null
+                        }
                         else ex.globalSettingPut(entry.key, old) && ex.globalSettingGet(entry.key) == old
                     }
                     JournalEntry.Kind.SYSFS -> {

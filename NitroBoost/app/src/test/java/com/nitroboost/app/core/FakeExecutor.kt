@@ -15,6 +15,8 @@ class FakeExecutor : SystemExecutor {
 
     var dndFilter = DndFilters.ALL
     var failDnd = false
+    /** Simulates a platform delete that reports success but leaves the value behind. */
+    var preserveSysDelete = false
     /** Simulates a device that refuses Settings.System writes (no WRITE_SETTINGS). */
     var failSys = false
     var physicalDensity = 420
@@ -137,7 +139,7 @@ class FakeExecutor : SystemExecutor {
 
     override fun sysSettingGet(key: String): String? = sys[key]
     override fun sysSettingDelete(key: String): Boolean {
-        sys.remove(key)
+        if (!preserveSysDelete) sys.remove(key)
         written.add("sys-delete:$key")
         return true
     }
