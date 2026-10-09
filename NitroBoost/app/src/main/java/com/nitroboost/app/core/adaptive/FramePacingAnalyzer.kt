@@ -86,7 +86,10 @@ object FramePacingAnalyzer {
             smoothnessScore = smoothnessScore,
             fpsSampleCount = fpsValues.size,
             frameSampleCount = distribution?.frameCount ?: 0,
-            intendedVsyncIntervalCount = intervals.size
+            intendedVsyncIntervalCount = intervals.size,
+            onePercentLowFps = fpsValues
+                .takeIf { it.size >= MIN_SCORE_FRAME_SAMPLES }
+                ?.let(::onePercentLow)
         )
     }
 
@@ -125,6 +128,12 @@ object FramePacingAnalyzer {
         sorted[sorted.size / 2]
     } else {
         (sorted[sorted.size / 2 - 1] + sorted[sorted.size / 2]) / 2.0
+    }
+
+    /** Standard 1% low: average of the slowest 1% of valid samples. */
+    private fun onePercentLow(sortedAscending: List<Double>): Double {
+        val count = (sortedAscending.size * 0.01).toInt().coerceAtLeast(1)
+        return sortedAscending.take(count).average()
     }
 
     private const val MIN_FPS = 0.0

@@ -1,4 +1,9 @@
 # Changelog
+## v1.16.0 — measured frame pacing intelligence
+- Added a quality-gated 1% Low FPS metric computed only from valid measured FPS samples.
+- Kept the metric null below five samples to avoid presenting unstable evidence as a performance result.
+- No synthetic FPS, frame generation, or automatic privileged tuning was added.
+
 ## v1.15.2 — thermal fail-closed safety fix
 - Treat a missing raw temperature as critical while the thermal override journal entry is active, preventing loss of the independent thermal backstop.
 - Preserve nominal handling for missing temperature when no override is active.

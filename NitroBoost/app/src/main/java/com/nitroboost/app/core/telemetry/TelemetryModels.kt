@@ -153,5 +153,7 @@ data class FramePacingMetrics(
     val smoothnessScore: Double?,
     val fpsSampleCount: Int,
     val frameSampleCount: Int,
-    val intendedVsyncIntervalCount: Int
+    val intendedVsyncIntervalCount: Int,
+    /** Mean of the slowest 1% of real FPS samples; null below the quality gate. */
+    val onePercentLowFps: Double? = null
 )

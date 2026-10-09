@@ -76,6 +76,14 @@ class FramePacingAnalyzerTest {
         assertEquals(2, result.frameSampleCount)
     }
 
+    @Test fun `one percent low uses only the slowest measured FPS samples`() {
+        val result = FramePacingAnalyzer.analyze(
+            List(100) { index -> FrameSnapshot(fps = (index + 1).toDouble()) }
+        )!!
+
+        assertEquals(1.0, result.onePercentLowFps!!, 0.001)
+    }
+
     @Test fun `no measured FPS frame time or vsync input means no analysis`() {
         assertNull(FramePacingAnalyzer.analyze(emptyList(), 60))
         assertNull(FramePacingAnalyzer.analyze(listOf(FrameSnapshot(fps = 0.0)), 60))
