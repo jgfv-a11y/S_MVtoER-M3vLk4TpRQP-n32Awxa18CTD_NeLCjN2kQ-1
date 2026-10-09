@@ -12,7 +12,7 @@
 - **P5 UI foundations:** dashboard، profiles، settings، overlay، reports، state-preserving navigation، ورسائل capability الصادقة.
 
 ## Current Task
-التحقق من v1.16.0: 1% Low مبني على قياس حقيقي، ثم نشر APK إذا نجح CI.
+استمرار مراجعة safety/rollback؛ v1.16.0 منشور ولا توجد مشكلة P0/P1 مؤكدة.
 
 ## Completed This Session — 2026-10-04
 - راجعت `main` وتقارير التقدم؛ لم يكن ملف الاستمرارية موجودًا.
@@ -86,7 +86,8 @@
 - استُخدم التحديث المرفق لاختيار تحسين محدود: إضافة 1% Low FPS إلى `FramePacingMetrics`.
 - القيمة هي متوسط أبطأ 1% من عينات FPS الصحيحة فقط، وتبقى null قبل خمس عينات.
 - أضيف regression test؛ لم تُضف ميزات privileged أو fake optimization أو frame generation.
-- تم تجهيز versionCode 22؛ بانتظار CI وAPK.
+- تم تجهيز versionCode 22.
+- CI نجح ونشر APK: `6,528,594 bytes`, SHA-256 `f92d26e5369be519a7463187ebe95fc656df17f9176e00f3fbf1d4b224d4c606`.
 
 ## Architecture Decisions
 - القياسات غير المتاحة تبقى `null` ولا تُحوّل إلى أصفار مضللة.
@@ -108,11 +109,11 @@
 - تحتاج جلسة لاحقة إلى مراجعة regression مركزة على telemetry وMonitorHub بعد الدمج الكبير.
 
 ## Next Automatic Task
-1. قراءة CI والتحقق من Kotlin tests/lint/assembleDebug للإصدار v1.16.0.
-2. التحقق من APK والبصمة إذا نجح CI.
+1. استمرار مراجعة safety/rollback دون إضافة ميزات جديدة.
+2. الحفاظ على security regression وleast-privilege workflow.
 3. عدم ادعاء تحسن FPS دون جهاز Android فعلي.
 
 ## Overall Progress
 - **Phase:** 4 — القياس التكيفي والتحليل القابل للتدقيق
 - **Task:** v1.16.0 measured frame intelligence
-- **Completion:** الكود والاختبار والتوثيق جاهزة؛ بانتظار CI وAPK.
+- **Completion:** مكتمل؛ الاختبارات المحلية وCI نجحت، وAPK منشور ومتحقق من البصمة.
