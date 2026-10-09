@@ -161,13 +161,19 @@ object AppStore {
 
     /** OS thermal status escalated by the predictive trend (never below OS). */
     fun effectiveThermalStatus(): Int {
-        val s = monitor.value ?: return 0
+        val s = monitor.value ?: return rawThermalFloor(null)
         val predictive = trend.effectiveStatus(s.thermalStatus)
         // The raw thermistor floor is independent of the optional thermal
         // override and must outrank every adaptive/profile preference.
-        val rawFloor = ThermalGuard.rawStatusFor(s.tempC)
+        val rawFloor = rawThermalFloor(s.tempC)
         return maxOf(s.thermalStatus, predictive, rawFloor)
     }
+
+    private fun rawThermalFloor(tempC: Double?): Int = ThermalGuard.rawStatusFor(
+        tempC,
+        thermalOverrideActive = runCatching { journal().containsTask("thermal_override") }
+            .getOrDefault(false)
+    )
 
     /**
      * Local-only cache key. Hardware identity is hashed and no context or
@@ -258,7 +264,7 @@ object AppStore {
             val thermal = maxOf(
                 s.thermalStatus,
                 trend.effectiveStatus(s.thermalStatus),
-                ThermalGuard.rawStatusFor(s.tempC)
+                rawThermalFloor(s.tempC)
             )
             return com.nitroboost.app.core.adaptive.AdaptiveSample(
                 fps = s.fps,
@@ -510,7 +516,7 @@ object AppStore {
         val effectiveThermal = maxOf(
             s.thermalStatus,
             trend.effectiveStatus(s.thermalStatus),
-            ThermalGuard.rawStatusFor(s.tempC)
+            rawThermalFloor(s.tempC)
         )
         val enriched = s.copy(
             performance = s.performance?.let { performance ->
@@ -584,7 +590,7 @@ object AppStore {
                     effectiveThermal = maxOf(
                         s.thermalStatus,
                         s.performance?.thermal?.effectiveStatus ?: 0,
-                        ThermalGuard.rawStatusFor(s.tempC)
+                        rawThermalFloor(s.tempC)
                     ),
                     osThermal = s.thermalStatus,
                     decisions = ledger().snapshotEntries()

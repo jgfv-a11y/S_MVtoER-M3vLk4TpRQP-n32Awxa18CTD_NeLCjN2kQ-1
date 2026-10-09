@@ -48,8 +48,15 @@ object ThermalGuard {
     const val STRONG_HEAT_SLOPE_PER_MIN = 2.0
 
     /** Pure mapping: raw max-zone temperature -> guard status. */
-    fun rawStatusFor(tempC: Double?): Int = when {
-        tempC == null -> STATUS_NOMINAL
+    fun rawStatusFor(tempC: Double?): Int = rawStatusFor(tempC, thermalOverrideActive = false)
+
+    /**
+     * Missing raw temperature is normally unknown, not hot. While the
+     * thermal override is active, however, losing the backstop must fail
+     * closed so the override cannot continue without independent sensing.
+     */
+    fun rawStatusFor(tempC: Double?, thermalOverrideActive: Boolean): Int = when {
+        tempC == null -> if (thermalOverrideActive) STATUS_CRITICAL else STATUS_NOMINAL
         !tempC.isFinite() || tempC !in MIN_RAW_SENSOR_C..MAX_RAW_SENSOR_C -> STATUS_CRITICAL
         tempC >= RAW_CRITICAL_C -> STATUS_CRITICAL
         tempC >= RAW_SEVERE_C -> STATUS_SEVERE

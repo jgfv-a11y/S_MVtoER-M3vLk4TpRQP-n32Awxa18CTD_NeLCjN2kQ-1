@@ -1,4 +1,9 @@
 # Changelog
+## v1.15.2 — thermal fail-closed safety fix
+- Treat a missing raw temperature as critical while the thermal override journal entry is active, preventing loss of the independent thermal backstop.
+- Preserve nominal handling for missing temperature when no override is active.
+- Added regression coverage; no new optimization behavior.
+
 ## v1.15.1 — rollback verification fix
 - Verify system/secure/global setting deletion after the delete operation before marking a journal entry restored.
 - Added regression coverage for a platform delete that reports success while leaving the changed value behind.

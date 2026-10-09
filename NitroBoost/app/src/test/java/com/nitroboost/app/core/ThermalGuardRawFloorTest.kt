@@ -23,6 +23,14 @@ class ThermalGuardRawFloorTest {
     }
 
     @Test
+    fun `missing temperature is critical while thermal override is active`() {
+        assertEquals(
+            ThermalGuard.STATUS_CRITICAL,
+            ThermalGuard.rawStatusFor(null, thermalOverrideActive = true)
+        )
+    }
+
+    @Test
     fun `override scenario - raw floor drops the thermal module at severe heat`() {
         // With the override active the OS status is 0; only the raw floor
         // can trigger a de-escalation.
