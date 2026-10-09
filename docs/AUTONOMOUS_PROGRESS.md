@@ -12,7 +12,7 @@
 - **P5 UI foundations:** dashboard، profiles، settings، overlay، reports، state-preserving navigation، ورسائل capability الصادقة.
 
 ## Current Task
-التحقق من إصلاح thermal fail-closed في v1.15.2 عبر CI ثم نشر APK إذا نجح.
+استمرار مراجعة safety/rollback؛ v1.15.2 منشور ولا توجد مشكلة P0/P1 مؤكدة.
 
 ## Completed This Session — 2026-10-04
 - راجعت `main` وتقارير التقدم؛ لم يكن ملف الاستمرارية موجودًا.
@@ -79,6 +79,7 @@
 - السلوك الطبيعي بدون override لم يتغير، وأضيف regression test.
 - التحقق المحلي الساكن والأمني و25 اختبار Python نجح؛ Gradle محجوب محليًا.
 - تم تجهيز v1.15.2/versionCode 21 دون ميزات.
+- CI نجح ونشر APK: `6,528,014 bytes`, SHA-256 `5e3ea5359c7cbaba1fbf876fb601c010b6f914fef2f4baa0a1f66d31c278a25d`.
 
 ## Architecture Decisions
 - القياسات غير المتاحة تبقى `null` ولا تُحوّل إلى أصفار مضللة.
@@ -100,11 +101,11 @@
 - تحتاج جلسة لاحقة إلى مراجعة regression مركزة على telemetry وMonitorHub بعد الدمج الكبير.
 
 ## Next Automatic Task
-1. قراءة CI والتحقق من Kotlin tests/lint/assembleDebug لإصلاح thermal safety.
-2. التحقق من APK v1.15.2 وبصمته إذا نجح CI.
-3. استمرار stability-only وعدم ادعاء benchmark دون جهاز Android فعلي.
+1. استمرار مراجعة safety/rollback دون إضافة ميزات جديدة.
+2. الحفاظ على security regression وleast-privilege workflow.
+3. عدم ادعاء benchmark دون جهاز Android فعلي.
 
 ## Overall Progress
 - **Phase:** 4 — القياس التكيفي والتحليل القابل للتدقيق
 - **Task:** v1.15.2 thermal safety verification
-- **Completion:** الإصلاح والاختبارات المحلية جاهزة؛ بانتظار CI وAPK.
+- **Completion:** مكتمل؛ الاختبارات المحلية وCI نجحت، وAPK منشور ومتحقق من البصمة.
