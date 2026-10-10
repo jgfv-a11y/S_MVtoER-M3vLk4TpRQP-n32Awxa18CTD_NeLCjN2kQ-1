@@ -12,7 +12,7 @@
 - **P5 UI foundations:** dashboard، profiles، settings، overlay، reports، state-preserving navigation، ورسائل capability الصادقة.
 
 ## Current Task
-التحقق من v1.17.0: persistence لإحصاء 1% Low، ثم نشر APK إذا نجح CI.
+استمرار التطوير الاستباقي: تصميم مسار UI صريح لـ1% Low؛ v1.17.0 منشور ولا توجد مشكلة P0/P1 مؤكدة.
 
 ## Completed This Session — 2026-10-04
 - راجعت `main` وتقارير التقدم؛ لم يكن ملف الاستمرارية موجودًا.
@@ -102,7 +102,8 @@
 - اكتُشف أن `onePercentLowFps` من v1.16 لا يُحفظ في DecisionLedger، فتضيع القيمة بعد restart/reload.
 - أُصلح serialization وparsing مع اختبار round-trip؛ ledgers القديمة تبقى متوافقة لأن الحقل اختياري.
 - البوابات المحلية نجحت: static 0 errors، security 0 findings، Python 25 tests.
-- تم تجهيز v1.17.0/versionCode 24؛ بانتظار CI وAPK.
+- تم تجهيز v1.17.0/versionCode 24.
+- CI نجح ونشر APK: `6,528,554 bytes`, SHA-256 `7746f8c94c27f77c0ff159228d6678c1cc880b99da563516097c667b3c6c2d2b`.
 
 ## Architecture Decisions
 - القياسات غير المتاحة تبقى `null` ولا تُحوّل إلى أصفار مضللة.
@@ -124,11 +125,11 @@
 - تحتاج جلسة لاحقة إلى مراجعة regression مركزة على telemetry وMonitorHub بعد الدمج الكبير.
 
 ## Next Automatic Task
-1. قراءة CI والتحقق من Kotlin test/lintDebug/assembleDebug للإصدار v1.17.0.
-2. التحقق من APK والبصمة إذا نجح CI.
-3. تصميم مسار UI صريح لـ1% Low قبل عرضه للمستخدم، دون بيانات ناقصة أو ادعاء أداء.
+1. تصميم مسار UI صريح لـ1% Low يمرر بيانات frame pacing الموثوقة إلى Home دون اختصار البيانات.
+2. إضافة اختبار mapping/empty-state قبل عرض القياس.
+3. عدم ادعاء benchmark دون جهاز Android فعلي.
 
 ## Overall Progress
 - **Phase:** 4 — القياس التكيفي والتحليل القابل للتدقيق
 - **Task:** v1.17.0 persistent frame intelligence
-- **Completion:** الإصلاح والاختبار والبوابات المحلية مكتملة؛ بانتظار CI وAPK.
+- **Completion:** مكتمل؛ الإصلاح والاختبار وCI نجحت، وAPK منشور ومتحقق من البصمة.
