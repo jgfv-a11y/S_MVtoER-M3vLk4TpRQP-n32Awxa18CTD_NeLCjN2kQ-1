@@ -12,7 +12,7 @@
 - **P5 UI foundations:** dashboard، profiles، settings، overlay، reports، state-preserving navigation، ورسائل capability الصادقة.
 
 ## Current Task
-التحقق من إصدار الصيانة v1.16.1 بعد مراجعة الاستقرار؛ لا توجد مشكلة P0/P1 مؤكدة.
+استمرار مراجعة safety/rollback؛ v1.16.1 منشور ولا توجد مشكلة P0/P1 مؤكدة.
 
 ## Completed This Session — 2026-10-04
 - راجعت `main` وتقارير التقدم؛ لم يكن ملف الاستمرارية موجودًا.
@@ -95,6 +95,7 @@
 - لم يظهر خلل P0/P1 مؤكد؛ لا تغييرات كودية تخمينية.
 - بوابات static/security/Python نجحت: 43 XML، 126 Kotlin، 107 IDs، 0 errors؛ 12 groups/0 findings؛ 25 tests.
 - تم تجهيز v1.16.1/versionCode 23 كإصدار صيانة لتوفير APK جديد بعد المراجعة.
+- CI نجح ونشر APK: `6,528,626 bytes`, SHA-256 `866fd619ff3ea98367a778a88cd58a0a0676090ed76a1b595348e6d42a9ba64b`.
 
 ## Architecture Decisions
 - القياسات غير المتاحة تبقى `null` ولا تُحوّل إلى أصفار مضللة.
@@ -116,11 +117,11 @@
 - تحتاج جلسة لاحقة إلى مراجعة regression مركزة على telemetry وMonitorHub بعد الدمج الكبير.
 
 ## Next Automatic Task
-1. قراءة CI والتحقق من test/lintDebug/assembleDebug للإصدار v1.16.1.
-2. التحقق من APK والبصمة إذا نجح CI.
-3. استمرار stability-only وعدم ادعاء benchmark دون جهاز Android فعلي.
+1. استمرار مراجعة safety/rollback دون إضافة ميزات جديدة.
+2. الحفاظ على security regression وleast-privilege workflow.
+3. عدم ادعاء benchmark دون جهاز Android فعلي.
 
 ## Overall Progress
 - **Phase:** 4 — القياس التكيفي والتحليل القابل للتدقيق
 - **Task:** v1.16.1 stability maintenance
-- **Completion:** مراجعة الاستقرار والبوابات المحلية مكتملة؛ بانتظار CI وAPK.
+- **Completion:** مكتمل؛ مراجعة الاستقرار والاختبارات وCI نجحت، وAPK منشور ومتحقق من البصمة.
