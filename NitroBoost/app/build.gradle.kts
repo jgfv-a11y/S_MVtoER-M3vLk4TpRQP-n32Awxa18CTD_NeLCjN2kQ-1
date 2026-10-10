@@ -11,8 +11,8 @@ android {
         applicationId = "com.nitroboost.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 23
-        versionName = "1.16.1"
+        versionCode = 24
+        versionName = "1.17.0"
     }
 
     // Optional release signing for store distribution.

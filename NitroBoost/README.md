@@ -1,7 +1,7 @@
 # 🚀 NitroBoost — Game Booster
 
 
-**أحدث إصدار منشور: v1.16.1 (versionCode 23)**؛ راجع [GitHub Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) لتنزيله.
+**أحدث إصدار منشور: v1.17.0 (versionCode 24)**؛ راجع [GitHub Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) لتنزيله.
 تطبيق معزّز ألعاب Android احترافي، عربي + إنجليزي، مبني بـ **Kotlin** و**Material 3**
 (بدون Compose) على Shizuku API 13.1.5.
 
@@ -114,7 +114,7 @@ gradle wrapper --gradle-version 8.7   # إذا كان Gradle 8.7 مثبتًا
 
 APK الناتج في `app/build/outputs/apk/debug/`.
 
-> 📲 **APK منشورة (v1.16.1)**: [تنزيل nitroboost-debug.apk](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases/download/nitroboost-v1.16.1/nitroboost-debug.apk) — نسخة debug للاختبار؛ هذا الإصدار لا يتضمن APK موقّعة للتوزيع.
+> 📲 **APK منشورة (v1.17.0)**: [تنزيل nitroboost-debug.apk](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases/download/nitroboost-v1.17.0/nitroboost-debug.apk) — نسخة debug للاختبار؛ هذا الإصدار لا يتضمن APK موقّعة للتوزيع.
 > (أو من صفحة [Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) —
 > يُعاد بناؤه تلقائيًا عبر GitHub Actions عند كل تغيير).
 

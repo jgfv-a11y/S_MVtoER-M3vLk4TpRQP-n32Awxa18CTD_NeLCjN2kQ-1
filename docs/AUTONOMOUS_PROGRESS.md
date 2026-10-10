@@ -12,7 +12,7 @@
 - **P5 UI foundations:** dashboard، profiles، settings، overlay، reports، state-preserving navigation، ورسائل capability الصادقة.
 
 ## Current Task
-استمرار مراجعة safety/rollback؛ v1.16.1 منشور ولا توجد مشكلة P0/P1 مؤكدة.
+التحقق من v1.17.0: persistence لإحصاء 1% Low، ثم نشر APK إذا نجح CI.
 
 ## Completed This Session — 2026-10-04
 - راجعت `main` وتقارير التقدم؛ لم يكن ملف الاستمرارية موجودًا.
@@ -97,6 +97,13 @@
 - تم تجهيز v1.16.1/versionCode 23 كإصدار صيانة لتوفير APK جديد بعد المراجعة.
 - CI نجح ونشر APK: `6,528,626 bytes`, SHA-256 `866fd619ff3ea98367a778a88cd58a0a0676090ed76a1b595348e6d42a9ba64b`.
 
+
+## Proactive Product Fix — 2026-10-10
+- اكتُشف أن `onePercentLowFps` من v1.16 لا يُحفظ في DecisionLedger، فتضيع القيمة بعد restart/reload.
+- أُصلح serialization وparsing مع اختبار round-trip؛ ledgers القديمة تبقى متوافقة لأن الحقل اختياري.
+- البوابات المحلية نجحت: static 0 errors، security 0 findings، Python 25 tests.
+- تم تجهيز v1.17.0/versionCode 24؛ بانتظار CI وAPK.
+
 ## Architecture Decisions
 - القياسات غير المتاحة تبقى `null` ولا تُحوّل إلى أصفار مضللة.
 - لا يتم الادعاء بتحسن FPS دون benchmark على جهاز فعلي.
@@ -117,11 +124,11 @@
 - تحتاج جلسة لاحقة إلى مراجعة regression مركزة على telemetry وMonitorHub بعد الدمج الكبير.
 
 ## Next Automatic Task
-1. استمرار مراجعة safety/rollback دون إضافة ميزات جديدة.
-2. الحفاظ على security regression وleast-privilege workflow.
-3. عدم ادعاء benchmark دون جهاز Android فعلي.
+1. قراءة CI والتحقق من Kotlin test/lintDebug/assembleDebug للإصدار v1.17.0.
+2. التحقق من APK والبصمة إذا نجح CI.
+3. تصميم مسار UI صريح لـ1% Low قبل عرضه للمستخدم، دون بيانات ناقصة أو ادعاء أداء.
 
 ## Overall Progress
 - **Phase:** 4 — القياس التكيفي والتحليل القابل للتدقيق
-- **Task:** v1.16.1 stability maintenance
-- **Completion:** مكتمل؛ مراجعة الاستقرار والاختبارات وCI نجحت، وAPK منشور ومتحقق من البصمة.
+- **Task:** v1.17.0 persistent frame intelligence
+- **Completion:** الإصلاح والاختبار والبوابات المحلية مكتملة؛ بانتظار CI وAPK.

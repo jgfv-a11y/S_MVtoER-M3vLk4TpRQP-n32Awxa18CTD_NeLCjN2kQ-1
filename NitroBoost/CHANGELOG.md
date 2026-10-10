@@ -1,4 +1,9 @@
 # Changelog
+## v1.17.0 — persistent frame intelligence
+- Fixed DecisionLedger serialization so measured 1% Low FPS survives app restarts and ledger rotation.
+- Added a regression assertion covering persistence and restoration of the metric.
+- No fake FPS, privileged tuning, or unverified performance claim was added.
+
 ## v1.16.1 — stability maintenance release
 - No product behavior changes; this release records the completed rollback, thermal-safety, cancellation, and security regression review.
 - Re-ran static, security, and Python regression gates before the hosted Android build.

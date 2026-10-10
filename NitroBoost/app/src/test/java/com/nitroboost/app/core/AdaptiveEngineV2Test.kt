@@ -519,7 +519,8 @@ class AdaptiveEngineV2Test {
             smoothnessScore = 88.0,
             fpsSampleCount = 8,
             frameSampleCount = 600,
-            intendedVsyncIntervalCount = 598
+            intendedVsyncIntervalCount = 598,
+            onePercentLowFps = 34.5
         )
         val measured = metrics().copy(framePacing = pacing)
         ledger.recordVariant(

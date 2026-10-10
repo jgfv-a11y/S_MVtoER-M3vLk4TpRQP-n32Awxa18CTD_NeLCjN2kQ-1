@@ -772,6 +772,7 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
         .put("fpsSampleCount", value.fpsSampleCount)
         .put("frameSampleCount", value.frameSampleCount)
         .put("intendedVsyncIntervalCount", value.intendedVsyncIntervalCount)
+        .put("onePercentLowFps", value.onePercentLowFps ?: JSONObject.NULL)
 
     private fun parseFramePacing(o: JSONObject): FramePacingMetrics = FramePacingMetrics(
         targetFps = if (o.isNull("targetFps")) null else o.optInt("targetFps"),
@@ -788,7 +789,8 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
         smoothnessScore = nullableDouble(o, "smoothnessScore"),
         fpsSampleCount = o.optInt("fpsSampleCount").coerceAtLeast(0),
         frameSampleCount = o.optInt("frameSampleCount").coerceAtLeast(0),
-        intendedVsyncIntervalCount = o.optInt("intendedVsyncIntervalCount").coerceAtLeast(0)
+        intendedVsyncIntervalCount = o.optInt("intendedVsyncIntervalCount").coerceAtLeast(0),
+        onePercentLowFps = nullableDouble(o, "onePercentLowFps")
     )
 
     private fun scoreJson(value: ScoreComponents): JSONObject = JSONObject()
