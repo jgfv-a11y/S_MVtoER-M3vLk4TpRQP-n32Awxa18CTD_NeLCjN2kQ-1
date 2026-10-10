@@ -1,4 +1,9 @@
 # Changelog
+## v1.16.1 — stability maintenance release
+- No product behavior changes; this release records the completed rollback, thermal-safety, cancellation, and security regression review.
+- Re-ran static, security, and Python regression gates before the hosted Android build.
+- No performance claim is made without a real-device benchmark.
+
 ## v1.16.0 — measured frame pacing intelligence
 - Added a quality-gated 1% Low FPS metric computed only from valid measured FPS samples.
 - Kept the metric null below five samples to avoid presenting unstable evidence as a performance result.

@@ -12,7 +12,7 @@
 - **P5 UI foundations:** dashboard، profiles، settings، overlay، reports، state-preserving navigation، ورسائل capability الصادقة.
 
 ## Current Task
-استمرار مراجعة safety/rollback؛ v1.16.0 منشور ولا توجد مشكلة P0/P1 مؤكدة.
+التحقق من إصدار الصيانة v1.16.1 بعد مراجعة الاستقرار؛ لا توجد مشكلة P0/P1 مؤكدة.
 
 ## Completed This Session — 2026-10-04
 - راجعت `main` وتقارير التقدم؛ لم يكن ملف الاستمرارية موجودًا.
@@ -89,6 +89,13 @@
 - تم تجهيز versionCode 22.
 - CI نجح ونشر APK: `6,528,594 bytes`, SHA-256 `f92d26e5369be519a7463187ebe95fc656df17f9176e00f3fbf1d4b224d4c606`.
 
+
+## Stability Review — 2026-10-10
+- تمت مراجعة Journal/rollback وBoostEngine restore/de-escalation وThermalGuard/ThermalOverride وAdaptiveLoop cancellation.
+- لم يظهر خلل P0/P1 مؤكد؛ لا تغييرات كودية تخمينية.
+- بوابات static/security/Python نجحت: 43 XML، 126 Kotlin، 107 IDs، 0 errors؛ 12 groups/0 findings؛ 25 tests.
+- تم تجهيز v1.16.1/versionCode 23 كإصدار صيانة لتوفير APK جديد بعد المراجعة.
+
 ## Architecture Decisions
 - القياسات غير المتاحة تبقى `null` ولا تُحوّل إلى أصفار مضللة.
 - لا يتم الادعاء بتحسن FPS دون benchmark على جهاز فعلي.
@@ -109,11 +116,11 @@
 - تحتاج جلسة لاحقة إلى مراجعة regression مركزة على telemetry وMonitorHub بعد الدمج الكبير.
 
 ## Next Automatic Task
-1. استمرار مراجعة safety/rollback دون إضافة ميزات جديدة.
-2. الحفاظ على security regression وleast-privilege workflow.
-3. عدم ادعاء تحسن FPS دون جهاز Android فعلي.
+1. قراءة CI والتحقق من test/lintDebug/assembleDebug للإصدار v1.16.1.
+2. التحقق من APK والبصمة إذا نجح CI.
+3. استمرار stability-only وعدم ادعاء benchmark دون جهاز Android فعلي.
 
 ## Overall Progress
 - **Phase:** 4 — القياس التكيفي والتحليل القابل للتدقيق
-- **Task:** v1.16.0 measured frame intelligence
-- **Completion:** مكتمل؛ الاختبارات المحلية وCI نجحت، وAPK منشور ومتحقق من البصمة.
+- **Task:** v1.16.1 stability maintenance
+- **Completion:** مراجعة الاستقرار والبوابات المحلية مكتملة؛ بانتظار CI وAPK.
