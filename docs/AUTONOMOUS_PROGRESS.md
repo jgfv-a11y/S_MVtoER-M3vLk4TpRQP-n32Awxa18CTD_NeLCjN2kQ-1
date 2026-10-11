@@ -12,7 +12,7 @@
 - **P5 UI foundations:** dashboard، profiles، settings، overlay، reports، state-preserving navigation، ورسائل capability الصادقة.
 
 ## Current Task
-التحقق من v1.18.0: عرض frame pacing الحقيقي في Home، ثم نشر APK إذا نجح CI.
+v1.18.0 منشور بنجاح؛ المراجعة التالية تركز على تقرير الجلسة وقياسات frame pacing دون ادعاء benchmark.
 
 ## Completed This Session — 2026-10-04
 - راجعت `main` وتقارير التقدم؛ لم يكن ملف الاستمرارية موجودًا.
@@ -111,7 +111,7 @@
 - تعرض Home 1% Low وP95/P99 وعدد العينات من telemetry الحقيقية فقط، مع empty-state عند غيابها.
 - أضيف `FramePacingDisplay` واختبارات mapping؛ لا تغيير في safety أو automatic tuning.
 - البوابات المحلية نجحت: static 0 errors، security 0 findings، Python 25 tests.
-- تم تجهيز v1.18.0/versionCode 25؛ بانتظار CI وAPK.
+- نجح CI (test + lintDebug + assembleDebug) ونُشر APK v1.18.0/versionCode 25 باسم nitroboost-debug.apk.
 
 ## Architecture Decisions
 - القياسات غير المتاحة تبقى `null` ولا تُحوّل إلى أصفار مضللة.
@@ -140,4 +140,4 @@
 ## Overall Progress
 - **Phase:** 4 — القياس التكيفي والتحليل القابل للتدقيق
 - **Task:** v1.18.0 measured frame pacing on Home
-- **Completion:** التكامل والاختبارات المحلية مكتملة؛ بانتظار CI وAPK.
+- **Completion:** مكتمل؛ CI نجح وAPK منشور على GitHub Releases.
