@@ -12,7 +12,7 @@
 - **P5 UI foundations:** dashboard، profiles، settings، overlay، reports، state-preserving navigation، ورسائل capability الصادقة.
 
 ## Current Task
-استمرار التطوير الاستباقي: تصميم مسار UI صريح لـ1% Low؛ v1.17.0 منشور ولا توجد مشكلة P0/P1 مؤكدة.
+التحقق من v1.18.0: عرض frame pacing الحقيقي في Home، ثم نشر APK إذا نجح CI.
 
 ## Completed This Session — 2026-10-04
 - راجعت `main` وتقارير التقدم؛ لم يكن ملف الاستمرارية موجودًا.
@@ -105,6 +105,14 @@
 - تم تجهيز v1.17.0/versionCode 24.
 - CI نجح ونشر APK: `6,528,554 bytes`, SHA-256 `7746f8c94c27f77c0ff159228d6678c1cc880b99da563516097c667b3c6c2d2b`.
 
+
+## Proactive UI/Telemetry Integration — 2026-10-11
+- اكتمل المسار المؤجل: `PerformanceStateResult.framePacing` أصبح يصل إلى `AdaptiveUi` ثم Home.
+- تعرض Home 1% Low وP95/P99 وعدد العينات من telemetry الحقيقية فقط، مع empty-state عند غيابها.
+- أضيف `FramePacingDisplay` واختبارات mapping؛ لا تغيير في safety أو automatic tuning.
+- البوابات المحلية نجحت: static 0 errors، security 0 findings، Python 25 tests.
+- تم تجهيز v1.18.0/versionCode 25؛ بانتظار CI وAPK.
+
 ## Architecture Decisions
 - القياسات غير المتاحة تبقى `null` ولا تُحوّل إلى أصفار مضللة.
 - لا يتم الادعاء بتحسن FPS دون benchmark على جهاز فعلي.
@@ -125,11 +133,11 @@
 - تحتاج جلسة لاحقة إلى مراجعة regression مركزة على telemetry وMonitorHub بعد الدمج الكبير.
 
 ## Next Automatic Task
-1. تصميم مسار UI صريح لـ1% Low يمرر بيانات frame pacing الموثوقة إلى Home دون اختصار البيانات.
-2. إضافة اختبار mapping/empty-state قبل عرض القياس.
-3. عدم ادعاء benchmark دون جهاز Android فعلي.
+1. قراءة CI والتحقق من Kotlin test/lintDebug/assembleDebug للإصدار v1.18.0.
+2. التحقق من APK والبصمة إذا نجح CI.
+3. مراجعة تقرير الجلسة قبل إضافة أي قياس جديد، مع عدم ادعاء benchmark دون جهاز Android فعلي.
 
 ## Overall Progress
 - **Phase:** 4 — القياس التكيفي والتحليل القابل للتدقيق
-- **Task:** v1.17.0 persistent frame intelligence
-- **Completion:** مكتمل؛ الإصلاح والاختبار وCI نجحت، وAPK منشور ومتحقق من البصمة.
+- **Task:** v1.18.0 measured frame pacing on Home
+- **Completion:** التكامل والاختبارات المحلية مكتملة؛ بانتظار CI وAPK.

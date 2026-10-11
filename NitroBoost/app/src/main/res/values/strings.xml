@@ -192,6 +192,8 @@ The app keeps checking by itself until connected. On rooted devices, Root is use
     <string name="report_ping">Minimum TCP probe latency: %1$dms (not game-server latency)</string>
     <string name="report_tasks">Tasks applied: %1$d, failed: %2$d</string>
     <string name="report_duration">Duration: %1$d s</string>
+    <string name="frame_metrics_values">1%% Low %1$sfps · P95 %2$sms · P99 %3$sms (%4$d FPS samples)</string>
+    <string name="frame_metrics_empty">Measured frame pacing: unavailable until reliable gfxinfo samples arrive</string>
 
     <!-- Game space detection -->
     <string name="game_space_hint">OEM game space detected: %1$s — consider enabling its game mode too for the best result.</string>

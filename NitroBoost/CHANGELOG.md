@@ -1,4 +1,10 @@
 # Changelog
+## v1.18.0 — measured frame pacing on Home
+- Connected the real PerformanceState frame-pacing output to the Home adaptive card.
+- Shows measured 1% Low FPS, P95/P99 frame time, and sample count only when evidence exists.
+- Added a truthful empty state when gfxinfo samples are unavailable.
+- Added mapping tests; no fake metrics or automatic tuning was introduced.
+
 ## v1.17.0 — persistent frame intelligence
 - Fixed DecisionLedger serialization so measured 1% Low FPS survives app restarts and ledger rotation.
 - Added a regression assertion covering persistence and restoration of the metric.

@@ -14,6 +14,7 @@ import com.nitroboost.app.core.BoostEngine
 import com.nitroboost.app.core.Journal
 import com.nitroboost.app.core.MonitorClient
 import com.nitroboost.app.core.MonitorDemand
+import com.nitroboost.app.core.FramePacingDisplay
 import com.nitroboost.app.core.SessionSampleAccumulator
 import com.nitroboost.app.core.ShellInput
 import com.nitroboost.app.core.adaptive.AdaptiveLoop
@@ -110,7 +111,8 @@ object AppStore {
         val osThermal: Int,
         val decisions: List<LedgerEntry>,
         val etaMinutes: Int,
-        val performanceState: PerformanceStateResult? = null
+        val performanceState: PerformanceStateResult? = null,
+        val framePacing: FramePacingDisplay = FramePacingDisplay.from(null)
     )
 
     val adaptiveUi = MutableLiveData<AdaptiveUi>(
@@ -597,7 +599,8 @@ object AppStore {
                         .sortedByDescending { it.pairs }
                         .take(5),
                     etaMinutes = eta,
-                    performanceState = lastPerformanceState
+                    performanceState = lastPerformanceState,
+                    framePacing = FramePacingDisplay.from(lastPerformanceState?.framePacing)
                 )
             )
         } catch (e: Exception) {

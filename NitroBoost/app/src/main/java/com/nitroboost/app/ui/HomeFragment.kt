@@ -63,6 +63,7 @@ class HomeFragment : Fragment() {
     private var gameSpaceHint: TextView? = null
     private var adaptiveStatus: TextView? = null
     private var adaptiveBottleneck: TextView? = null
+    private var adaptiveFrameMetrics: TextView? = null
     private var adaptiveEvidence: TextView? = null
     private var adaptiveAdviceTitle: TextView? = null
     private var adaptiveAdvice: TextView? = null
@@ -109,6 +110,7 @@ class HomeFragment : Fragment() {
         gameSpaceHint = view.findViewById(R.id.game_space_hint)
         adaptiveStatus = view.findViewById(R.id.adaptive_status)
         adaptiveBottleneck = view.findViewById(R.id.adaptive_bottleneck)
+        adaptiveFrameMetrics = view.findViewById(R.id.adaptive_frame_metrics)
         adaptiveEvidence = view.findViewById(R.id.adaptive_evidence)
         adaptiveAdviceTitle = view.findViewById(R.id.adaptive_advice_title)
         adaptiveAdvice = view.findViewById(R.id.adaptive_advice)
@@ -389,6 +391,18 @@ class HomeFragment : Fragment() {
             adaptiveEvidence?.visibility = View.GONE
             adaptiveAdviceTitle?.visibility = View.GONE
             adaptiveAdvice?.visibility = View.GONE
+        }
+        val frame = ui.framePacing
+        adaptiveFrameMetrics?.text = if (frame.hasMeasuredData) {
+            getString(
+                R.string.frame_metrics_values,
+                frame.onePercentLowFps?.let(::formatNumber) ?: "--",
+                frame.p95FrameTimeMs?.let(::formatNumber) ?: "--",
+                frame.p99FrameTimeMs?.let(::formatNumber) ?: "--",
+                frame.sampleCount
+            )
+        } else {
+            getString(R.string.frame_metrics_empty)
         }
         val dec = adaptiveDecisions ?: return
         if (ui.decisions.isEmpty()) {
