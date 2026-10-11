@@ -41,4 +41,3 @@ class FramePacingDisplayTest {
         assertEquals(20, display.sampleCount)
     }
 }
-***
