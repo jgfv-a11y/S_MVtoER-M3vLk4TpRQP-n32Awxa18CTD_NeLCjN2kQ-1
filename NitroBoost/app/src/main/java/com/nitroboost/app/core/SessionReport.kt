@@ -1,6 +1,7 @@
 package com.nitroboost.app.core
 
 import com.nitroboost.app.core.adaptive.Bottleneck
+import com.nitroboost.app.core.telemetry.FramePacingMetrics
 
 /** Aggregates the session without retaining an unbounded list of samples. */
 data class SessionSampleSummary(
@@ -9,7 +10,8 @@ data class SessionSampleSummary(
     val minFps: Int?,
     val peakTempC: Int?,
     val minPingMs: Int?,
-    val peakRamMb: Int
+    val peakRamMb: Int,
+    val framePacing: FramePacingMetrics? = null
 ) {
     val avgFps: Int?
         get() = if (fpsCount == 0L) null else (fpsSum.toDouble() / fpsCount).toInt()
@@ -27,9 +29,16 @@ class SessionSampleAccumulator {
     private var peakTempC: Int? = null
     private var minPingMs: Int? = null
     private var peakRamMb = 0
+    private var framePacing: FramePacingMetrics? = null
 
     @Synchronized
-    fun add(fps: Int?, tempC: Int?, pingMs: Int?, ramMb: Int?) {
+    fun add(
+        fps: Int?,
+        tempC: Int?,
+        pingMs: Int?,
+        ramMb: Int?,
+        framePacing: FramePacingMetrics? = null
+    ) {
         fps?.let {
             fpsCount += 1L
             fpsSum += it.toLong()
@@ -38,11 +47,12 @@ class SessionSampleAccumulator {
         tempC?.let { peakTempC = peakTempC?.let { old -> maxOf(old, it) } ?: it }
         pingMs?.let { minPingMs = minPingMs?.let { old -> minOf(old, it) } ?: it }
         if (ramMb != null && ramMb > 0) peakRamMb = maxOf(peakRamMb, ramMb)
+        framePacing?.let { this.framePacing = it }
     }
 
     @Synchronized
     fun snapshot(): SessionSampleSummary = SessionSampleSummary(
-        fpsCount, fpsSum, minFps, peakTempC, minPingMs, peakRamMb
+        fpsCount, fpsSum, minFps, peakTempC, minPingMs, peakRamMb, framePacing
     )
 
     @Synchronized
@@ -53,6 +63,7 @@ class SessionSampleAccumulator {
         peakTempC = null
         minPingMs = null
         peakRamMb = 0
+        framePacing = null
     }
 }
 
@@ -77,7 +88,8 @@ data class SessionReport(
     val failed: Int,
     val previousAvgFps: Int?,
     val deltaFps: Int?,
-    val endBottleneck: Bottleneck? = null
+    val endBottleneck: Bottleneck? = null,
+    val framePacing: FramePacingMetrics? = null
 )
 
 object SessionReportBuilder {
@@ -92,7 +104,8 @@ object SessionReportBuilder {
         applied: Int,
         failed: Int,
         previousAvgFps: Int?,
-        endBottleneck: Bottleneck? = null
+        endBottleneck: Bottleneck? = null,
+        framePacing: FramePacingMetrics? = null
     ): SessionReport = summarize(
         startedAt = startedAt,
         endedAt = endedAt,
@@ -107,7 +120,8 @@ object SessionReportBuilder {
         applied = applied,
         failed = failed,
         previousAvgFps = previousAvgFps,
-        endBottleneck = endBottleneck
+        endBottleneck = endBottleneck,
+        framePacing = framePacing
     )
 
     fun summarize(
@@ -117,7 +131,8 @@ object SessionReportBuilder {
         applied: Int,
         failed: Int,
         previousAvgFps: Int?,
-        endBottleneck: Bottleneck? = null
+        endBottleneck: Bottleneck? = null,
+        framePacing: FramePacingMetrics? = samples.framePacing
     ): SessionReport {
         val avgFps = samples.avgFps
         val delta = if (avgFps != null && previousAvgFps != null) avgFps - previousAvgFps else null
@@ -134,7 +149,8 @@ object SessionReportBuilder {
             failed = failed,
             previousAvgFps = previousAvgFps,
             deltaFps = delta,
-            endBottleneck = endBottleneck
+            endBottleneck = endBottleneck,
+            framePacing = framePacing
         )
     }
 }

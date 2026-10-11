@@ -1,4 +1,10 @@
 # Changelog
+## v1.19.0 — persistent session frame pacing
+- Session reports now retain the latest reliable frame-pacing window.
+- Persisted reports include 1% Low FPS, P95/P99 frame time, sample counts, and supporting metrics.
+- Older reports remain readable because frame pacing is optional and null-safe.
+- Home now shows the measured frame-pacing line in the last-session report.
+
 ## v1.18.0 — measured frame pacing on Home
 - Connected the real PerformanceState frame-pacing output to the Home adaptive card.
 - Shows measured 1% Low FPS, P95/P99 frame time, and sample count only when evidence exists.

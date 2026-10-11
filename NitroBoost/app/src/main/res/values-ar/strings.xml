@@ -192,6 +192,7 @@
     <string name="report_ping">أقل زمن لمسبار TCP: %1$dms (ليس زمن خادم اللعبة)</string>
     <string name="report_tasks">المهام المنفّذة: %1$d، الفاشلة: %2$d</string>
     <string name="report_duration">المدة: %1$d ث</string>
+    <string name="report_frame_pacing">إيقاع الإطارات: 1%% Low ‏%1$sfps · P95 ‏%2$sms · P99 ‏%3$sms (‏%4$d عينة FPS)</string>
     <string name="frame_metrics_values">1%% Low ‏%1$sfps · P95 ‏%2$sms · P99 ‏%3$sms (‏%4$d عينة FPS)</string>
     <string name="frame_metrics_empty">إيقاع الإطارات المقاس: غير متاح حتى تصل عينات gfxinfo موثوقة</string>
 

@@ -15,6 +15,7 @@ import com.nitroboost.app.core.Journal
 import com.nitroboost.app.core.MonitorClient
 import com.nitroboost.app.core.MonitorDemand
 import com.nitroboost.app.core.FramePacingDisplay
+import com.nitroboost.app.core.telemetry.FramePacingMetrics
 import com.nitroboost.app.core.SessionSampleAccumulator
 import com.nitroboost.app.core.ShellInput
 import com.nitroboost.app.core.adaptive.AdaptiveLoop
@@ -342,6 +343,25 @@ object AppStore {
                 .put("previousAvgFps", rep.previousAvgFps ?: JSONObject.NULL)
                 .put("deltaFps", rep.deltaFps ?: JSONObject.NULL)
                 .put("endBottleneck", rep.endBottleneck?.name ?: JSONObject.NULL)
+                .put("framePacing", rep.framePacing?.let { metrics ->
+                    JSONObject()
+                        .put("targetFps", metrics.targetFps)
+                        .put("averageFps", metrics.averageFps ?: JSONObject.NULL)
+                        .put("medianFps", metrics.medianFps ?: JSONObject.NULL)
+                        .put("meanFrameTimeMs", metrics.meanFrameTimeMs ?: JSONObject.NULL)
+                        .put("medianFrameTimeMs", metrics.medianFrameTimeMs ?: JSONObject.NULL)
+                        .put("p95FrameTimeMs", metrics.p95FrameTimeMs ?: JSONObject.NULL)
+                        .put("p99FrameTimeMs", metrics.p99FrameTimeMs ?: JSONObject.NULL)
+                        .put("frameTimeVarianceMs2", metrics.frameTimeVarianceMs2 ?: JSONObject.NULL)
+                        .put("jankRate", metrics.jankRate ?: JSONObject.NULL)
+                        .put("estimatedDroppedFrameRate", metrics.estimatedDroppedFrameRate ?: JSONObject.NULL)
+                        .put("stabilityScore", metrics.stabilityScore ?: JSONObject.NULL)
+                        .put("smoothnessScore", metrics.smoothnessScore ?: JSONObject.NULL)
+                        .put("fpsSampleCount", metrics.fpsSampleCount)
+                        .put("frameSampleCount", metrics.frameSampleCount)
+                        .put("intendedVsyncIntervalCount", metrics.intendedVsyncIntervalCount)
+                        .put("onePercentLowFps", metrics.onePercentLowFps ?: JSONObject.NULL)
+                } ?: JSONObject.NULL)
             Prefs.putString(ctx(), Prefs.KEY_LAST_REPORT, j.toString())
             if (rep.avgFps != null) Prefs.putInt(ctx(), Prefs.KEY_PREV_FPS, rep.avgFps)
         } catch (e: Exception) {
@@ -369,12 +389,35 @@ object AppStore {
                 previousAvgFps = if (j.isNull("previousAvgFps")) null else j.optInt("previousAvgFps"),
                 deltaFps = if (j.isNull("deltaFps")) null else j.optInt("deltaFps"),
                 endBottleneck = if (j.isNull("endBottleneck")) null
-                else runCatching { Bottleneck.valueOf(j.optString("endBottleneck")) }.getOrNull()
+                else runCatching { Bottleneck.valueOf(j.optString("endBottleneck")) }.getOrNull(),
+                framePacing = j.optJSONObject("framePacing")?.let(::parseFramePacing)
             )
         } catch (e: Exception) {
             null
         }
     }
+
+    private fun parseFramePacing(j: JSONObject): FramePacingMetrics = FramePacingMetrics(
+        targetFps = j.optInt("targetFps"),
+        averageFps = j.nullableDouble("averageFps"),
+        medianFps = j.nullableDouble("medianFps"),
+        meanFrameTimeMs = j.nullableDouble("meanFrameTimeMs"),
+        medianFrameTimeMs = j.nullableDouble("medianFrameTimeMs"),
+        p95FrameTimeMs = j.nullableDouble("p95FrameTimeMs"),
+        p99FrameTimeMs = j.nullableDouble("p99FrameTimeMs"),
+        frameTimeVarianceMs2 = j.nullableDouble("frameTimeVarianceMs2"),
+        jankRate = j.nullableDouble("jankRate"),
+        estimatedDroppedFrameRate = j.nullableDouble("estimatedDroppedFrameRate"),
+        stabilityScore = j.nullableDouble("stabilityScore"),
+        smoothnessScore = j.nullableDouble("smoothnessScore"),
+        fpsSampleCount = j.optInt("fpsSampleCount"),
+        frameSampleCount = j.optInt("frameSampleCount"),
+        intendedVsyncIntervalCount = j.optInt("intendedVsyncIntervalCount"),
+        onePercentLowFps = j.nullableDouble("onePercentLowFps")
+    )
+
+    private fun JSONObject.nullableDouble(key: String): Double? =
+        if (isNull(key)) null else optDouble(key).takeUnless { it.isNaN() }
 
     /** Start/stop expensive monitoring only while a live consumer needs samples. */
     fun setMonitorClient(client: MonitorClient, enabled: Boolean) {
@@ -559,7 +602,8 @@ object AppStore {
                     fps = s.fps,
                     tempC = s.tempC?.toInt(),
                     pingMs = s.pingMs,
-                    ramMb = s.ramUsedMb.toInt().takeIf { it > 0 }
+                    ramMb = s.ramUsedMb.toInt().takeIf { it > 0 },
+                    framePacing = lastPerformanceState?.framePacing
                 )
             }
         }

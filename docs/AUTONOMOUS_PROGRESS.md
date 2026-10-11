@@ -12,7 +12,7 @@
 - **P5 UI foundations:** dashboard، profiles، settings، overlay، reports، state-preserving navigation، ورسائل capability الصادقة.
 
 ## Current Task
-v1.18.0 منشور بنجاح؛ المراجعة التالية تركز على تقرير الجلسة وقياسات frame pacing دون ادعاء benchmark.
+التحقق من v1.19.0: حفظ frame pacing داخل تقرير الجلسة ثم نشر APK إذا نجح CI.
 
 ## Completed This Session — 2026-10-04
 - راجعت `main` وتقارير التقدم؛ لم يكن ملف الاستمرارية موجودًا.
@@ -113,6 +113,14 @@ v1.18.0 منشور بنجاح؛ المراجعة التالية تركز على 
 - البوابات المحلية نجحت: static 0 errors، security 0 findings، Python 25 tests.
 - نجح CI (test + lintDebug + assembleDebug) ونُشر APK v1.18.0/versionCode 25 باسم nitroboost-debug.apk.
 
+
+## Persistent Session Frame Pacing — 2026-10-11
+- أُكمل مسار القياس: آخر `FramePacingMetrics` موثوق يُحفظ في `SessionReport` بذاكرة O(1).
+- JSON يحفظ ويستعيد الحقول كاملة، مع optional null-safe parsing للتقارير القديمة.
+- Home يعرض 1% Low/P95/P99 في تقرير آخر جلسة.
+- static/security/Python نجحت محليًا؛ Kotlin وAPK بانتظار CI.
+- الإصدار المستهدف v1.19.0/versionCode 26.
+
 ## Architecture Decisions
 - القياسات غير المتاحة تبقى `null` ولا تُحوّل إلى أصفار مضللة.
 - لا يتم الادعاء بتحسن FPS دون benchmark على جهاز فعلي.
@@ -133,11 +141,11 @@ v1.18.0 منشور بنجاح؛ المراجعة التالية تركز على 
 - تحتاج جلسة لاحقة إلى مراجعة regression مركزة على telemetry وMonitorHub بعد الدمج الكبير.
 
 ## Next Automatic Task
-1. قراءة CI والتحقق من Kotlin test/lintDebug/assembleDebug للإصدار v1.18.0.
+1. قراءة CI والتحقق من Kotlin test/lintDebug/assembleDebug للإصدار v1.19.0.
 2. التحقق من APK والبصمة إذا نجح CI.
-3. مراجعة تقرير الجلسة قبل إضافة أي قياس جديد، مع عدم ادعاء benchmark دون جهاز Android فعلي.
+3. مراجعة round-trip لتقرير JSON على جهاز Android عندما تتوفر بيئة فعلية.
 
 ## Overall Progress
 - **Phase:** 4 — القياس التكيفي والتحليل القابل للتدقيق
-- **Task:** v1.18.0 measured frame pacing on Home
-- **Completion:** مكتمل؛ CI نجح وAPK منشور على GitHub Releases.
+- **Task:** v1.19.0 persistent session frame pacing
+- **Completion:** الكود والفحوصات المحلية مكتملة؛ بانتظار CI وAPK.

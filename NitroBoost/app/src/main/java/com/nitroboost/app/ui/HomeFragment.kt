@@ -351,6 +351,19 @@ class HomeFragment : Fragment() {
         )
         rep.peakTempC?.let { lines.add(getString(R.string.report_temp, it)) }
         rep.minFps?.let { lines.add(getString(R.string.report_min_fps, it)) }
+        rep.framePacing?.let { pacing ->
+            if (pacing.onePercentLowFps != null || pacing.p95FrameTimeMs != null || pacing.p99FrameTimeMs != null) {
+                lines.add(
+                    getString(
+                        R.string.report_frame_pacing,
+                        pacing.onePercentLowFps?.let(::formatNumber) ?: "--",
+                        pacing.p95FrameTimeMs?.let(::formatNumber) ?: "--",
+                        pacing.p99FrameTimeMs?.let(::formatNumber) ?: "--",
+                        pacing.fpsSampleCount
+                    )
+                )
+            }
+        }
         if (rep.peakRamMb > 0) lines.add(getString(R.string.report_peak_ram, rep.peakRamMb / 1024))
         rep.minPingMs?.let { lines.add(getString(R.string.report_ping, it)) }
         reportText?.text = lines.joinToString("\n")
