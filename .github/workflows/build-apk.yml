@@ -90,21 +90,27 @@ jobs:
           mv app/build/outputs/apk/debug/app-debug.apk nitroboost-debug.apk
           BUILD_TOOLS="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/lib/android-sdk}}/build-tools/36.0.0"
           BADGING="$("$BUILD_TOOLS/aapt2" dump badging nitroboost-debug.apk)"
-          printf '%s\n' "$BADGING" | grep -E "^(package:|sdkVersion:|targetSdkVersion:)" | tee -a nitroboost-build.log
+          printf '%s\n' "$BADGING" | grep -E "^(package:|targetSdkVersion:)" | tee -a nitroboost-build.log
           assert_badging() {
             local expected="$1"
             local label="$2"
             if ! printf '%s\n' "$BADGING" | grep -Fq "$expected"; then
               printf 'APK metadata check failed (%s); expected %s. Full badging follows:\n%s\n' "$label" "$expected" "$BADGING" | tee -a nitroboost-build.log
-              observed="$(printf '%s\n' "$BADGING" | grep -E "^(sdkVersion:|targetSdkVersion:)" | tr '\n' ';' || true)"
+              observed="$(printf '%s\n' "$BADGING" | grep -E "^(package:|targetSdkVersion:)" | tr '\n' ';' || true)"
               echo "::error title=APK metadata check::$label; expected=$expected; observed=$observed"
               exit 1
             fi
             printf '%s\n' "$BADGING" | grep -F "$expected"
           }
           assert_badging "package: name='com.nitroboost.app' versionCode='${{ steps.ver.outputs.code }}' versionName='${{ steps.ver.outputs.name }}'" "package/version"
-          assert_badging "sdkVersion:'24'" "minimum SDK API 24"
           assert_badging "targetSdkVersion:'36'" "target SDK API 36"
+          APK_ANALYZER="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/lib/android-sdk}}/cmdline-tools/latest/bin/apkanalyzer"
+          MIN_SDK="$("$APK_ANALYZER" manifest min-sdk nitroboost-debug.apk)"
+          if [ "$MIN_SDK" != "24" ]; then
+            echo "::error title=APK minimum SDK::Expected API 24, observed '$MIN_SDK'"
+            exit 1
+          fi
+          echo "Verified APK minSdk=$MIN_SDK"
           "$BUILD_TOOLS/apksigner" verify --verbose nitroboost-debug.apk
           sha256sum nitroboost-debug.apk > nitroboost-debug.apk.sha256
 
@@ -287,7 +293,12 @@ jobs:
             echo "::error::Release APK is debuggable — refusing to publish"
             exit 1
           fi
-          printf '%s\n' "$BADGING" | grep -F "sdkVersion:'24'"
+          APK_ANALYZER="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/lib/android-sdk}}/cmdline-tools/latest/bin/apkanalyzer"
+          MIN_SDK="$("$APK_ANALYZER" manifest min-sdk NitroBoost/nitroboost-release.apk)"
+          if [ "$MIN_SDK" != "24" ]; then
+            echo "::error title=Release APK minimum SDK::Expected API 24, observed '$MIN_SDK'"
+            exit 1
+          fi
           printf '%s\n' "$BADGING" | grep -F "targetSdkVersion:'36'"
           (cd NitroBoost && sha256sum nitroboost-release.apk > nitroboost-release.apk.sha256)
           echo "signed=true" >> "$GITHUB_OUTPUT"
