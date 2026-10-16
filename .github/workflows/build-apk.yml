@@ -90,6 +90,7 @@ jobs:
           mv app/build/outputs/apk/debug/app-debug.apk nitroboost-debug.apk
           BUILD_TOOLS="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/lib/android-sdk}}/build-tools/36.0.0"
           BADGING="$("$BUILD_TOOLS/aapt2" dump badging nitroboost-debug.apk)"
+          printf '%s\n' "$BADGING" | tee -a nitroboost-build.log
           printf '%s\n' "$BADGING" | grep -F "package: name='com.nitroboost.app' versionCode='${{ steps.ver.outputs.code }}' versionName='${{ steps.ver.outputs.name }}'"
           printf '%s\n' "$BADGING" | grep -F "sdkVersion:'24'"
           printf '%s\n' "$BADGING" | grep -F "targetSdkVersion:'36'"
