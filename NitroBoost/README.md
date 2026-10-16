@@ -1,7 +1,7 @@
 # 🚀 NitroBoost — Game Booster
 
 
-**أحدث إصدار: v1.20.0 (versionCode 27)**؛ يستهدف Android 16 / API 36. راجع [GitHub Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) لتنزيل APK والتحقق من بصمة SHA-256.
+**أحدث إصدار: v1.21.0 (versionCode 28)**؛ يستهدف Android 16 / API 36. راجع [GitHub Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) لتنزيل APK والتحقق من بصمة SHA-256.
 تطبيق معزّز ألعاب Android احترافي، عربي + إنجليزي، مبني بـ **Kotlin** و**Material 3**
 (بدون Compose) على Shizuku API 13.1.5.
 
@@ -114,7 +114,7 @@ gradle wrapper --gradle-version 8.14.3   # إذا كان Gradle مثبتًا
 
 APK الناتج في `app/build/outputs/apk/debug/`.
 
-> 📲 **APK منشورة (v1.20.0)**: [تنزيل nitroboost-debug.apk](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases/download/nitroboost-v1.20.0/nitroboost-debug.apk) — نسخة debug للاختبار؛ استخدم ملف `.sha256` المرفق للتحقق من التنزيل. تُرفق APK release موقّعة فقط عند تهيئة أسرار توقيع المشروع.
+> 📲 **APK منشورة (v1.21.0)**: [تنزيل nitroboost-debug.apk](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases/download/nitroboost-v1.21.0/nitroboost-debug.apk) — نسخة debug للاختبار؛ استخدم ملف `.sha256` المرفق للتحقق من التنزيل. تُرفق APK release موقّعة فقط عند تهيئة أسرار توقيع المشروع.
 > (أو من صفحة [Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) —
 > يُعاد بناؤه تلقائيًا عبر GitHub Actions عند كل تغيير).
 

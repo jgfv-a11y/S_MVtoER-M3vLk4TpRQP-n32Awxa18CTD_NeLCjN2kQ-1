@@ -1,4 +1,4 @@
-# تدقيق المستودع وإصدار NitroBoost v1.20.0
+# تدقيق المستودع وإصدار NitroBoost v1.21.0
 
 **التاريخ:** 2026-10-16  
 **النطاق:** مشروع Android، الشيفرة الرئيسية والاختبارات والموارد وManifest، مسارات الامتياز والاستعادة والحرارة، CI/CD، التوثيق والملفات المنشورة.
@@ -31,7 +31,7 @@
 
 ### 2. مرتفع للتوزيع — target SDK قديم (أُغلق برمجيًا)
 
-- `compileSdk=36` و`targetSdk=36`، `versionName=1.20.0` و`versionCode=27`.
+- `compileSdk=36` و`targetSdk=36`، `versionName=1.21.0` و`versionCode=28`.
 - AGP 8.13.2، Kotlin 2.2.20، Gradle 8.14.3، Android Build Tools 36.0.0.
 - أضيفت معالجة `systemBars + displayCutout` بدل الاعتماد على سلوك layout القديم.
 - **المتبقي:** اختبار أجهزة/محاكيات API 26–36 وROMs مختلفة قبل متجر Play.

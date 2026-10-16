@@ -1,13 +1,22 @@
 # Changelog
-
-## v1.20.0 — Android 16 readiness and thermal-sensor correctness
+## v1.21.0 — Android 16 readiness and thermal-sensor correctness
 - Raised `compileSdk`/`targetSdk` to API 36 and updated the build toolchain to AGP 8.13.2, Kotlin 2.2.20, and Gradle 8.14.3.
 - Added explicit system-bar/display-cutout inset handling so the retained-fragment UI remains usable under Android 15/16 edge-to-edge enforcement.
 - Fixed thermal-zone parsing: standard millidegree readings and OEM direct-Celsius readings now normalize to the same validated Celsius range. Invalid/non-finite sensor values remain unavailable instead of becoming measurements.
 - Added JVM regression coverage for thermal normalization, including bounds and malformed values.
-- Updated pinned artifact Actions, installed API 36 in CI, and added APK package/version/target/signature checks plus published SHA-256 files.
+- Installed API 36 in CI and added APK package/version/target/signature checks plus published SHA-256 files.
 - Removed the stale unversioned APK copy from Git; verified binaries now live only in versioned GitHub Releases, with `dist/README.md` as the stable pointer.
+- Removed accidentally tracked Python bytecode caches and added ignore coverage.
 - No device benchmark or universal FPS improvement is claimed; physical API 26-36/OEM validation remains a separate distribution requirement.
+
+## v1.20.0 — toolchain, dependency and CI maintenance
+- Bumped Android Gradle Plugin 8.4.2 → 8.6.1 and Kotlin 1.9.24 → 1.9.25 (patch-level, Gradle 8.7 compatible).
+- Bumped AndroidX Lifecycle 2.8.4 → 2.8.7.
+- CI: incorporated Dependabot bumps actions/upload-artifact 7.0.1 → 7.0.2 and actions/download-artifact 7.0.0 → 8.0.2 (full-SHA pinned, superseding PRs #6/#7).
+- Added Dependabot coverage for the Gradle ecosystem (`/NitroBoost`) so Android dependency updates are proposed weekly.
+- Split a concatenated string-resource line in `values/` and `values-ar/` (no text change).
+- No product behavior or performance changes; no FPS/battery gain is claimed without a same-device A/B benchmark.
+- Version code 27.
 
 ## v1.19.0 — persistent session frame pacing
 - Session reports now retain the latest reliable frame-pacing window.

@@ -11,8 +11,8 @@ android {
         applicationId = "com.nitroboost.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 27
-        versionName = "1.20.0"
+        versionCode = 28
+        versionName = "1.21.0"
     }
 
     // Optional release signing for store distribution.
@@ -68,7 +68,7 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
-    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.8.4")
+    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     // Shizuku — privileged operations (CPU governor, game mode, RAM clean ...)
