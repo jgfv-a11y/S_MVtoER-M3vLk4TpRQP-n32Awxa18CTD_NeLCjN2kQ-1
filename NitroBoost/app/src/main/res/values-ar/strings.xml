@@ -50,7 +50,8 @@
     <string name="sw_auto_restore_label">استعادة كل شيء عند خروج اللعبة</string>
     <string name="sw_boot_label">إعادة تفعيل المؤشر بعد إعادة التشغيل</string>
     <string name="btn_lang">عربي / EN</string>
-    <string name="about_line">نيترو بوست — معزّز ألعاب قائم على السجل. كل تعديل يُسجَّل وقابل للتكرار والاستعادة. مبني بـ Kotlin + Material 3 على Shizuku API 13.1.5.</string>    <string name="shizuku_via_root">الروت متصل — المهام المميزة تعمل عبر su.</string>
+    <string name="about_line">نيترو بوست — معزّز ألعاب قائم على السجل. كل تعديل يُسجَّل وقابل للتكرار والاستعادة. مبني بـ Kotlin + Material 3 على Shizuku API 13.1.5.</string>
+    <string name="shizuku_via_root">الروت متصل — المهام المميزة تعمل عبر su.</string>
     <string name="about_version_format">الإصدار %1$s</string>
 
 
