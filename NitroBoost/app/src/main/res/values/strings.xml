@@ -50,7 +50,8 @@ The app keeps checking by itself until connected. On rooted devices, Root is use
     <string name="sw_auto_restore_label">Restore everything when the game exits</string>
     <string name="sw_boot_label">Re-enable the monitor after reboot</string>
     <string name="btn_lang">EN / AR</string>
-    <string name="about_line">NitroBoost — journal-based game booster. Every modification is recorded, idempotent and revertible. Built with Kotlin + Material 3 on Shizuku API 13.1.5.</string>    <string name="shizuku_via_root">Root connected — privileged tasks work via su.</string>
+    <string name="about_line">NitroBoost — journal-based game booster. Every modification is recorded, idempotent and revertible. Built with Kotlin + Material 3 on Shizuku API 13.1.5.</string>
+    <string name="shizuku_via_root">Root connected — privileged tasks work via su.</string>
     <string name="about_version_format">Version %1$s</string>
 
 

@@ -1,4 +1,13 @@
 # Changelog
+## v1.20.0 — toolchain, dependency and CI maintenance
+- Bumped Android Gradle Plugin 8.4.2 → 8.6.1 and Kotlin 1.9.24 → 1.9.25 (patch-level, Gradle 8.7 compatible).
+- Bumped AndroidX Lifecycle 2.8.4 → 2.8.7.
+- CI: incorporated Dependabot bumps actions/upload-artifact 7.0.1 → 7.0.2 and actions/download-artifact 7.0.0 → 8.0.2 (full-SHA pinned, superseding PRs #6/#7).
+- Added Dependabot coverage for the Gradle ecosystem (`/NitroBoost`) so Android dependency updates are proposed weekly.
+- Split a concatenated string-resource line in `values/` and `values-ar/` (no text change).
+- No product behavior or performance changes; no FPS/battery gain is claimed without a same-device A/B benchmark.
+- Version code 27.
+
 ## v1.19.0 — persistent session frame pacing
 - Session reports now retain the latest reliable frame-pacing window.
 - Persisted reports include 1% Low FPS, P95/P99 frame time, sample counts, and supporting metrics.
