@@ -133,7 +133,7 @@
 - أضيفت مقارنات FPS حسب اسم حزمة اللعبة، بمخزن محدود إلى 32 لعبة. التقارير التاريخية غير المرتبطة بحزمة لا تعرض delta؛ والنص يوضح أن الفارق وصفي وليس نتيجة A/B سببية.
 - أُضيفت اختبارات Kotlin لتخزين/عزل baselines واستبدال الملفات، وفحوص ثابتة لحد API والحراسات؛ كما حُدثت وثائق التوزيع والمراجعة العكسية.
 - نجحت محليًا `tools/verify.py` (134 Kotlin، صفر أخطاء)، و`security_verify.py` (12 مجموعة، صفر findings؛ تحذير Play المعتاد عن QUERY_ALL_PACKAGES)، و25 اختبار Python، و`git diff --check`.
-- **لم يُشغّل Kotlin/Gradle/lint/build محليًا** لغياب Java وGradle وAndroid SDK. لم تُنشأ APK أو Release بعد؛ يلزم CI على الفرع ثم إطلاق `main`، واختبار جهاز API 24 فعلي غير متاح.
+- **لم يُشغّل Kotlin/Gradle/lint/build محليًا** لغياب Java وGradle وAndroid SDK. نجح GitHub Actions على commit `f59025d` في push run `38982201478` وPR run `38982205837`، بما فيه JVM tests وlint وassembleDebug، وفحوص package/minSdk/targetSdk/signature وبصمة APK؛ أُنتج artifact للاختبار على CI. لم يُنشأ GitHub Release بعد، واختبار جهاز API 24 فعلي غير متاح.
 
 ## Architecture Decisions
 - القياسات غير المتاحة تبقى `null` ولا تُحوّل إلى أصفار مضللة.
@@ -155,12 +155,11 @@
 - تحتاج جلسة لاحقة إلى مراجعة regression مركزة على telemetry وMonitorHub بعد الدمج الكبير.
 
 ## Next Automatic Task
-1. commit ودفع v1.22.0 إلى فرع Arena الثابت، ثم فتح PR وانتظار بوابات `test` و`lintDebug` و`assembleDebug`.
-2. إذا نجح CI، دمج PR بالـmerge ومتابعة Workflow على `main` حتى إنشاء Release `nitroboost-v1.22.0` والتحقق من APK وبيانات API 24/36 وبصمة SHA-256.
-3. إذا فشل Gradle أو lint، أصلح السبب وأعد CI قبل الدمج/النشر.
-4. عند توفر جهاز، اختبار التثبيت والإطلاق وShizuku/overlay والاستعادة على Android 7/API 24، ثم توسيع مصفوفة API 24–36.
+1. تحديث سجل التقدم، ثم إعادة بوابة PR بعد تعديل الوثائق.
+2. بعد نجاح الفحوص مجددًا، دمج PR رقم 15 بـ`--merge` ومتابعة Workflow على `main` حتى إنشاء Release `nitroboost-v1.22.0` والتحقق من APK وبيانات API 24/36 وبصمة SHA-256.
+3. عند توفر جهاز، اختبار التثبيت والإطلاق وShizuku/overlay والاستعادة على Android 7/API 24، ثم توسيع مصفوفة API 24–36.
 
 ## Overall Progress
 - **Phase:** 4 — القياس التكيفي والتحليل القابل للتدقيق
 - **Task:** v1.22.0 Android 7/API 24 and per-game session comparison
-- **Completion:** التنفيذ والفحوصات الساكنة وPython اكتملت؛ Kotlin/Android CI وPR وRelease لم تُنفذ بعد. لا توجد APK جديدة أو تجربة جهاز فعلي حتى الآن.
+- **Completion:** التنفيذ والفحوصات المحلية وCI للـpush وPR نجحت؛ PR #15 مفتوح بانتظار إعادة تحقق توثيق التقدم ثم الدمج وإطلاق APK على `main`. لا يوجد اختبار جهاز فعلي حتى الآن.
