@@ -126,7 +126,7 @@
 - اكتُشف خلل مؤكد: `ThermalSampler` كان يقسم كل قراءة على 1000؛ بعض OEMs تعرض Celsius مباشرة، ما يحوّل `44` إلى `0.044°C` ويضعف raw thermal floor. أضيف تطبيع pure Kotlin واختبارات regression للقيم المباشرة والملي-درجة والقيم التالفة.
 - رُفع `compileSdk` و`targetSdk` إلى 36، وأضيف تعامل edge-to-edge/cutout صريح، وحُدّث AGP/Kotlin/Gradle.
 - حُدثت Actions الخاصة بالـartifacts إلى الإصدارات ذات الاختبارات الخضراء، وأضيف تحقق package/version/target/signature وبصمة SHA-256 قبل النشر.
-- الإصدار المستهدف `v1.21.0` / `versionCode 28`؛ نتائج CI والإطلاق تُسجّل بعد اكتمال الاستضافة.
+- الإصدار المستهدف `v1.21.0` / `versionCode 28`؛ نجحت بوابتا push/PR للـcommit المدمج (runs 38888622125 و38888628920)، وبقي إطلاق `main`.
 
 ## Architecture Decisions
 - القياسات غير المتاحة تبقى `null` ولا تُحوّل إلى أصفار مضللة.

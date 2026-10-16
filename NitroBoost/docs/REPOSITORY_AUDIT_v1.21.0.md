@@ -1,6 +1,7 @@
 # تدقيق المستودع وإصدار NitroBoost v1.21.0
 
-**التاريخ:** 2026-10-16  
+**التاريخ:** 2026-10-16
+
 **النطاق:** مشروع Android، الشيفرة الرئيسية والاختبارات والموارد وManifest، مسارات الامتياز والاستعادة والحرارة، CI/CD، التوثيق والملفات المنشورة.
 
 ## الملخص التنفيذي
@@ -65,7 +66,7 @@ CI يتحقق الآن من:
 - GitHub Actions: JVM tests، Android lint، debug/release assembly، وفحوصات APK.
 - `git diff --check` وفحص الأسرار النصي والملفات الكبيرة.
 
-تُسجل روابط تشغيل CI وبصمة APK النهائية في هذا التقرير وفي سجل التقدم بعد اكتمال النشر.
+نجحت بوابة commit المدمج على الفرع مرتين: تشغيل push رقم [38888622125](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/actions/runs/38888622125) وتشغيل PR رقم [38888628920](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/actions/runs/38888628920). يبقى تشغيل `main` هو بوابة بناء release ونشر APK وبصمتها.
 
 ## المخاطر المتبقية
 
