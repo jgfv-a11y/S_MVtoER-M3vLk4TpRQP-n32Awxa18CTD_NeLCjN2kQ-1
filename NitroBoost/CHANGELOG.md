@@ -7,7 +7,7 @@
 - Fixed session FPS comparisons that previously reused one global average across different games. Baselines are now per validated game package and bounded to 32 games; reports without package context no longer show the legacy unscoped delta.
 - Labeled same-game FPS differences as descriptive only, not a controlled A/B result or causal proof of a boost.
 - Added an Arabic reverse-engineering review and a prioritized improvement roadmap. No reference APK code was copied into NitroBoost.
-- No physical Android 7 device test or gameplay benchmark is available in this environment; CI build/test and API-level gates remain required before release.
+- GitHub Actions test/lint/build and APK metadata gates passed; the debug/testing APK was published at `nitroboost-v1.22.0`. No physical Android 7 device test or gameplay benchmark is available, so compatibility on API 24 and any FPS benefit remain unverified on real devices.
 
 ## v1.21.0 — Android 16 readiness and thermal-sensor correctness
 - Raised `compileSdk`/`targetSdk` to API 36 and updated the build toolchain to AGP 8.13.2, Kotlin 2.2.20, and Gradle 8.14.3.
