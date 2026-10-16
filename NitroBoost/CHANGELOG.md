@@ -1,4 +1,14 @@
 # Changelog
+## v1.21.0 — Android 16 readiness and thermal-sensor correctness
+- Raised `compileSdk`/`targetSdk` to API 36 and updated the build toolchain to AGP 8.13.2, Kotlin 2.2.20, and Gradle 8.14.3.
+- Added explicit system-bar/display-cutout inset handling so the retained-fragment UI remains usable under Android 15/16 edge-to-edge enforcement.
+- Fixed thermal-zone parsing: standard millidegree readings and OEM direct-Celsius readings now normalize to the same validated Celsius range. Invalid/non-finite sensor values remain unavailable instead of becoming measurements.
+- Added JVM regression coverage for thermal normalization, including bounds and malformed values.
+- Installed API 36 in CI and added APK package/version/target/signature checks plus published SHA-256 files.
+- Removed the stale unversioned APK copy from Git; verified binaries now live only in versioned GitHub Releases, with `dist/README.md` as the stable pointer.
+- Removed accidentally tracked Python bytecode caches and added ignore coverage.
+- No device benchmark or universal FPS improvement is claimed; physical API 26-36/OEM validation remains a separate distribution requirement.
+
 ## v1.20.0 — toolchain, dependency and CI maintenance
 - Bumped Android Gradle Plugin 8.4.2 → 8.6.1 and Kotlin 1.9.24 → 1.9.25 (patch-level, Gradle 8.7 compatible).
 - Bumped AndroidX Lifecycle 2.8.4 → 2.8.7.

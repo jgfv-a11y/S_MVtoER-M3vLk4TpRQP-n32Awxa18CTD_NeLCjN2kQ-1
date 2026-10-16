@@ -12,7 +12,7 @@
 - **P5 UI foundations:** dashboard، profiles، settings، overlay، reports، state-preserving navigation، ورسائل capability الصادقة.
 
 ## Current Task
-التحقق من v1.19.0: حفظ frame pacing داخل تقرير الجلسة ثم نشر APK إذا نجح CI.
+إصدار v1.21.0: مراجعة المستودع، استهداف API 36، تصحيح تطبيع مستشعرات الحرارة، والتحقق من APK ونشرها مع SHA-256.
 
 ## Completed This Session — 2026-10-04
 - راجعت `main` وتقارير التقدم؛ لم يكن ملف الاستمرارية موجودًا.
@@ -121,6 +121,13 @@
 - static/security/Python نجحت محليًا؛ Kotlin وAPK بانتظار CI.
 - الإصدار المستهدف v1.19.0/versionCode 26.
 
+## Repository Review and Android 16 Update (v1.21.0) — 2026-10-16
+- راجعت بنية المشروع وManifest ومسارات Journal/rollback والحرارة وShizuku/root ودورة الخدمات والـworkflow والتبعيات المثبتة والملفات الثنائية والتوثيق.
+- اكتُشف خلل مؤكد: `ThermalSampler` كان يقسم كل قراءة على 1000؛ بعض OEMs تعرض Celsius مباشرة، ما يحوّل `44` إلى `0.044°C` ويضعف raw thermal floor. أضيف تطبيع pure Kotlin واختبارات regression للقيم المباشرة والملي-درجة والقيم التالفة.
+- رُفع `compileSdk` و`targetSdk` إلى 36، وأضيف تعامل edge-to-edge/cutout صريح، وحُدّث AGP/Kotlin/Gradle.
+- حُدثت Actions الخاصة بالـartifacts إلى الإصدارات ذات الاختبارات الخضراء، وأضيف تحقق package/version/target/signature وبصمة SHA-256 قبل النشر.
+- الإصدار المستهدف `v1.21.0` / `versionCode 28`؛ نجحت بوابتا push/PR للـcommit المدمج (runs 38888622125 و38888628920)، وبقي إطلاق `main`.
+
 ## Architecture Decisions
 - القياسات غير المتاحة تبقى `null` ولا تُحوّل إلى أصفار مضللة.
 - لا يتم الادعاء بتحسن FPS دون benchmark على جهاز فعلي.
@@ -141,11 +148,11 @@
 - تحتاج جلسة لاحقة إلى مراجعة regression مركزة على telemetry وMonitorHub بعد الدمج الكبير.
 
 ## Next Automatic Task
-1. قراءة CI والتحقق من Kotlin test/lintDebug/assembleDebug للإصدار v1.19.0.
-2. التحقق من APK والبصمة إذا نجح CI.
-3. مراجعة round-trip لتقرير JSON على جهاز Android عندما تتوفر بيئة فعلية.
+1. التحقق من CI النهائي للإصدار v1.21.0 بعد دمج خط main المتزامن.
+2. دمج PR بعد نجاح البوابات والتحقق من GitHub Release وAPK وSHA-256.
+3. تنفيذ اختبار install/launch وShizuku/edge-to-edge على أجهزة API 26–36 عندما تتوفر بيئة فعلية.
 
 ## Overall Progress
 - **Phase:** 4 — القياس التكيفي والتحليل القابل للتدقيق
-- **Task:** v1.19.0 persistent session frame pacing
-- **Completion:** الكود والفحوصات المحلية مكتملة؛ بانتظار CI وAPK.
+- **Task:** v1.21.0 Android 16 and thermal-sensor safety
+- **Completion:** الكود والفحوصات المحلية وبناء الفرع الأول مكتملة؛ بانتظار بوابة commit المدمج وإطلاق APK.

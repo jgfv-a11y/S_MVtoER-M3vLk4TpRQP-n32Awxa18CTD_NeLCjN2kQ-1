@@ -8,6 +8,7 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
 import com.nitroboost.app.core.CpuMath
+import com.nitroboost.app.core.TemperatureMath
 import com.nitroboost.app.core.telemetry.PerformanceSnapshot
 import com.nitroboost.app.core.telemetry.SensorAvailability
 import java.io.File
@@ -219,18 +220,17 @@ class RamSampler(private val ctx: Context) {
 
 class ThermalSampler(private val ctx: Context) {
 
-    /** Highest temperature reported by any readable thermal zone, in Celsius. */
+    /** Highest valid temperature reported by any readable thermal zone, in Celsius. */
     fun tempC(): Double? {
         var max: Double? = null
         for (i in 0 until 40) {
             val file = File("/sys/class/thermal/thermal_zone$i/temp")
             if (!file.exists()) continue
-            val value = try {
-                file.readText().trim().toIntOrNull()
+            val celsius = try {
+                TemperatureMath.normalizeThermalZoneCelsius(file.readText())
             } catch (_: Exception) {
                 null
             } ?: continue
-            val celsius = value / 1000.0
             if (max == null || celsius > max) max = celsius
         }
         return max

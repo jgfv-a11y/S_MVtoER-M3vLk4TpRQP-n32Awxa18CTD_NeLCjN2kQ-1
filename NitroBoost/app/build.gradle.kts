@@ -5,14 +5,14 @@ plugins {
 
 android {
     namespace = "com.nitroboost.app"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.nitroboost.app"
         minSdk = 26
-        targetSdk = 34
-        versionCode = 27
-        versionName = "1.20.0"
+        targetSdk = 36
+        versionCode = 28
+        versionName = "1.21.0"
     }
 
     // Optional release signing for store distribution.

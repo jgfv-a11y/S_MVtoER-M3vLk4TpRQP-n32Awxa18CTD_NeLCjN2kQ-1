@@ -1,7 +1,7 @@
 # 🚀 NitroBoost — Game Booster
 
 
-**أحدث إصدار منشور: v1.20.0 (versionCode 27)**؛ راجع [GitHub Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) لتنزيله.
+**أحدث إصدار: v1.21.0 (versionCode 28)**؛ يستهدف Android 16 / API 36. راجع [GitHub Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) لتنزيل APK والتحقق من بصمة SHA-256.
 تطبيق معزّز ألعاب Android احترافي، عربي + إنجليزي، مبني بـ **Kotlin** و**Material 3**
 (بدون Compose) على Shizuku API 13.1.5.
 
@@ -74,8 +74,8 @@ Frame times are read only from `dumpsys gfxinfo ... framestats` when exposed by 
 
 ## 📦 المتطلبات
 
-- Android 8.0 (API 26) أو أحدث — target SDK 34.
-- **Android Studio** Koala (2024.1) أو أحدث + JDK 17 (مدمج في Android Studio).
+- Android 8.0 (API 26) أو أحدث — target SDK 36 (Android 16).
+- **Android Studio** حديث يدعم AGP 8.13.2 + JDK 17 (مدمج في Android Studio).
 - **Shizuku** (اختياري لكن ضروري للمزايا الكاملة):
   بدون Shizuku يعمل التطبيق على ما تسمحه صلاحيات النظام العامة (DND،
   الحركات، Battery Saver، بيانات الشبكة…) — ومع Shizuku تُفعل التعديلات
@@ -107,14 +107,14 @@ Frame times are read only from `dumpsys gfxinfo ... framestats` when exposed by 
 
 ```bash
 cd NitroBoost
-gradle wrapper --gradle-version 8.7   # إذا كان Gradle 8.7 مثبتًا
+gradle wrapper --gradle-version 8.14.3   # إذا كان Gradle مثبتًا
 ./gradlew assembleDebug
 ./gradlew test                        # اختبارات JVM للنواة (المحرك، السجل، الملفات)
 ```
 
 APK الناتج في `app/build/outputs/apk/debug/`.
 
-> 📲 **APK منشورة (v1.20.0)**: [تنزيل nitroboost-debug.apk](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases/download/nitroboost-v1.20.0/nitroboost-debug.apk) — نسخة debug للاختبار؛ هذا الإصدار لا يتضمن APK موقّعة للتوزيع.
+> 📲 **APK منشورة (v1.21.0)**: [تنزيل nitroboost-debug.apk](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases/download/nitroboost-v1.21.0/nitroboost-debug.apk) — نسخة debug للاختبار؛ استخدم ملف `.sha256` المرفق للتحقق من التنزيل. تُرفق APK release موقّعة فقط عند تهيئة أسرار توقيع المشروع.
 > (أو من صفحة [Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) —
 > يُعاد بناؤه تلقائيًا عبر GitHub Actions عند كل تغيير).
 

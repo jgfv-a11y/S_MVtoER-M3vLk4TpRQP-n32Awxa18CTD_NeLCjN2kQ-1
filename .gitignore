@@ -1,0 +1,3 @@
+# Generated distribution artifacts are published through GitHub Releases.
+dist/*.apk
+dist/*.sha256
