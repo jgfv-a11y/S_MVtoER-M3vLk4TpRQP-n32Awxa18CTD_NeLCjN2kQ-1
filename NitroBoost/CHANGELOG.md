@@ -1,4 +1,13 @@
 # Changelog
+
+## v1.20.0 — Android 16 readiness and thermal-sensor correctness
+- Raised `compileSdk`/`targetSdk` to API 36 and updated the build toolchain to AGP 8.13.2, Kotlin 2.2.20, and Gradle 8.14.3.
+- Added explicit system-bar/display-cutout inset handling so the retained-fragment UI remains usable under Android 15/16 edge-to-edge enforcement.
+- Fixed thermal-zone parsing: standard millidegree readings and OEM direct-Celsius readings now normalize to the same validated Celsius range. Invalid/non-finite sensor values remain unavailable instead of becoming measurements.
+- Added JVM regression coverage for thermal normalization, including bounds and malformed values.
+- Updated pinned artifact Actions, installed API 36 in CI, and added APK package/version/target/signature checks plus published SHA-256 files.
+- No device benchmark or universal FPS improvement is claimed; physical API 26-36/OEM validation remains a separate distribution requirement.
+
 ## v1.19.0 — persistent session frame pacing
 - Session reports now retain the latest reliable frame-pacing window.
 - Persisted reports include 1% Low FPS, P95/P99 frame time, sample counts, and supporting metrics.

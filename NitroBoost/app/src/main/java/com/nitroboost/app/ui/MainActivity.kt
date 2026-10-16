@@ -14,6 +14,10 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.Observer
 import androidx.lifecycle.lifecycleScope
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.nitroboost.app.AppStore
 import com.nitroboost.app.R
@@ -65,7 +69,23 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Android 15+ enforces edge-to-edge for modern targets. Apply the
+        // system-bar and cutout insets explicitly so content and navigation
+        // remain reachable on API 26-36 in portrait and landscape.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         setContentView(R.layout.activity_main)
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main_root)) { view, insets ->
+            val safe = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+            )
+            view.updatePadding(
+                left = safe.left,
+                top = safe.top,
+                right = safe.right,
+                bottom = safe.bottom
+            )
+            WindowInsetsCompat.CONSUMED
+        }
 
         selectedTabId = savedInstanceState?.getInt(STATE_SELECTED_TAB)
             ?.takeIf(::isNavigationItem) ?: R.id.nav_home

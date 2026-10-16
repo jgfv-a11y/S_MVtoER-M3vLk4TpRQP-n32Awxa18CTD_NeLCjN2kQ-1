@@ -15,6 +15,10 @@ captures/
 # Kotlin
 .kotlin/
 
+# Python test caches
+__pycache__/
+*.py[cod]
+
 # OS
 .DS_Store
 Thumbs.db

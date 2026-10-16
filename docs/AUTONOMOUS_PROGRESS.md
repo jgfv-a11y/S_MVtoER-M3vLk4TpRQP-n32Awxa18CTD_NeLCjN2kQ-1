@@ -12,7 +12,7 @@
 - **P5 UI foundations:** dashboard، profiles، settings، overlay، reports، state-preserving navigation، ورسائل capability الصادقة.
 
 ## Current Task
-التحقق من v1.19.0: حفظ frame pacing داخل تقرير الجلسة ثم نشر APK إذا نجح CI.
+إصدار v1.20.0: مراجعة المستودع، استهداف API 36، تصحيح تطبيع مستشعرات الحرارة، والتحقق من APK ونشرها مع SHA-256.
 
 ## Completed This Session — 2026-10-04
 - راجعت `main` وتقارير التقدم؛ لم يكن ملف الاستمرارية موجودًا.
@@ -120,6 +120,13 @@
 - Home يعرض 1% Low/P95/P99 في تقرير آخر جلسة.
 - static/security/Python نجحت محليًا؛ Kotlin وAPK بانتظار CI.
 - الإصدار المستهدف v1.19.0/versionCode 26.
+
+## Repository Review and Android 16 Update — 2026-10-16
+- راجعت بنية المشروع وManifest ومسارات Journal/rollback والحرارة وShizuku/root ودورة الخدمات والـworkflow والتبعيات المثبتة والملفات الثنائية والتوثيق.
+- اكتُشف خلل مؤكد: `ThermalSampler` كان يقسم كل قراءة على 1000؛ بعض OEMs تعرض Celsius مباشرة، ما يحوّل `44` إلى `0.044°C` ويضعف raw thermal floor. أضيف تطبيع pure Kotlin واختبارات regression للقيم المباشرة والملي-درجة والقيم التالفة.
+- رُفع `compileSdk` و`targetSdk` إلى 36، وأضيف تعامل edge-to-edge/cutout صريح، وحُدّث AGP/Kotlin/Gradle.
+- حُدثت Actions الخاصة بالـartifacts إلى الإصدارات ذات الاختبارات الخضراء، وأضيف تحقق package/version/target/signature وبصمة SHA-256 قبل النشر.
+- الإصدار المستهدف `v1.20.0` / `versionCode 27`؛ نتائج CI والإطلاق تُسجّل بعد اكتمال الاستضافة.
 
 ## Architecture Decisions
 - القياسات غير المتاحة تبقى `null` ولا تُحوّل إلى أصفار مضللة.
