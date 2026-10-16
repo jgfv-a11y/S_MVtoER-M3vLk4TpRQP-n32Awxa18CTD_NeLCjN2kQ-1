@@ -9,10 +9,10 @@ android {
 
     defaultConfig {
         applicationId = "com.nitroboost.app"
-        minSdk = 26
+        minSdk = 24
         targetSdk = 36
-        versionCode = 28
-        versionName = "1.21.0"
+        versionCode = 29
+        versionName = "1.22.0"
     }
 
     // Optional release signing for store distribution.

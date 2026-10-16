@@ -5,9 +5,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
-import java.nio.file.AtomicMoveNotSupportedException
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import java.util.Collections
 
 /**
@@ -39,11 +36,7 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
         } catch (_: Exception) {
             // Preserve the bad bytes for diagnosis, then try the last known-good snapshot.
             try {
-                Files.copy(
-                    file.toPath(),
-                    File(file.parentFile, file.name + ".corrupt").toPath(),
-                    StandardCopyOption.REPLACE_EXISTING
-                )
+                file.copyTo(File(file.parentFile, file.name + ".corrupt"), overwrite = true)
             } catch (_: Exception) {
             }
         }
@@ -519,16 +512,9 @@ class DecisionLedger(private val file: File, private val maxPairs: Int = 40) {
     }
 
     private fun atomicReplace(source: File, destination: File) {
-        try {
-            Files.move(
-                source.toPath(), destination.toPath(),
-                StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING
-            )
-        } catch (_: AtomicMoveNotSupportedException) {
-            // Same-filesystem replacement remains preferable to a direct copy;
-            // if this fails, retain the existing live file and report failure.
-            Files.move(source.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
-        }
+        // Same-directory rename works on the API 24 minimum and preserves the
+        // previous ledger if the replacement cannot be completed.
+        com.nitroboost.app.core.AtomicFileOps.replace(source, destination)
     }
 
     private fun isParseable(candidate: File): Boolean = try {

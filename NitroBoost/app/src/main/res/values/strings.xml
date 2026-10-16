@@ -187,7 +187,8 @@ The app keeps checking by itself until connected. On rooted devices, Root is use
     <!-- Session report -->
     <string name="report_title">Last session report</string>
     <string name="report_fps">Avg FPS: %1$s</string>
-    <string name="report_fps_delta">(%1$d vs previous session)</string>
+    <string name="report_fps_delta">(%1$d vs previous session for this game)</string>
+    <string name="report_delta_scope">Same game only; sessions are not controlled A/B comparisons.</string>
     <string name="report_fps_none">Avg FPS: -- (needs Shizuku + gfxinfo)</string>
     <string name="report_temp">Peak temp: %1$d°C</string>
     <string name="report_ping">Minimum TCP probe latency: %1$dms (not game-server latency)</string>

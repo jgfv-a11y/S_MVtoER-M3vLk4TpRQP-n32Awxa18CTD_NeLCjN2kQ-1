@@ -90,8 +90,27 @@ jobs:
           mv app/build/outputs/apk/debug/app-debug.apk nitroboost-debug.apk
           BUILD_TOOLS="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/lib/android-sdk}}/build-tools/36.0.0"
           BADGING="$("$BUILD_TOOLS/aapt2" dump badging nitroboost-debug.apk)"
-          printf '%s\n' "$BADGING" | grep -F "package: name='com.nitroboost.app' versionCode='${{ steps.ver.outputs.code }}' versionName='${{ steps.ver.outputs.name }}'"
-          printf '%s\n' "$BADGING" | grep -F "targetSdkVersion:'36'"
+          printf '%s\n' "$BADGING" | grep -E "^(package:|targetSdkVersion:)" | tee -a nitroboost-build.log
+          assert_badging() {
+            local expected="$1"
+            local label="$2"
+            if ! printf '%s\n' "$BADGING" | grep -Fq "$expected"; then
+              printf 'APK metadata check failed (%s); expected %s. Full badging follows:\n%s\n' "$label" "$expected" "$BADGING" | tee -a nitroboost-build.log
+              observed="$(printf '%s\n' "$BADGING" | grep -E "^(package:|targetSdkVersion:)" | tr '\n' ';' || true)"
+              echo "::error title=APK metadata check::$label; expected=$expected; observed=$observed"
+              exit 1
+            fi
+            printf '%s\n' "$BADGING" | grep -F "$expected"
+          }
+          assert_badging "package: name='com.nitroboost.app' versionCode='${{ steps.ver.outputs.code }}' versionName='${{ steps.ver.outputs.name }}'" "package/version"
+          assert_badging "targetSdkVersion:'36'" "target SDK API 36"
+          APK_ANALYZER="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/lib/android-sdk}}/cmdline-tools/latest/bin/apkanalyzer"
+          MIN_SDK="$("$APK_ANALYZER" manifest min-sdk nitroboost-debug.apk)"
+          if [ "$MIN_SDK" != "24" ]; then
+            echo "::error title=APK minimum SDK::Expected API 24, observed '$MIN_SDK'"
+            exit 1
+          fi
+          echo "Verified APK minSdk=$MIN_SDK"
           "$BUILD_TOOLS/apksigner" verify --verbose nitroboost-debug.apk
           sha256sum nitroboost-debug.apk > nitroboost-debug.apk.sha256
 
@@ -114,7 +133,17 @@ jobs:
           lines = Path(sys.argv[1]).read_text(errors="replace").splitlines()
           pattern = re.compile(r"(^e:\s|^w:\s|\berror:|FAILURE: Build failed|What went wrong|Execution failed|Compilation error|\.kt:\d+:\d+:|FAILED$)", re.IGNORECASE)
           matches = [line for line in lines if pattern.search(line)]
-          diagnostic = "\n".join(matches[-35:] if matches else lines[-25:])
+          failures = [line for line in matches if not re.match(r"^\s*w:", line)]
+          # Keep a tail excerpt as well: failures such as aapt checks or a lost Gradle
+          # daemon may not match the compiler-error patterns above.
+          diagnostic = "\n".join(
+              ["Relevant errors:"] + (failures[-12:] if failures else ["(no compiler/task error marker found)"])
+              + ["Gradle/build tail:"] + lines[-12:]
+          )
+          # GitHub command annotations cap message length; avoid losing the actual failure
+          # behind repeated Kotlin deprecation warnings from every compile task.
+          if len(diagnostic) > 3_500:
+              diagnostic = diagnostic[-3_500:]
           diagnostic = diagnostic.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
           print(f"::error title=Gradle build diagnostics::{diagnostic}")
           PY
@@ -264,6 +293,12 @@ jobs:
             echo "::error::Release APK is debuggable — refusing to publish"
             exit 1
           fi
+          APK_ANALYZER="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/lib/android-sdk}}/cmdline-tools/latest/bin/apkanalyzer"
+          MIN_SDK="$("$APK_ANALYZER" manifest min-sdk NitroBoost/nitroboost-release.apk)"
+          if [ "$MIN_SDK" != "24" ]; then
+            echo "::error title=Release APK minimum SDK::Expected API 24, observed '$MIN_SDK'"
+            exit 1
+          fi
           printf '%s\n' "$BADGING" | grep -F "targetSdkVersion:'36'"
           (cd NitroBoost && sha256sum nitroboost-release.apk > nitroboost-release.apk.sha256)
           echo "signed=true" >> "$GITHUB_OUTPUT"
@@ -323,9 +358,9 @@ jobs:
           body: |
             NitroBoost v${{ needs['verify-build'].outputs.name }} (versionCode ${{ needs['verify-build'].outputs.code }}).
 
-            Highlights: Android 16 / API 36 targeting, explicit edge-to-edge insets, and corrected thermal-zone normalization for both Celsius and millidegree OEM readings.
+            Highlights: Android 7.0 / API 24 minimum support while retaining Android 16 / API 36 targeting; API-gated notification channels and special-use foreground services; and per-game session FPS comparisons labeled as observational, not controlled A/B results.
 
-            This release passed the repository's configured static/security checks, Python and JVM tests, Android lint, APK metadata/signature verification, and debug/release assembly. Device-specific gameplay performance has not been independently benchmarked here; no universal FPS gain is claimed.
+            This release passed the repository's configured static/security checks, Python and JVM tests, Android lint, APK metadata/signature verification, and debug/release assembly. Android 7–16 physical-device coverage and gameplay performance have not been independently benchmarked here; no universal FPS gain is claimed.
 
             See `NitroBoost/CHANGELOG.md` and `NitroBoost/docs/DISTRIBUTION.md` for feature history and installation notes. SHA-256 checksum files are attached. The debug APK is for testing; a signed release APK is attached only when all signing secrets are configured.
           files: ${{ steps.collect.outputs.files }}

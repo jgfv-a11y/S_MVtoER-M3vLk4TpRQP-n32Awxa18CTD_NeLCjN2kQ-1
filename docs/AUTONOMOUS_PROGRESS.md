@@ -12,7 +12,7 @@
 - **P5 UI foundations:** dashboard، profiles، settings، overlay، reports، state-preserving navigation، ورسائل capability الصادقة.
 
 ## Current Task
-إصدار v1.21.0: مراجعة المستودع، استهداف API 36، تصحيح تطبيع مستشعرات الحرارة، والتحقق من APK ونشرها مع SHA-256.
+إصدار v1.22.0: دعم Android 7.0 / API 24 مع الإبقاء على `targetSdk=36`، وتصحيح نطاق مقارنة FPS لكل لعبة، ثم اجتياز CI ونشر APK مع SHA-256.
 
 ## Completed This Session — 2026-10-04
 - راجعت `main` وتقارير التقدم؛ لم يكن ملف الاستمرارية موجودًا.
@@ -128,6 +128,13 @@
 - حُدثت Actions الخاصة بالـartifacts إلى الإصدارات ذات الاختبارات الخضراء، وأضيف تحقق package/version/target/signature وبصمة SHA-256 قبل النشر.
 - الإصدار المستهدف `v1.21.0` / `versionCode 28`؛ نجحت بوابتا push/PR للـcommit المدمج (runs 38888622125 و38888628920)، وبقي إطلاق `main`.
 
+## Android 7 Compatibility and FPS Comparison Fix (v1.22.0) — 2026-10-17
+- خُفّض `minSdk` إلى API 24 مع الإبقاء على `targetSdk=36`؛ استُبدلت عمليات `java.nio.file` بمساعد استبدال داخل المجلد نفسه، وحُرست notification channels عند API 26 وخدمة SPECIAL_USE عند API 34.
+- أضيفت مقارنات FPS حسب اسم حزمة اللعبة، بمخزن محدود إلى 32 لعبة. التقارير التاريخية غير المرتبطة بحزمة لا تعرض delta؛ والنص يوضح أن الفارق وصفي وليس نتيجة A/B سببية.
+- أُضيفت اختبارات Kotlin لتخزين/عزل baselines واستبدال الملفات، وفحوص ثابتة لحد API والحراسات؛ كما حُدثت وثائق التوزيع والمراجعة العكسية.
+- نجحت محليًا `tools/verify.py` (134 Kotlin، صفر أخطاء)، و`security_verify.py` (12 مجموعة، صفر findings؛ تحذير Play المعتاد عن QUERY_ALL_PACKAGES)، و25 اختبار Python، و`git diff --check`.
+- **لم يُشغّل Kotlin/Gradle/lint/build محليًا** لغياب Java وGradle وAndroid SDK. نجح GitHub Actions على commit `f59025d` في push run `38982201478` وPR run `38982205837`، بما فيه JVM tests وlint وassembleDebug، وفحوص package/minSdk/targetSdk/signature وبصمة APK؛ أُنتج artifact للاختبار على CI. لم يُنشأ GitHub Release بعد، واختبار جهاز API 24 فعلي غير متاح.
+
 ## Architecture Decisions
 - القياسات غير المتاحة تبقى `null` ولا تُحوّل إلى أصفار مضللة.
 - لا يتم الادعاء بتحسن FPS دون benchmark على جهاز فعلي.
@@ -148,11 +155,11 @@
 - تحتاج جلسة لاحقة إلى مراجعة regression مركزة على telemetry وMonitorHub بعد الدمج الكبير.
 
 ## Next Automatic Task
-1. التحقق من CI النهائي للإصدار v1.21.0 بعد دمج خط main المتزامن.
-2. دمج PR بعد نجاح البوابات والتحقق من GitHub Release وAPK وSHA-256.
-3. تنفيذ اختبار install/launch وShizuku/edge-to-edge على أجهزة API 26–36 عندما تتوفر بيئة فعلية.
+1. تحديث سجل التقدم، ثم إعادة بوابة PR بعد تعديل الوثائق.
+2. بعد نجاح الفحوص مجددًا، دمج PR رقم 15 بـ`--merge` ومتابعة Workflow على `main` حتى إنشاء Release `nitroboost-v1.22.0` والتحقق من APK وبيانات API 24/36 وبصمة SHA-256.
+3. عند توفر جهاز، اختبار التثبيت والإطلاق وShizuku/overlay والاستعادة على Android 7/API 24، ثم توسيع مصفوفة API 24–36.
 
 ## Overall Progress
 - **Phase:** 4 — القياس التكيفي والتحليل القابل للتدقيق
-- **Task:** v1.21.0 Android 16 and thermal-sensor safety
-- **Completion:** الكود والفحوصات المحلية وبناء الفرع الأول مكتملة؛ بانتظار بوابة commit المدمج وإطلاق APK.
+- **Task:** v1.22.0 Android 7/API 24 and per-game session comparison
+- **Completion:** التنفيذ والفحوصات المحلية وCI للـpush وPR نجحت؛ PR #15 مفتوح بانتظار إعادة تحقق توثيق التقدم ثم الدمج وإطلاق APK على `main`. لا يوجد اختبار جهاز فعلي حتى الآن.

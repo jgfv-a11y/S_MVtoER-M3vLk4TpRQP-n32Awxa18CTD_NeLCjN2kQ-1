@@ -18,7 +18,8 @@ class SessionReportTest {
             ramMbSamples = listOf(2048, 2300, 2100),
             applied = 12,
             failed = 1,
-            previousAvgFps = 55
+            previousAvgFps = 55,
+            gamePackage = "com.example.game"
         )
         assertEquals(60, rep.avgFps)
         assertEquals(50, rep.minFps)
@@ -48,7 +49,7 @@ class SessionReportTest {
     }
 
     @Test
-    fun `delta can be negative when the boost hurt`() {
+    fun `same-game session comparison can be negative`() {
         val rep = SessionReportBuilder.summarize(
             0L, 10_000L,
             fpsSamples = listOf(30, 32),
@@ -56,9 +57,29 @@ class SessionReportTest {
             pingSamples = emptyList(),
             ramMbSamples = emptyList(),
             applied = 0, failed = 0,
-            previousAvgFps = 60
+            previousAvgFps = 60,
+            gamePackage = "com.example.game"
         )
         assertEquals(-29, rep.deltaFps)
+    }
+
+    @Test
+    fun `unscoped legacy FPS values do not produce a comparison`() {
+        val rep = SessionReportBuilder.summarize(
+            startedAt = 0L,
+            endedAt = 10_000L,
+            fpsSamples = listOf(50, 60),
+            tempSamples = emptyList(),
+            pingSamples = emptyList(),
+            ramMbSamples = emptyList(),
+            applied = 0,
+            failed = 0,
+            previousAvgFps = 55
+        )
+
+        assertNull(rep.previousAvgFps)
+        assertNull(rep.deltaFps)
+        assertNull(rep.gamePackage)
     }
 
     @Test

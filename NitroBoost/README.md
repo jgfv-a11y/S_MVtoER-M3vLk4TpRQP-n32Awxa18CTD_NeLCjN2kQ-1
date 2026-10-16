@@ -1,13 +1,15 @@
 # 🚀 NitroBoost — Game Booster
 
 
-**أحدث إصدار: v1.21.0 (versionCode 28)**؛ يستهدف Android 16 / API 36. راجع [GitHub Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) لتنزيل APK والتحقق من بصمة SHA-256.
+**أحدث إصدار: v1.22.0 (versionCode 29)**؛ يدعم Android 7.0 / API 24 فأحدث ويستهدف Android 16 / API 36. راجع [GitHub Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) لتنزيل APK والتحقق من بصمة SHA-256.
 تطبيق معزّز ألعاب Android احترافي، عربي + إنجليزي، مبني بـ **Kotlin** و**Material 3**
 (بدون Compose) على Shizuku API 13.1.5.
 
 المبدأ الأساسي: **ضبط قابل للتخصيص مع استعادة موثقة للتغييرات القابلة للعكس** — يسجّل Journal
 الكتابات المدعومة مع قيمة سابقة وأمر استعادة. بعض العمليات، مثل trim/force-stop،
 أحادية الاتجاه ولا يمكن التراجع عن أثرها؛ وتظل النتائج معتمدة على الجهاز وقيود الـROM.
+
+مراجعة بنية المستودع والتحليل العكسي للمرجع وخارطة التحسين في [REVERSE_ENGINEERING_REVIEW_v1.22.0.md](docs/REVERSE_ENGINEERING_REVIEW_v1.22.0.md).
 
 ---
 
@@ -43,7 +45,7 @@
 - **كشف Game Space الخاص بالصانع** (OPlus، MI Game Turbo، سامسونج، HONOR،
   vivo…) مع نصيحة بتفعيل وضع لعبته أيضًا.
 - **تقرير أداء بعد كل جلسة**: متوسط/أدنى FPS (gfxinfo الحقيقي)، ذروة
-  الحرارة، أقل زمن لمسبار TCP (ليس خادم اللعبة)، ذروة RAM، والفارق عن الجلسة السابقة.
+  الحرارة، أقل زمن لمسبار TCP (ليس خادم اللعبة)، ذروة RAM، وفارق وصفي عن آخر جلسة للعبة نفسها فقط؛ لا يُعرض كاختبار A/B مضبوط أو دليل سببي على التحسن.
 - **17 ملف ألعاب جاهز** (Genshin Global، PUBG، COD، Fortnite، Star Rail، Wild Rift، Roblox، Minecraft…) +
   **ملفات مخصصة** لكل لعبة (DPI، معدل تحديث، سقف FPS، DND، قتل الذاكرة…).
 - **قائمة حماية** للعمليات الحساسة (يوتيوب، واتساب، المتصفح…) لا يلمسها القتل.
@@ -74,7 +76,7 @@ Frame times are read only from `dumpsys gfxinfo ... framestats` when exposed by 
 
 ## 📦 المتطلبات
 
-- Android 8.0 (API 26) أو أحدث — target SDK 36 (Android 16).
+- Android 7.0 (API 24) أو أحدث — `minSdk=24` و`targetSdk=36` (Android 16).
 - **Android Studio** حديث يدعم AGP 8.13.2 + JDK 17 (مدمج في Android Studio).
 - **Shizuku** (اختياري لكن ضروري للمزايا الكاملة):
   بدون Shizuku يعمل التطبيق على ما تسمحه صلاحيات النظام العامة (DND،
@@ -114,7 +116,7 @@ gradle wrapper --gradle-version 8.14.3   # إذا كان Gradle مثبتًا
 
 APK الناتج في `app/build/outputs/apk/debug/`.
 
-> 📲 **APK منشورة (v1.21.0)**: [تنزيل nitroboost-debug.apk](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases/download/nitroboost-v1.21.0/nitroboost-debug.apk) — نسخة debug للاختبار؛ استخدم ملف `.sha256` المرفق للتحقق من التنزيل. تُرفق APK release موقّعة فقط عند تهيئة أسرار توقيع المشروع.
+> 📲 **APK منشورة (v1.22.0)**: [تنزيل nitroboost-debug.apk](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases/download/nitroboost-v1.22.0/nitroboost-debug.apk) — نسخة debug للاختبار؛ استخدم ملف `.sha256` المرفق للتحقق من التنزيل. تُرفق APK release موقّعة فقط عند تهيئة أسرار توقيع المشروع.
 > (أو من صفحة [Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) —
 > يُعاد بناؤه تلقائيًا عبر GitHub Actions عند كل تغيير).
 

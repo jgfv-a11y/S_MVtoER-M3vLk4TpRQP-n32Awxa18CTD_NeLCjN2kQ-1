@@ -148,6 +148,9 @@ object AppStore {
     @Volatile
     private var sessStart = 0L
 
+    /** Captured at session start so profile switching cannot cross-contaminate FPS comparisons. */
+    private var sessGamePackage: String? = null
+
     @Volatile
     private var sessApplied = 0
 
@@ -298,12 +301,13 @@ object AppStore {
 
     private val sessionSamples = SessionSampleAccumulator()
 
-    private fun beginSessionMeasurement() {
+    private fun beginSessionMeasurement(gamePackage: String?) {
         synchronized(sessionStateLock) {
             sessionSamples.clear()
             sessApplied = 0
             sessFailed = 0
             sessStart = System.currentTimeMillis()
+            sessGamePackage = gamePackage?.takeIf(ShellInput::isPackageName)
         }
     }
 
@@ -312,21 +316,32 @@ object AppStore {
         var applied = 0
         var failed = 0
         var sampleSummary = SessionSampleSummary.EMPTY
-        val start = synchronized(sessionStateLock) {
+        val (start, gamePackage) = synchronized(sessionStateLock) {
             sampleSummary = sessionSamples.snapshot()
             sessionSamples.clear()
             applied = sessApplied
             failed = sessFailed
             sessApplied = 0
             sessFailed = 0
-            val s = sessStart
+            val startedAt = sessStart
             sessStart = 0L
-            s
+            val measuredGame = sessGamePackage
+            sessGamePackage = null
+            startedAt to measuredGame
         }
         if (start == 0L) return
-        val prev = Prefs.getInt(ctx(), Prefs.KEY_PREV_FPS, -1).takeIf { it > 0 }
+        val context = ctx()
+        val previousForThisGame = gamePackage?.let {
+            Prefs.previousAverageFpsForGame(context, it)
+        }
         val rep = SessionReportBuilder.summarize(
-            start, end, sampleSummary, applied, failed, prev
+            startedAt = start,
+            endedAt = end,
+            samples = sampleSummary,
+            applied = applied,
+            failed = failed,
+            previousAvgFps = previousForThisGame,
+            gamePackage = gamePackage
         )
         try {
             val j = org.json.JSONObject()
@@ -342,6 +357,7 @@ object AppStore {
                 .put("failed", rep.failed)
                 .put("previousAvgFps", rep.previousAvgFps ?: JSONObject.NULL)
                 .put("deltaFps", rep.deltaFps ?: JSONObject.NULL)
+                .put("gamePackage", rep.gamePackage ?: JSONObject.NULL)
                 .put("endBottleneck", rep.endBottleneck?.name ?: JSONObject.NULL)
                 .put("framePacing", rep.framePacing?.let { metrics ->
                     JSONObject()
@@ -362,8 +378,15 @@ object AppStore {
                         .put("intendedVsyncIntervalCount", metrics.intendedVsyncIntervalCount)
                         .put("onePercentLowFps", metrics.onePercentLowFps ?: JSONObject.NULL)
                 } ?: JSONObject.NULL)
-            Prefs.putString(ctx(), Prefs.KEY_LAST_REPORT, j.toString())
-            if (rep.avgFps != null) Prefs.putInt(ctx(), Prefs.KEY_PREV_FPS, rep.avgFps)
+            Prefs.putString(context, Prefs.KEY_LAST_REPORT, j.toString())
+            if (rep.avgFps != null) {
+                Prefs.recordAverageFpsForGame(
+                    context,
+                    rep.gamePackage,
+                    rep.avgFps,
+                    rep.endedAt
+                )
+            }
         } catch (e: Exception) {
             // persistence is best-effort — still surface the report
         }
@@ -375,6 +398,8 @@ object AppStore {
         val raw = Prefs.sp(ctx()).getString(Prefs.KEY_LAST_REPORT, null) ?: return null
         return try {
             val j = org.json.JSONObject(raw)
+            val gamePackage = j.optString("gamePackage")
+                .takeIf(ShellInput::isPackageName)
             SessionReport(
                 startedAt = j.optLong("startedAt"),
                 endedAt = j.optLong("endedAt"),
@@ -386,11 +411,14 @@ object AppStore {
                 peakRamMb = j.optInt("peakRamMb"),
                 applied = j.optInt("applied"),
                 failed = j.optInt("failed"),
-                previousAvgFps = if (j.isNull("previousAvgFps")) null else j.optInt("previousAvgFps"),
-                deltaFps = if (j.isNull("deltaFps")) null else j.optInt("deltaFps"),
+                previousAvgFps = if (gamePackage == null || j.isNull("previousAvgFps")) null
+                    else j.optInt("previousAvgFps"),
+                deltaFps = if (gamePackage == null || j.isNull("deltaFps")) null
+                    else j.optInt("deltaFps"),
                 endBottleneck = if (j.isNull("endBottleneck")) null
                 else runCatching { Bottleneck.valueOf(j.optString("endBottleneck")) }.getOrNull(),
-                framePacing = j.optJSONObject("framePacing")?.let(::parseFramePacing)
+                framePacing = j.optJSONObject("framePacing")?.let(::parseFramePacing),
+                gamePackage = gamePackage
             )
         } catch (e: Exception) {
             null
@@ -741,7 +769,7 @@ object AppStore {
                     }
                 }
                 if (switchingProfile) finishSessionMeasurement()
-                beginSessionMeasurement()
+                beginSessionMeasurement(profile.packageName)
                 measurementStarted = true
                 wireRamKill(profile, executor)
                 val bctx = BoostContext(profile, executor, journal) { line -> appendLog(line) }
