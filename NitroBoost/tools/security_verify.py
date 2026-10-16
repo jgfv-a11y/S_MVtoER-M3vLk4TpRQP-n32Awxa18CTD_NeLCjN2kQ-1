@@ -256,6 +256,11 @@ def workflow_findings(workflow: str) -> list[str]:
         errors.append("publish-release must wait for verified build and signing result")
     if "fail_on_unmatched_files: true" not in publish:
         errors.append("publish-release must fail if an expected APK asset is missing")
+    if (
+        'gh release view "$TAG" --repo "$REPOSITORY"' not in publish
+        or "steps.release-check.outputs.exists != 'true'" not in publish
+    ):
+        errors.append("publish-release must not overwrite assets for an existing version tag")
     if re.search(r"(?m)^\s*(?:\./)?gradlew?\b", publish):
         errors.append("publish-release must not execute Gradle or project build scripts")
 

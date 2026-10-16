@@ -12,7 +12,7 @@
 - **P5 UI foundations:** dashboard، profiles، settings، overlay، reports، state-preserving navigation، ورسائل capability الصادقة.
 
 ## Current Task
-إصدار v1.22.0: دعم Android 7.0 / API 24 مع الإبقاء على `targetSdk=36`، وتصحيح نطاق مقارنة FPS لكل لعبة، ثم اجتياز CI ونشر APK مع SHA-256.
+متابعة ما بعد إصدار v1.22.0: التحقق من APK المنشورة، ثم اختبار تثبيتها وتشغيلها على Android 7/API 24 عندما يتوفر جهاز فعلي.
 
 ## Completed This Session — 2026-10-04
 - راجعت `main` وتقارير التقدم؛ لم يكن ملف الاستمرارية موجودًا.
@@ -133,7 +133,15 @@
 - أضيفت مقارنات FPS حسب اسم حزمة اللعبة، بمخزن محدود إلى 32 لعبة. التقارير التاريخية غير المرتبطة بحزمة لا تعرض delta؛ والنص يوضح أن الفارق وصفي وليس نتيجة A/B سببية.
 - أُضيفت اختبارات Kotlin لتخزين/عزل baselines واستبدال الملفات، وفحوص ثابتة لحد API والحراسات؛ كما حُدثت وثائق التوزيع والمراجعة العكسية.
 - نجحت محليًا `tools/verify.py` (134 Kotlin، صفر أخطاء)، و`security_verify.py` (12 مجموعة، صفر findings؛ تحذير Play المعتاد عن QUERY_ALL_PACKAGES)، و25 اختبار Python، و`git diff --check`.
-- **لم يُشغّل Kotlin/Gradle/lint/build محليًا** لغياب Java وGradle وAndroid SDK. نجح GitHub Actions على commit `f59025d` في push run `38982201478` وPR run `38982205837`، بما فيه JVM tests وlint وassembleDebug، وفحوص package/minSdk/targetSdk/signature وبصمة APK؛ أُنتج artifact للاختبار على CI. لم يُنشأ GitHub Release بعد، واختبار جهاز API 24 فعلي غير متاح.
+- **لم يُشغّل Kotlin/Gradle/lint/build محليًا** لغياب Java وGradle وAndroid SDK. نجح GitHub Actions على commit `f59025d` في push run `38982201478` وPR run `38982205837`، بما فيه JVM tests وlint وassembleDebug، وفحوص package/minSdk/targetSdk/signature وبصمة APK؛ ثم نجح workflow المدمج على `main`.
+- فشل check الأوّلي لحد SDK لأن `aapt2 dump badging` لم يُصدر سطرًا لـminSdk في هذا البناء؛ استُبدل التحقق بـ`apkanalyzer manifest min-sdk`، ونجح API 24 على APK الفعلية.
+
+## Release Complete — 2026-10-17
+- دُمج PR #15 في `main` بالـmerge commit `fb4a949640129b618fb4b919ecbc634360d76446`.
+- نجح GitHub Actions run `38983182959`: `verify-build`, `prepare-release`, `sign-release`, و`publish-release` جميعها ناجحة.
+- نُشر GitHub Release `nitroboost-v1.22.0`: https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases/tag/nitroboost-v1.22.0
+- المرفق هو `nitroboost-debug.apk` للاختبار، حجمه `6,631,264` بايت، وSHA-256: `34930e77c6a0848eb863a697bbf605409a7afae5955cfba443fb3965affc0373`. رُفقت أيضًا بصمة `.sha256`. لم تُرفق release APK موقعة لأن أسرار توقيع keystore غير مهيأة.
+- CI تحقق من `minSdk=24` عبر apkanalyzer و`targetSdk=36` وpackage/version/signature. لا يزال اختبار Android 7 فعلي وbenchmark لعب غير متاحين.
 
 ## Architecture Decisions
 - القياسات غير المتاحة تبقى `null` ولا تُحوّل إلى أصفار مضللة.
@@ -155,11 +163,11 @@
 - تحتاج جلسة لاحقة إلى مراجعة regression مركزة على telemetry وMonitorHub بعد الدمج الكبير.
 
 ## Next Automatic Task
-1. تحديث سجل التقدم، ثم إعادة بوابة PR بعد تعديل الوثائق.
-2. بعد نجاح الفحوص مجددًا، دمج PR رقم 15 بـ`--merge` ومتابعة Workflow على `main` حتى إنشاء Release `nitroboost-v1.22.0` والتحقق من APK وبيانات API 24/36 وبصمة SHA-256.
-3. عند توفر جهاز، اختبار التثبيت والإطلاق وShizuku/overlay والاستعادة على Android 7/API 24، ثم توسيع مصفوفة API 24–36.
+1. اختبار install/launch على جهاز Android 7/API 24، والتحقق من القنوات والخدمات الأمامية والـoverlay وShizuku والاستعادة.
+2. عند توفر أجهزة أخرى، إكمال مصفوفة API 24–36 وتجربة لعب مضبوطة قبل أي ادعاء أداء.
+3. مراجعة أي تحديث Gradle/AGP منفصلًا بعد الاختبار، مع إبقاء نسخة APK المنشورة قابلة للتثبيت وبصمتها متاحة.
 
 ## Overall Progress
 - **Phase:** 4 — القياس التكيفي والتحليل القابل للتدقيق
 - **Task:** v1.22.0 Android 7/API 24 and per-game session comparison
-- **Completion:** التنفيذ والفحوصات المحلية وCI للـpush وPR نجحت؛ PR #15 مفتوح بانتظار إعادة تحقق توثيق التقدم ثم الدمج وإطلاق APK على `main`. لا يوجد اختبار جهاز فعلي حتى الآن.
+- **Completion:** دُمج PR #15، نجحت بوابات CI وُنشر GitHub Release `nitroboost-v1.22.0` مع debug APK وبصمة SHA-256؛ يبقى اختبار الجهاز الفعلي والقياس الميداني.

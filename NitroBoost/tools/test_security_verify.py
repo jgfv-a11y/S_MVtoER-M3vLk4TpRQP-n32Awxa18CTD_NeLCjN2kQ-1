@@ -105,7 +105,11 @@ jobs:
       contents: write
       actions: read
     steps:
-      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+      - name: Check for an existing versioned release
+        id: release-check
+        run: gh release view "$TAG" --repo "$REPOSITORY"
+      - if: steps.release-check.outputs.exists != 'true'
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -141,6 +145,12 @@ class WorkflowSecurityTests(unittest.TestCase):
             "if: github.ref == 'refs/heads/main'", "if: always()"
         )
         self.assertTrue(any("refs/heads/main" in error for error in workflow_findings(text)))
+
+    def test_publish_release_must_skip_an_existing_version_tag(self):
+        text = safe_workflow().replace(
+            "if: steps.release-check.outputs.exists != 'true'", "if: always()"
+        )
+        self.assertTrue(any("existing version tag" in error for error in workflow_findings(text)))
 
     def test_publish_job_must_not_receive_signing_secrets(self):
         text = safe_workflow().replace(
