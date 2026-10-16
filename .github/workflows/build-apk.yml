@@ -96,7 +96,8 @@ jobs:
             local label="$2"
             if ! printf '%s\n' "$BADGING" | grep -Fq "$expected"; then
               printf 'APK metadata check failed (%s); expected %s. Full badging follows:\n%s\n' "$label" "$expected" "$BADGING" | tee -a nitroboost-build.log
-              echo "::error title=APK metadata check::$label"
+              observed="$(printf '%s\n' "$BADGING" | grep -E "^(sdkVersion:|targetSdkVersion:)" | tr '\n' ';' || true)"
+              echo "::error title=APK metadata check::$label; expected=$expected; observed=$observed"
               exit 1
             fi
             printf '%s\n' "$BADGING" | grep -F "$expected"
