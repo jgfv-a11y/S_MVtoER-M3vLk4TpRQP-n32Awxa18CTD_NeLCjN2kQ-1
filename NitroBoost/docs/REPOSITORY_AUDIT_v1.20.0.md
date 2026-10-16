@@ -47,7 +47,11 @@ CI يتحقق الآن من:
 - SHA-256 منشورة بجانب كل APK؛
 - بقاء البناء بلا صلاحية كتابة، والتوقيع معزولًا عن Gradle، والنشر من `main` فقط.
 
-### 4. صيانة سلسلة التوريد (أُنجز)
+### 4. متوسط — APK عامة قديمة داخل Git (أُصلح)
+
+كان `dist/nitroboost-debug.apk` لا يطابق بصمة أحدث Release منشور، ولا يحمل إصدارًا في اسمه. حُذف النسخ الثنائي القديم من Git لمنع تثبيت artifact مبهمة، وأصبحت `dist/README.md` تشير إلى Release الموثقة وملف SHA-256. أضيف ignore لملفات APK/checksum المولدة؛ قناة النشر الرسمية هي GitHub Releases المرتبطة بتشغيل CI.
+
+### 5. صيانة سلسلة التوريد (أُنجز)
 
 - تحديث `actions/upload-artifact` إلى v7.0.2 و`actions/download-artifact` إلى v8.0.2 باستخدام SHA كامل.
 - بقيت كل dependencies وActions مثبتة إلى إصدارات/commits صريحة؛ لا توجد dynamic versions.

@@ -6,6 +6,7 @@
 - Fixed thermal-zone parsing: standard millidegree readings and OEM direct-Celsius readings now normalize to the same validated Celsius range. Invalid/non-finite sensor values remain unavailable instead of becoming measurements.
 - Added JVM regression coverage for thermal normalization, including bounds and malformed values.
 - Updated pinned artifact Actions, installed API 36 in CI, and added APK package/version/target/signature checks plus published SHA-256 files.
+- Removed the stale unversioned APK copy from Git; verified binaries now live only in versioned GitHub Releases, with `dist/README.md` as the stable pointer.
 - No device benchmark or universal FPS improvement is claimed; physical API 26-36/OEM validation remains a separate distribution requirement.
 
 ## v1.19.0 — persistent session frame pacing
