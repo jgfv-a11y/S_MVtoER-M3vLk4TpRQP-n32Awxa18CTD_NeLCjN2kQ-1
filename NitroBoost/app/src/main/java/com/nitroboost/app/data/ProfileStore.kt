@@ -2,14 +2,12 @@ package com.nitroboost.app.data
 
 import android.content.Context
 import com.nitroboost.app.core.AppProfile
+import com.nitroboost.app.core.AtomicFileOps
 import com.nitroboost.app.core.ProfileValidation
 import com.nitroboost.app.core.ShellInput
 import org.json.JSONArray
 import java.io.File
 import java.io.FileOutputStream
-import java.nio.file.AtomicMoveNotSupportedException
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 
 /**
  * Profiles: built-ins shipped in assets (reference-compatible schema) plus
@@ -97,15 +95,8 @@ class ProfileStore(private val ctx: Context) {
     }
 
     private fun atomicReplace(source: File, destination: File) {
-        try {
-            Files.move(
-                source.toPath(), destination.toPath(),
-                StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING
-            )
-        } catch (_: AtomicMoveNotSupportedException) {
-            // Same-directory rename fallback; never truncate-copy the live profile file.
-            Files.move(source.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
-        }
+        // Same-directory rename remains available on Android 7/API 24.
+        AtomicFileOps.replace(source, destination)
     }
 
     private fun parseArray(text: String): List<AppProfile> {

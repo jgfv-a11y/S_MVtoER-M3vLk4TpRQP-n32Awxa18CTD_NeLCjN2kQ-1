@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -128,9 +129,11 @@ class BoosterService : Service() {
         // Duplicate starts can be queued before Android dispatches the first
         // one; do not launch a second boost/session watcher.
         if (active) return START_STICKY
-        // Android 14+ (target 34): the specialUse type must be passed at runtime.
+        // SPECIAL_USE was introduced in Android 14 (API 34). Older releases
+        // must use the two-argument overload; passing the new type on API 29-33
+        // can make startForeground reject the service.
         val n = buildNotification(getString(R.string.session_running), getString(R.string.session_notify_body))
-        if (android.os.Build.VERSION.SDK_INT >= 29) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(1001, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
             startForeground(1001, n)
@@ -359,6 +362,8 @@ class BoosterService : Service() {
     }
 
     private fun createChannel() {
+        // Notification channels do not exist before Android 8.0/API 26.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (nm.getNotificationChannel(CHANNEL_SESSION) == null) {
             nm.createNotificationChannel(

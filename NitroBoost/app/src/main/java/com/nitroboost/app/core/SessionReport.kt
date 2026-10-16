@@ -71,9 +71,9 @@ class SessionSampleAccumulator {
  * Aggregated performance of one boost session.
  * Pure data + pure builder so the math is unit-testable on the JVM.
  *
- * [previousAvgFps] is the average FPS of the previous session (persisted by
- * the caller); [deltaFps] is this session minus that — the first honest
- * "did the boost help?" number, measured on the real device.
+ * [previousAvgFps] is the most recent measured average for the same game,
+ * persisted by the caller. [deltaFps] is descriptive only: sessions are not
+ * controlled A/B trials and workload, settings, or thermal conditions may differ.
  */
 data class SessionReport(
     val startedAt: Long,
@@ -89,7 +89,8 @@ data class SessionReport(
     val previousAvgFps: Int?,
     val deltaFps: Int?,
     val endBottleneck: Bottleneck? = null,
-    val framePacing: FramePacingMetrics? = null
+    val framePacing: FramePacingMetrics? = null,
+    val gamePackage: String? = null
 )
 
 object SessionReportBuilder {
@@ -105,7 +106,8 @@ object SessionReportBuilder {
         failed: Int,
         previousAvgFps: Int?,
         endBottleneck: Bottleneck? = null,
-        framePacing: FramePacingMetrics? = null
+        framePacing: FramePacingMetrics? = null,
+        gamePackage: String? = null
     ): SessionReport = summarize(
         startedAt = startedAt,
         endedAt = endedAt,
@@ -121,7 +123,8 @@ object SessionReportBuilder {
         failed = failed,
         previousAvgFps = previousAvgFps,
         endBottleneck = endBottleneck,
-        framePacing = framePacing
+        framePacing = framePacing,
+        gamePackage = gamePackage
     )
 
     fun summarize(
@@ -132,10 +135,15 @@ object SessionReportBuilder {
         failed: Int,
         previousAvgFps: Int?,
         endBottleneck: Bottleneck? = null,
-        framePacing: FramePacingMetrics? = samples.framePacing
+        framePacing: FramePacingMetrics? = samples.framePacing,
+        gamePackage: String? = null
     ): SessionReport {
         val avgFps = samples.avgFps
-        val delta = if (avgFps != null && previousAvgFps != null) avgFps - previousAvgFps else null
+        val safeGamePackage = gamePackage?.takeIf(ShellInput::isPackageName)
+        val comparablePreviousFps = previousAvgFps?.takeIf { safeGamePackage != null && it > 0 }
+        val delta = if (avgFps != null && comparablePreviousFps != null) {
+            avgFps - comparablePreviousFps
+        } else null
         return SessionReport(
             startedAt = startedAt,
             endedAt = endedAt,
@@ -147,10 +155,11 @@ object SessionReportBuilder {
             peakRamMb = samples.peakRamMb,
             applied = applied,
             failed = failed,
-            previousAvgFps = previousAvgFps,
+            previousAvgFps = comparablePreviousFps,
             deltaFps = delta,
             endBottleneck = endBottleneck,
-            framePacing = framePacing
+            framePacing = framePacing,
+            gamePackage = safeGamePackage
         )
     }
 }

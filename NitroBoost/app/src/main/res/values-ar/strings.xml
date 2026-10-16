@@ -187,7 +187,8 @@
     <!-- Session report -->
     <string name="report_title">تقرير آخر جلسة</string>
     <string name="report_fps">متوسط FPS: %1$s</string>
-    <string name="report_fps_delta">(%1$d مقارنة بآخر جلسة)</string>
+    <string name="report_fps_delta">(%1$d مقارنة بآخر جلسة لهذه اللعبة)</string>
+    <string name="report_delta_scope">للعبة نفسها فقط؛ المقارنة وصفية وليست اختبار A/B مضبوطًا.</string>
     <string name="report_fps_none">متوسط FPS: -- (يتطلب شيزوكو + gfxinfo)</string>
     <string name="report_temp">ذروة الحرارة: %1$d°م</string>
     <string name="report_ping">أقل زمن لمسبار TCP: %1$dms (ليس زمن خادم اللعبة)</string>

@@ -13,7 +13,8 @@ class SessionSampleAccumulatorTest {
         samples.add(70, 38, 30, 2_100)
         val summary = samples.snapshot()
         val report = SessionReportBuilder.summarize(
-            1_000L, 61_000L, summary, applied = 12, failed = 1, previousAvgFps = 55
+            1_000L, 61_000L, summary, applied = 12, failed = 1,
+            previousAvgFps = 55, gamePackage = "com.example.game"
         )
         assertEquals(60, report.avgFps)
         assertEquals(50, report.minFps)

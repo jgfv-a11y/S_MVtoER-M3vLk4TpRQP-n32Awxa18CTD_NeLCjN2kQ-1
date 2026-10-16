@@ -181,7 +181,37 @@ def main():
             else:
                 err(f"{os.path.relpath(kf, ROOT)}: unknown R.{t}.{n}")
 
-    # ---------- 5. Kotlin balance ----------
+    # ---------- 5. Minimum Android API compatibility ----------
+    app_gradle = open(os.path.join(ROOT, "app", "build.gradle.kts"), encoding="utf-8").read()
+    min_sdk_match = re.search(r"\bminSdk\s*=\s*(\d+)", app_gradle)
+    if not min_sdk_match:
+        err("could not read minSdk from app/build.gradle.kts")
+    else:
+        min_sdk = int(min_sdk_match.group(1))
+        if min_sdk != 24:
+            err(f"expected minSdk 24 (Android 7.0), found {min_sdk}")
+        if min_sdk < 26:
+            test_root = os.path.abspath(TEST_SRC) + os.sep
+            for kf in kotlin_files:
+                if os.path.abspath(kf).startswith(test_root):
+                    continue
+                text = open(kf, encoding="utf-8").read()
+                if re.search(r"(?m)^\s*import\s+java\.nio\.file|\bFiles\.(?:copy|move)\s*\(", text):
+                    err(f"{os.path.relpath(kf, ROOT)}: java.nio.file is unavailable before API 26")
+                channel_call_needs_guard = (
+                    "createNotificationChannel(" in text
+                    and "Build.VERSION.SDK_INT < Build.VERSION_CODES.O" not in text
+                )
+                special_use_needs_guard = (
+                    "FOREGROUND_SERVICE_TYPE_SPECIAL_USE" in text
+                    and "Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE" not in text
+                )
+                if channel_call_needs_guard:
+                    err(f"{os.path.relpath(kf, ROOT)}: notification-channel API must be gated at API 26")
+                if special_use_needs_guard:
+                    err(f"{os.path.relpath(kf, ROOT)}: SPECIAL_USE foreground type must be gated at API 34")
+
+    # ---------- 6. Kotlin balance ----------
     def strip_kotlin(code):
         out = []
         i = 0

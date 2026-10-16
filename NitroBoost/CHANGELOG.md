@@ -1,4 +1,14 @@
 # Changelog
+## v1.22.0 — Android 7 support and session comparison correctness
+- Lowered `minSdk` to API 24 (Android 7.0) while retaining `targetSdk` 36.
+- Removed `java.nio.file` calls from journal, adaptive-ledger, and profile persistence; same-directory rename/copy paths now work on API 24 without truncating the live file on failure.
+- Gated notification-channel creation at API 26 and `FOREGROUND_SERVICE_TYPE_SPECIAL_USE` at API 34; older Android versions use the compatible two-argument `startForeground` call.
+- Added regression checks for the minimum API and runtime feature gates.
+- Fixed session FPS comparisons that previously reused one global average across different games. Baselines are now per validated game package and bounded to 32 games; reports without package context no longer show the legacy unscoped delta.
+- Labeled same-game FPS differences as descriptive only, not a controlled A/B result or causal proof of a boost.
+- Added an Arabic reverse-engineering review and a prioritized improvement roadmap. No reference APK code was copied into NitroBoost.
+- No physical Android 7 device test or gameplay benchmark is available in this environment; CI build/test and API-level gates remain required before release.
+
 ## v1.21.0 — Android 16 readiness and thermal-sensor correctness
 - Raised `compileSdk`/`targetSdk` to API 36 and updated the build toolchain to AGP 8.13.2, Kotlin 2.2.20, and Gradle 8.14.3.
 - Added explicit system-bar/display-cutout inset handling so the retained-fragment UI remains usable under Android 15/16 edge-to-edge enforcement.

@@ -349,6 +349,7 @@ class HomeFragment : Fragment() {
             getString(R.string.report_tasks, rep.applied, rep.failed),
             getString(R.string.report_duration, rep.durationSec)
         )
+        if (rep.deltaFps != null) lines.add(getString(R.string.report_delta_scope))
         rep.peakTempC?.let { lines.add(getString(R.string.report_temp, it)) }
         rep.minFps?.let { lines.add(getString(R.string.report_min_fps, it)) }
         rep.framePacing?.let { pacing ->

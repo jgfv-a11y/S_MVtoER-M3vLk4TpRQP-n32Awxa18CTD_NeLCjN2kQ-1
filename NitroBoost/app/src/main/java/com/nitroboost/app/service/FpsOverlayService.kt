@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
@@ -90,8 +91,10 @@ class FpsOverlayService : Service() {
             .setContentTitle(getString(R.string.overlay_channel_name))
             .setOngoing(true)
             .build()
-        // Android 14+ (target 34): the specialUse type must be passed at runtime.
-        if (android.os.Build.VERSION.SDK_INT >= 29) {
+        // SPECIAL_USE was introduced in Android 14 (API 34). Older releases
+        // must use the two-argument overload; passing the new type on API 29-33
+        // can make startForeground reject the service.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             startForeground(1002, n, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
             startForeground(1002, n)
@@ -239,6 +242,8 @@ class FpsOverlayService : Service() {
     }
 
     private fun createChannel() {
+        // Notification channels do not exist before Android 8.0/API 26.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (nm.getNotificationChannel(CHANNEL_OVERLAY) == null) {
             nm.createNotificationChannel(

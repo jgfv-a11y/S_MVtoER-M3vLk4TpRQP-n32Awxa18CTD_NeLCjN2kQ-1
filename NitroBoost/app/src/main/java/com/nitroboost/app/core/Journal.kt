@@ -4,9 +4,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
-import java.nio.file.AtomicMoveNotSupportedException
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 
 /**
  * Persistent, replayable record of every change the booster made.
@@ -80,7 +77,7 @@ class Journal(val file: File) {
     private fun preserveCorruptFile() {
         val corrupt = File(file.parentFile, file.name + ".corrupt")
         try {
-            Files.copy(file.toPath(), corrupt.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            file.copyTo(corrupt, overwrite = true)
         } catch (_: Exception) {
         }
     }
@@ -258,15 +255,9 @@ class Journal(val file: File) {
     }
 
     private fun atomicReplace(source: File, destination: File) {
-        try {
-            Files.move(
-                source.toPath(), destination.toPath(),
-                StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING
-            )
-        } catch (_: AtomicMoveNotSupportedException) {
-            // Never fall back to truncating-copy over the live journal.
-            Files.move(source.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
-        }
+        // Same-directory rename avoids truncating the live rollback journal and
+        // works on API 24+, unlike java.nio.file.Files (API 26+).
+        AtomicFileOps.replace(source, destination)
     }
 
     companion object {

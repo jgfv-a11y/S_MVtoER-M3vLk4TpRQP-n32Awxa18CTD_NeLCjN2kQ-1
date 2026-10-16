@@ -3,6 +3,7 @@ package com.nitroboost.app.data
 import android.content.Context
 import android.content.SharedPreferences
 import com.nitroboost.app.core.ProfileValidation
+import com.nitroboost.app.core.SessionFpsBaselineStore
 import com.nitroboost.app.core.ShellInput
 
 /** Central preferences. All keys live here — no stringly-typed sprinkling. */
@@ -24,7 +25,10 @@ object Prefs {
     const val KEY_PROTECTED = "protected_list" // comma separated
     const val KEY_TASK_PREFIX = "task_enabled_"
     const val KEY_LAST_REPORT = "last_session_report" // JSON
+    /** Legacy unscoped key; intentionally not used because it mixed different games. */
+    @Deprecated("Use KEY_PREV_FPS_BY_GAME; unscoped historical values are ambiguous")
     const val KEY_PREV_FPS = "prev_session_avg_fps"
+    const val KEY_PREV_FPS_BY_GAME = "prev_session_avg_fps_by_game" // bounded JSON array
     const val KEY_ADAPTIVE_ON = "adaptive_engine_on"
     const val KEY_ONBOARDING_DONE = "onboarding_shown"
     const val KEY_BOOST_LEVEL = "boost_level"
@@ -71,6 +75,37 @@ object Prefs {
 
     fun putString(ctx: Context, key: String, value: String) {
         sp(ctx).edit().putString(key, value).apply()
+    }
+
+    /** Previous measured FPS is comparable only to a session for the same game package. */
+    fun previousAverageFpsForGame(ctx: Context, gamePackage: String?): Int? = try {
+        SessionFpsBaselineStore.previousAverageFps(
+            sp(ctx).getString(KEY_PREV_FPS_BY_GAME, null),
+            gamePackage
+        )
+    } catch (_: Exception) {
+        null
+    }
+
+    /** Persist one measured average; invalid or unavailable readings are ignored. */
+    fun recordAverageFpsForGame(
+        ctx: Context,
+        gamePackage: String?,
+        averageFps: Int,
+        endedAtMs: Long
+    ) {
+        try {
+            val prefs = sp(ctx)
+            val updated = SessionFpsBaselineStore.record(
+                prefs.getString(KEY_PREV_FPS_BY_GAME, null),
+                gamePackage,
+                averageFps,
+                endedAtMs
+            ) ?: return
+            prefs.edit().putString(KEY_PREV_FPS_BY_GAME, updated).apply()
+        } catch (_: Exception) {
+            // The comparison cache is optional and must not affect session teardown.
+        }
     }
 
     fun taskEnabled(ctx: Context, taskId: String, def: Boolean): Boolean = try {
