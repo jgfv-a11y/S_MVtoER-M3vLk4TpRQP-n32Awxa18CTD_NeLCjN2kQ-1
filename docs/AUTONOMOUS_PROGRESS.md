@@ -12,7 +12,7 @@
 - **P5 UI foundations:** dashboard، profiles، settings، overlay، reports، state-preserving navigation، ورسائل capability الصادقة.
 
 ## Current Task
-تطوير خيار تجريبي يدوي لـAndroid HWUI renderer مستلهم من GAMA، مع الإبقاء على `minSdk=24` و`targetSdk=36`. النطاق هو خاصية `debug.hwui.renderer` لواجهة Android/Skia فقط، وليس فرض Vulkan على محرك لعبة خارجية. أضيفت بوابة Android 10+/Shizuku-or-root، state machine مرخّصة MIT، وقاعدة استعادة منفصلة؛ يلزم استكمال مراجعة الشيفرة ثم CI قبل اعتبار البناء متحققًا.
+أُنجز خيار تجريبي يدوي لـAndroid HWUI renderer مستلهم من GAMA، مع الإبقاء على `minSdk=24` و`targetSdk=36`. النطاق هو خاصية `debug.hwui.renderer` لواجهة Android/Skia فقط، وليس فرض Vulkan على محرك لعبة خارجية. أضيفت بوابة Android 10+/Shizuku-or-root، state machine مرخّصة MIT، وقاعدة استعادة منفصلة. نجح CI للبناء والاختبارات على الفرع وPR؛ اختبار الجهاز الفعلي ما زال مطلوبًا قبل الدمج/النشر.
 
 ## Completed This Session — 2026-10-04
 - راجعت `main` وتقارير التقدم؛ لم يكن ملف الاستمرارية موجودًا.
@@ -141,7 +141,8 @@
 - تُسجّل القيمة السابقة قبل التغيير في `renderer_journal.json` منفصل، مع تحقق read-back وزر استعادة الأصل؛ لا قتل لـSystem UI ولا تطبيق تلقائي بعد reboot ولا دمج مع استعادة جلسات اللعبة.
 - التمييز موثق: هذا يطلب renderer لواجهة Android HWUI/Skia، ولا يجبر لعبة Unity/Unreal/native على تغيير API. قراءة الخاصية لا تثبت أن Vulkan يعمل فعليًا، ولا يوجد benchmark جهاز.
 - حُفظ إشعار MIT في `NitroBoost/THIRD_PARTY_NOTICES.md`، وأضيفت اختبارات JVM خاصة بالـcontroller/state machine والـwrite-ahead restore.
-- التحقق المحلي الأولي نجح: `tools/verify.py` (43 XML، 138 Kotlin، 113 IDs، صفر أخطاء)، `security_verify.py` (12 مجموعة، صفر findings مع تحذير Play المعتاد)، واختبارات Python (25 ناجحة)، و`git diff --check`. لم يتوفر Java/Gradle/Android SDK؛ Kotlin/JVM/Android build وCI ما زالت مطلوبة.
+- التحقق المحلي الأولي نجح: `tools/verify.py` (43 XML، 138 Kotlin، 113 IDs، صفر أخطاء)، `security_verify.py` (12 مجموعة، صفر findings مع تحذير Play المعتاد)، واختبارات Python (25 ناجحة)، و`git diff --check`. لا يتوفر Java/Gradle محليًا.
+- أخفق أول CI بسبب علامات اقتباس مفردة غير مهروبة في موارد Android؛ صُححت في `3ae6223`. نجح بعد الإصلاح push run `39476684961` وPR run `39476692832`: Kotlin/JVM tests وlintDebug وassembleDebug وفحوص APK. رُفع artifact `nitroboost-debug-apk` (5,542,629 bytes)؛ لا يوجد إصدار Release جديد ولا اختبار جهاز.
 - اقتراح الإصدارة التالية: `v1.23.0` / `versionCode 30` تركّز على تقرير توافق per-game وتحقق ANGLE/driver OEM عند توفر واجهة موثوقة، لا على فرض Vulkan عالمي.
 
 ## Architecture Decisions
@@ -164,12 +165,11 @@
 - تحتاج جلسة لاحقة إلى مراجعة regression مركزة على telemetry وMonitorHub بعد الدمج الكبير.
 
 ## Next Automatic Task
-1. إكمال مراجعة diff وبوابات `verify.py` و`security_verify.py` واختبارات Python بعد التعديلات الأخيرة.
-2. تشغيل Kotlin/JVM tests وlint وAPK build عبر GitHub Actions على الفرع النشط نفسه؛ إصلاح أي فشل قبل فتح PR.
-3. فتح PR من الفرع الحالي بعد نجاح CI؛ لا تُنشر نسخة APK أو تُدمج إلى `main` دون اجتياز البوابات.
-4. عند توفر جهاز، اختبار property/read-back/restore على Android 10+ من OEM مختلف، والتحقق من استقرار System UI؛ واختبار أن Android 7 يبقى قادرًا على تثبيت وتشغيل بقية التطبيق.
+1. إبقاء PR #18 بانتظار مراجعة/اختبار جهاز؛ artifact debug موجود في Actions ولا يُعامل كإصدار release.
+2. عند توفر جهاز Android 10+، اختبار طلب الخاصية والقراءة والاستعادة على OEM مختلف والتحقق من استقرار واجهة النظام؛ اختبار Android 7 للتأكد من بقاء التطبيق قابلًا للتثبيت وتشغيل بقية الميزات.
+3. بعد التحقق من الجهاز، مراجعة دلالات `debug.hwui.renderer` على ذلك الـROM قبل اتخاذ قرار الدمج أو نشر `v1.23.0`.
 
 ## Overall Progress
 - **Phase:** 5 — تجربة HWUI محدودة السلامة والتوافق
 - **Task:** إضافة خيار GAMA-inspired لتغيير خاصية Android HWUI مع rollback وتوثيق حدوده.
-- **Completion:** التنفيذ والفحوصات الثابتة وPython نجحت محليًا؛ build/JVM CI واختبار الجهاز لم تُحسم بعد. لا يُدّعى فرض Vulkan على لعبة أو تحسن FPS.
+- **Completion:** التحقق الساكن والأمني وPython وCI للـpush والـPR نجح؛ PR #18 مفتوح. لم يُختبر على جهاز فعلي، ولا يُدّعى فرض Vulkan على لعبة أو تحسن FPS.
