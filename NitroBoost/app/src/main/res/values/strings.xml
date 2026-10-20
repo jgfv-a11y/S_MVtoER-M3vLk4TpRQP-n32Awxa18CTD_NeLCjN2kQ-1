@@ -27,7 +27,7 @@
     <string name="task_state_pending">Waiting for Shizuku</string>
     <string name="sec_renderer">Android HWUI renderer · experimental</string>
     <string name="renderer_status_loading">Checking Android renderer property…</string>
-    <string name="renderer_scope_notice">This GAMA-inspired control changes debug.hwui.renderer (Android HWUI/Skia), not a game engine's OpenGL/Vulkan API. It may affect Android UI and other HWUI apps; Android or the vendor may ignore it or become unstable. NitroBoost does not restart System UI or reapply this after reboot. A read-back only confirms the property, not the renderer actually used.</string>
+    <string name="renderer_scope_notice">This GAMA-inspired control changes debug.hwui.renderer (Android HWUI/Skia), not the OpenGL/Vulkan API chosen by a game engine. It may affect Android UI and other HWUI apps; Android or the vendor may ignore it or become unstable. NitroBoost does not restart System UI or reapply this after reboot. A read-back only confirms the property, not the renderer actually used.</string>
     <string name="btn_renderer_vulkan">Request Vulkan · HWUI</string>
     <string name="btn_renderer_opengl">Request OpenGL · HWUI</string>
     <string name="btn_renderer_restore">Restore original property</string>
@@ -36,15 +36,15 @@
     <string name="renderer_status_unreadable">Could not read debug.hwui.renderer through the privileged backend.</string>
     <string name="renderer_status_default">HWUI property is unset/default; the actual renderer is not confirmed.</string>
     <string name="renderer_status_vulkan">HWUI property: skiavk (Vulkan requested; runtime use is not verified).</string>
-    <string name="renderer_status_opengl">HWUI property: OpenGL requested; this does not select a game's API.</string>
+    <string name="renderer_status_opengl">HWUI property: OpenGL requested; this does not select a graphics API for a game.</string>
     <string name="renderer_status_custom">HWUI property: %1$s (unknown/vendor value; NitroBoost will not overwrite it).</string>
     <string name="renderer_status_vulkan_feature">Android does not report a Vulkan hardware feature; the Vulkan request is disabled.</string>
     <string name="renderer_status_backup">NitroBoost saved the property from before its first change. Use Restore original to return to it.</string>
     <string name="renderer_status_journal_blocked">The renderer rollback journal is damaged or unavailable; changes are disabled to protect recovery.</string>
     <string name="renderer_confirm_title">Change the Android UI renderer?</string>
     <string name="renderer_confirm_vulkan">This requests skiavk through debug.hwui.renderer. It affects Android HWUI, not the renderer inside a game, and may destabilize system UI. No process is force-stopped. Only continue if you can recover by restoring the original property or rebooting. Android 10+, reported Vulkan support, and Shizuku/root are required.</string>
-    <string name="renderer_confirm_opengl">This requests OpenGL through debug.hwui.renderer for Android HWUI, not for a game's engine. The value is journaled and can be restored; Android or the vendor may ignore the change.</string>
-    <string name="renderer_confirm_restore">Restore the property value recorded before NitroBoost's first renderer change? This affects Android HWUI and does not control a game's graphics API.</string>
+    <string name="renderer_confirm_opengl">This requests OpenGL through debug.hwui.renderer for Android HWUI, not for the game engine. The value is journaled and can be restored; Android or the vendor may ignore the change.</string>
+    <string name="renderer_confirm_restore">Restore the property value recorded before the first NitroBoost renderer change? This affects Android HWUI and does not control graphics in a game.</string>
     <string name="renderer_result_applied">Requested property was set and read back as %1$s. This does not prove that Android is rendering with that API.</string>
     <string name="renderer_result_no_change">The requested HWUI setting is already present: %1$s.</string>
     <string name="renderer_result_restored">Original HWUI property restored: %1$s.</string>
