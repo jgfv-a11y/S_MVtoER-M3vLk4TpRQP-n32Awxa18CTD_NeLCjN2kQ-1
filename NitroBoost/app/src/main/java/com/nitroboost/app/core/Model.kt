@@ -39,6 +39,7 @@ data class JournalEntry(
         SECURE_SETTING,   // Settings.Secure
         GLOBAL_SETTING,   // Settings.Global
         SYSFS,            // /sys file
+        SYSTEM_PROPERTY,  // narrowly allow-listed runtime property (Android HWUI renderer)
         DND,              // notification interruption filter
         THERMAL_OVERRIDE, // cmd thermalservice override-status
         CMD               // generic shell command with explicit revertCmd

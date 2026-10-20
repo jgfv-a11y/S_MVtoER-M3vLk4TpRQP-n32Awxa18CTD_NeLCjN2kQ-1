@@ -12,7 +12,7 @@
 - **P5 UI foundations:** dashboard، profiles، settings، overlay، reports، state-preserving navigation، ورسائل capability الصادقة.
 
 ## Current Task
-إصدار v1.22.0: دعم Android 7.0 / API 24 مع الإبقاء على `targetSdk=36`، وتصحيح نطاق مقارنة FPS لكل لعبة، ثم اجتياز CI ونشر APK مع SHA-256.
+تطوير خيار تجريبي يدوي لـAndroid HWUI renderer مستلهم من GAMA، مع الإبقاء على `minSdk=24` و`targetSdk=36`. النطاق هو خاصية `debug.hwui.renderer` لواجهة Android/Skia فقط، وليس فرض Vulkan على محرك لعبة خارجية. أضيفت بوابة Android 10+/Shizuku-or-root، state machine مرخّصة MIT، وقاعدة استعادة منفصلة؛ يلزم استكمال مراجعة الشيفرة ثم CI قبل اعتبار البناء متحققًا.
 
 ## Completed This Session — 2026-10-04
 - راجعت `main` وتقارير التقدم؛ لم يكن ملف الاستمرارية موجودًا.
@@ -135,6 +135,15 @@
 - نجحت محليًا `tools/verify.py` (134 Kotlin، صفر أخطاء)، و`security_verify.py` (12 مجموعة، صفر findings؛ تحذير Play المعتاد عن QUERY_ALL_PACKAGES)، و25 اختبار Python، و`git diff --check`.
 - **لم يُشغّل Kotlin/Gradle/lint/build محليًا** لغياب Java وGradle وAndroid SDK. نجح GitHub Actions على commit `f59025d` في push run `38982201478` وPR run `38982205837`، بما فيه JVM tests وlint وassembleDebug، وفحوص package/minSdk/targetSdk/signature وبصمة APK؛ أُنتج artifact للاختبار على CI. لم يُنشأ GitHub Release بعد، واختبار جهاز API 24 فعلي غير متاح.
 
+## GAMA-Inspired Android HWUI Renderer Control — 2026-10-20
+- فُحص تنفيذ GAMA (`palincat/gama`): يستخدم `setprop debug.hwui.renderer skiavk/opengl`، ويفصل طلب التبديل/التطبيق/التحقق في state machine؛ ترخيص المشروع MIT.
+- أضيفت في NitroBoost بطاقة إعدادات تجريبية مع تأكيد يدوي، Android 10/API 29+ للتغيير، فحص ميزة Vulkan المعلنة، اشتراط Shizuku/root، وقائمة سماح ضيقة لخاصية HWUI وحدها.
+- تُسجّل القيمة السابقة قبل التغيير في `renderer_journal.json` منفصل، مع تحقق read-back وزر استعادة الأصل؛ لا قتل لـSystem UI ولا تطبيق تلقائي بعد reboot ولا دمج مع استعادة جلسات اللعبة.
+- التمييز موثق: هذا يطلب renderer لواجهة Android HWUI/Skia، ولا يجبر لعبة Unity/Unreal/native على تغيير API. قراءة الخاصية لا تثبت أن Vulkan يعمل فعليًا، ولا يوجد benchmark جهاز.
+- حُفظ إشعار MIT في `NitroBoost/THIRD_PARTY_NOTICES.md`، وأضيفت اختبارات JVM خاصة بالـcontroller/state machine والـwrite-ahead restore.
+- التحقق المحلي الأولي نجح: `tools/verify.py` (43 XML، 138 Kotlin، 113 IDs، صفر أخطاء)، `security_verify.py` (12 مجموعة، صفر findings مع تحذير Play المعتاد)، واختبارات Python (25 ناجحة)، و`git diff --check`. لم يتوفر Java/Gradle/Android SDK؛ Kotlin/JVM/Android build وCI ما زالت مطلوبة.
+- اقتراح الإصدارة التالية: `v1.23.0` / `versionCode 30` تركّز على تقرير توافق per-game وتحقق ANGLE/driver OEM عند توفر واجهة موثوقة، لا على فرض Vulkan عالمي.
+
 ## Architecture Decisions
 - القياسات غير المتاحة تبقى `null` ولا تُحوّل إلى أصفار مضللة.
 - لا يتم الادعاء بتحسن FPS دون benchmark على جهاز فعلي.
@@ -155,11 +164,12 @@
 - تحتاج جلسة لاحقة إلى مراجعة regression مركزة على telemetry وMonitorHub بعد الدمج الكبير.
 
 ## Next Automatic Task
-1. تحديث سجل التقدم، ثم إعادة بوابة PR بعد تعديل الوثائق.
-2. بعد نجاح الفحوص مجددًا، دمج PR رقم 15 بـ`--merge` ومتابعة Workflow على `main` حتى إنشاء Release `nitroboost-v1.22.0` والتحقق من APK وبيانات API 24/36 وبصمة SHA-256.
-3. عند توفر جهاز، اختبار التثبيت والإطلاق وShizuku/overlay والاستعادة على Android 7/API 24، ثم توسيع مصفوفة API 24–36.
+1. إكمال مراجعة diff وبوابات `verify.py` و`security_verify.py` واختبارات Python بعد التعديلات الأخيرة.
+2. تشغيل Kotlin/JVM tests وlint وAPK build عبر GitHub Actions على الفرع النشط نفسه؛ إصلاح أي فشل قبل فتح PR.
+3. فتح PR من الفرع الحالي بعد نجاح CI؛ لا تُنشر نسخة APK أو تُدمج إلى `main` دون اجتياز البوابات.
+4. عند توفر جهاز، اختبار property/read-back/restore على Android 10+ من OEM مختلف، والتحقق من استقرار System UI؛ واختبار أن Android 7 يبقى قادرًا على تثبيت وتشغيل بقية التطبيق.
 
 ## Overall Progress
-- **Phase:** 4 — القياس التكيفي والتحليل القابل للتدقيق
-- **Task:** v1.22.0 Android 7/API 24 and per-game session comparison
-- **Completion:** التنفيذ والفحوصات المحلية وCI للـpush وPR نجحت؛ PR #15 مفتوح بانتظار إعادة تحقق توثيق التقدم ثم الدمج وإطلاق APK على `main`. لا يوجد اختبار جهاز فعلي حتى الآن.
+- **Phase:** 5 — تجربة HWUI محدودة السلامة والتوافق
+- **Task:** إضافة خيار GAMA-inspired لتغيير خاصية Android HWUI مع rollback وتوثيق حدوده.
+- **Completion:** التنفيذ والفحوصات الثابتة وPython نجحت محليًا؛ build/JVM CI واختبار الجهاز لم تُحسم بعد. لا يُدّعى فرض Vulkan على لعبة أو تحسن FPS.

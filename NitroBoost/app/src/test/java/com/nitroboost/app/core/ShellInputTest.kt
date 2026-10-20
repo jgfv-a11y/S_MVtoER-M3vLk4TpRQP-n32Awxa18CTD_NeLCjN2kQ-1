@@ -30,4 +30,15 @@ class ShellInputTest {
         assertFalse(ShellInput.isSettingKey("system;reboot"))
         assertFalse(ShellInput.isSettingValue("1; reboot"))
     }
+
+    @Test
+    fun `HWUI property allow-list permits only known renderer values`() {
+        assertTrue(ShellInput.isHwuiRendererProperty("debug.hwui.renderer"))
+        assertFalse(ShellInput.isHwuiRendererProperty("persist.sys.debug"))
+        assertTrue(ShellInput.isHwuiRendererValue("skiavk"))
+        assertTrue(ShellInput.isHwuiRendererValue("opengl"))
+        assertTrue(ShellInput.isHwuiRendererValue(""))
+        assertFalse(ShellInput.isHwuiRendererValue("skiavk;reboot"))
+        assertFalse(ShellInput.isHwuiRendererValue("skia-gl"))
+    }
 }

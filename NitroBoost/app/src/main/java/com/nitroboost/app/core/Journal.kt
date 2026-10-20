@@ -354,6 +354,17 @@ class Journal(val file: File) {
                         }
                         else ex.globalSettingPut(entry.key, old) && ex.globalSettingGet(entry.key) == old
                     }
+                    JournalEntry.Kind.SYSTEM_PROPERTY -> {
+                        val old = entry.oldValue ?: return false
+                        val new = entry.newValue ?: return false
+                        if (entry.taskId != SystemRendererController.TASK_ID ||
+                            !ShellInput.isHwuiRendererProperty(entry.key) ||
+                            !ShellInput.isHwuiRendererValue(old) ||
+                            !ShellInput.isHwuiRendererValue(new)
+                        ) return false
+                        if (ex.systemPropertyGet(entry.key) == old) true
+                        else ex.systemPropertyPut(entry.key, old) && ex.systemPropertyGet(entry.key) == old
+                    }
                     JournalEntry.Kind.SYSFS -> {
                         val old = entry.oldValue ?: return false
                         if (ex.readSys(entry.key)?.trim() == old) true
