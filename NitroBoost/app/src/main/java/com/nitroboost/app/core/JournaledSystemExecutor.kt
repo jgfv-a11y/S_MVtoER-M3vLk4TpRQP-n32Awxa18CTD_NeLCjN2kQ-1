@@ -86,6 +86,28 @@ class JournaledSystemExecutor(
         return delegate.shell(cmd)
     }
 
+    override fun systemPropertyGet(name: String): String? = delegate.systemPropertyGet(name)
+
+    override fun systemPropertyPut(name: String, value: String): Boolean {
+        if (taskId != SystemRendererController.TASK_ID ||
+            !ShellInput.isHwuiRendererProperty(name) ||
+            !ShellInput.isHwuiRendererValue(value)
+        ) return false
+        val oldValue = delegate.systemPropertyGet(name) ?: return false
+        if (!ShellInput.isHwuiRendererValue(oldValue)) return false
+        if (oldValue == value) return true
+        val entry = JournalEntry(
+            taskId = taskId,
+            kind = JournalEntry.Kind.SYSTEM_PROPERTY,
+            key = name,
+            oldValue = oldValue,
+            newValue = value
+        )
+        return runTypedMutation(entry, { delegate.systemPropertyGet(name) }) {
+            delegate.systemPropertyPut(name, value)
+        }
+    }
+
     override fun readSys(path: String): String? = delegate.readSys(path)
 
     override fun writeSys(path: String, value: String): Boolean {

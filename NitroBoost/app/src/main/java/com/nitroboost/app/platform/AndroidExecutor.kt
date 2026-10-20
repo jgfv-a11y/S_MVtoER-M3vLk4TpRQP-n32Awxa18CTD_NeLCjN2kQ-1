@@ -76,6 +76,20 @@ class AndroidExecutor(private val context: Context) : SystemExecutor {
 
     override fun shell(cmd: String): ShellResult = runPriv(cmd)
 
+    override fun systemPropertyGet(name: String): String? {
+        if (!ShellInput.isHwuiRendererProperty(name)) return null
+        val result = runPriv("getprop $name")
+        return if (result.ok) result.stdout.trim() else null
+    }
+
+    override fun systemPropertyPut(name: String, value: String): Boolean {
+        if (!ShellInput.isHwuiRendererProperty(name) || !ShellInput.isHwuiRendererValue(value)) return false
+        // The key and values are strict allow-listed tokens; quoting also preserves
+        // the empty value used to restore Android's default/unset renderer choice.
+        runPriv("setprop $name \"$value\"")
+        return systemPropertyGet(name) == value
+    }
+
     /** Shell command without waiting for a service bind; null when unavailable. */
     fun shellNonBlocking(cmd: String): ShellResult? {
         if (ShizukuShell.isReady()) {

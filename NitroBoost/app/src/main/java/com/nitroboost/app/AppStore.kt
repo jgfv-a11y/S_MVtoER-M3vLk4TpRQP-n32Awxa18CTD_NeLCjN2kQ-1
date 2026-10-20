@@ -122,6 +122,7 @@ object AppStore {
 
     private var hub: MonitorHub? = null
     private var theJournal: Journal? = null
+    private var theRendererJournal: Journal? = null
     private var theLedger: DecisionLedger? = null
     private var adaptiveLoop: AdaptiveLoop? = null
     private val trialConfig = TrialConfig()
@@ -689,6 +690,15 @@ object AppStore {
         theJournal?.let { return it }
         val j = Journal(File(ctx().filesDir, "journal.json"))
         theJournal = j
+        return j
+    }
+
+    /** Separate rollback journal for the user-triggered system HWUI experiment. */
+    @Synchronized
+    fun rendererJournal(): Journal {
+        theRendererJournal?.let { return it }
+        val j = Journal(File(ctx().filesDir, "renderer_journal.json"))
+        theRendererJournal = j
         return j
     }
 

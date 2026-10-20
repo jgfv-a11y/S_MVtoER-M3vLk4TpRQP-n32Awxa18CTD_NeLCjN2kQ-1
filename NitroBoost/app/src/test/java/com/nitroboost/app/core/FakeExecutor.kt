@@ -10,6 +10,7 @@ class FakeExecutor : SystemExecutor {
     val secure = HashMap<String, String>()
     val global = HashMap<String, String>()
     val sysfs = HashMap<String, String>()
+    val systemProperties = HashMap<String, String>()
     val written: MutableList<String> = mutableListOf()
     val shellLog: MutableList<String> = mutableListOf()
 
@@ -19,6 +20,7 @@ class FakeExecutor : SystemExecutor {
     var preserveSysDelete = false
     /** Simulates a device that refuses Settings.System writes (no WRITE_SETTINGS). */
     var failSys = false
+    var failSystemPropertyWrite = false
     var physicalDensity = 420
     var densityOverride: Int? = null
     override var privileged: Boolean = true
@@ -127,6 +129,18 @@ class FakeExecutor : SystemExecutor {
             return ShellResult(true, 0, "", "")
         }
         return ShellResult(true, 0, "", "")
+    }
+
+    override fun systemPropertyGet(name: String): String? =
+        if (ShellInput.isHwuiRendererProperty(name)) systemProperties[name] ?: "" else null
+
+    override fun systemPropertyPut(name: String, value: String): Boolean {
+        if (!ShellInput.isHwuiRendererProperty(name) ||
+            !ShellInput.isHwuiRendererValue(value) || failSystemPropertyWrite
+        ) return false
+        systemProperties[name] = value
+        written.add("system-property:$name=$value")
+        return true
     }
 
     override fun readSys(path: String): String? = sysfs[path]

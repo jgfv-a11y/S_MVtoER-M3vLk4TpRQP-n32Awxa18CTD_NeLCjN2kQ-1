@@ -78,4 +78,29 @@ class JournaledSystemExecutorTest {
         assertEquals("performance", raw.readSys(path))
         assertEquals("schedutil", journal.snapshot().single().oldValue)
     }
+
+    @Test
+    fun `HWUI property write is journaled before the privileged mutation`() {
+        val raw = FakeExecutor()
+        val journal = Journal(missingJournalFile("renderer.json"))
+        var sawWriteAheadEntry = false
+        val observed = object : SystemExecutor by raw {
+            override fun systemPropertyPut(name: String, value: String): Boolean {
+                sawWriteAheadEntry = journal.file.exists() &&
+                    journal.containsTaskKey(SystemRendererController.TASK_ID, name)
+                return raw.systemPropertyPut(name, value)
+            }
+        }
+        val executor = JournaledSystemExecutor(
+            observed, journal, SystemRendererController.TASK_ID
+        )
+
+        assertTrue(executor.systemPropertyPut(SystemRendererController.PROPERTY, "skiavk"))
+
+        assertTrue("rollback state must be durable before setprop", sawWriteAheadEntry)
+        assertEquals("skiavk", raw.systemPropertyGet(SystemRendererController.PROPERTY))
+        assertEquals("", journal.snapshot().single().oldValue)
+        assertFalse(executor.systemPropertyPut("persist.sys.debug", "skiavk"))
+        assertFalse(executor.systemPropertyPut(SystemRendererController.PROPERTY, "reboot"))
+    }
 }

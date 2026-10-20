@@ -25,6 +25,12 @@ interface SystemExecutor {
     /** Run a shell command (as Shizuku shell user when privileged). */
     fun shell(cmd: String): ShellResult
 
+    /** Read only the allow-listed Android HWUI renderer property; null means unreadable. */
+    fun systemPropertyGet(name: String): String?
+
+    /** Write only an allow-listed Android HWUI renderer value and verify the read-back. */
+    fun systemPropertyPut(name: String, value: String): Boolean
+
     /** Read a /sys (or /proc) file; null when not readable. */
     fun readSys(path: String): String?
 

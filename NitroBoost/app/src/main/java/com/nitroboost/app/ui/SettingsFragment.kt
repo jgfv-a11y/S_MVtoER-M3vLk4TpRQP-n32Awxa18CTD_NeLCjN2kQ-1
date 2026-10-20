@@ -1,7 +1,9 @@
 package com.nitroboost.app.ui
 
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.LayoutInflater
@@ -23,6 +25,7 @@ import com.nitroboost.app.R
 import com.nitroboost.app.data.Prefs
 import com.nitroboost.app.data.SessionLog
 import com.nitroboost.app.core.ShellInput
+import com.nitroboost.app.core.SystemRendererController
 import com.nitroboost.app.platform.AndroidExecutor
 import com.nitroboost.app.platform.RootShell
 import com.nitroboost.app.platform.ShizukuShell
@@ -42,7 +45,18 @@ class SettingsFragment : Fragment() {
     private lateinit var procAdapter: ProcessAdapter
     private var systemRefreshJob: Job? = null
     private var shizukuRefreshJob: Job? = null
+    private var rendererRefreshJob: Job? = null
     private var shizukuActionPending = false
+    private var rendererActionPending = false
+
+    private data class RendererUiState(
+        val apiSupported: Boolean,
+        val vulkanHardware: Boolean,
+        val privileged: Boolean,
+        val currentProperty: String?,
+        val hasSavedOriginal: Boolean,
+        val journalBlocked: Boolean
+    )
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -87,6 +101,17 @@ class SettingsFragment : Fragment() {
             // Shizuku / root
             root.findViewById<Button>(R.id.btn_shizuku).setOnClickListener { onShizukuTap(c) }
 
+            // Experimental Android HWUI renderer control (manual and opt-in).
+            root.findViewById<MaterialButton>(R.id.btn_renderer_vulkan).setOnClickListener {
+                confirmRendererChange(SystemRendererController.Target.VULKAN)
+            }
+            root.findViewById<MaterialButton>(R.id.btn_renderer_opengl).setOnClickListener {
+                confirmRendererChange(SystemRendererController.Target.OPENGL)
+            }
+            root.findViewById<MaterialButton>(R.id.btn_renderer_restore).setOnClickListener {
+                confirmRendererRestore()
+            }
+
             // Journal
             root.findViewById<MaterialButton>(R.id.btn_restore_all).setOnClickListener {
                 AlertDialog.Builder(c)
@@ -124,6 +149,7 @@ class SettingsFragment : Fragment() {
         if (isHidden) return
         updateJournal()
         refreshShizuku()
+        refreshRenderer()
         refreshSystem()
     }
 
@@ -157,6 +183,7 @@ class SettingsFragment : Fragment() {
                 }
                 if (isResumed) {
                     refreshShizuku()
+                    refreshRenderer()
                     AppStore.refreshTaskStates()
                 }
             } finally {
@@ -202,6 +229,183 @@ class SettingsFragment : Fragment() {
                     0xFF00E676.toInt() else 0xFFFFB74D.toInt()
             )
         }
+    }
+
+    // ---------------- Experimental Android HWUI renderer ----------------
+
+    private fun confirmRendererChange(target: SystemRendererController.Target) {
+        val title = if (target == SystemRendererController.Target.VULKAN) {
+            R.string.btn_renderer_vulkan
+        } else {
+            R.string.btn_renderer_opengl
+        }
+        val message = if (target == SystemRendererController.Target.VULKAN) {
+            R.string.renderer_confirm_vulkan
+        } else {
+            R.string.renderer_confirm_opengl
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.renderer_confirm_title)
+            .setMessage(message)
+            .setPositiveButton(title) { _, _ -> startRendererAction(target, restore = false) }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun confirmRendererRestore() {
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.btn_renderer_restore)
+            .setMessage(R.string.renderer_confirm_restore)
+            .setPositiveButton(R.string.btn_renderer_restore) { _, _ ->
+                startRendererAction(target = null, restore = true)
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun startRendererAction(target: SystemRendererController.Target?, restore: Boolean) {
+        if (rendererActionPending) return
+        val appContext = requireContext().applicationContext
+        rendererActionPending = true
+        setRendererButtonsEnabled(false, false, false)
+        view?.findViewById<TextView>(R.id.renderer_status)
+            ?.setText(R.string.renderer_status_loading)
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    val executor = AndroidExecutor(appContext)
+                    val journal = AppStore.rendererJournal()
+                    if (restore) {
+                        SystemRendererController.restoreOriginal(executor, journal)
+                    } else {
+                        SystemRendererController.setRenderer(
+                            executor = executor,
+                            journal = journal,
+                            target = target ?: SystemRendererController.Target.OPENGL,
+                            androidApi = Build.VERSION.SDK_INT,
+                            hasVulkanHardwareFeature = hasVulkanHardwareFeature(appContext)
+                        )
+                    }
+                }
+                view?.let { root ->
+                    com.google.android.material.snackbar.Snackbar
+                        .make(root, rendererResultMessage(result),
+                            com.google.android.material.snackbar.Snackbar.LENGTH_LONG)
+                        .show()
+                }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                view?.let { root ->
+                    com.google.android.material.snackbar.Snackbar
+                        .make(root, R.string.renderer_result_apply_failed,
+                            com.google.android.material.snackbar.Snackbar.LENGTH_LONG)
+                        .show()
+                }
+            } finally {
+                rendererActionPending = false
+                if (view != null && isAdded) refreshRenderer()
+            }
+        }
+    }
+
+    private fun rendererResultMessage(result: SystemRendererController.Result): String {
+        val value = result.current?.ifEmpty { "default" } ?: "?"
+        return when (result.code) {
+            SystemRendererController.Code.APPLIED -> getString(R.string.renderer_result_applied, value)
+            SystemRendererController.Code.NO_CHANGE -> getString(R.string.renderer_result_no_change, value)
+            SystemRendererController.Code.RESTORED -> getString(R.string.renderer_result_restored, value)
+            SystemRendererController.Code.NO_SAVED_CHANGE -> getString(R.string.renderer_result_no_saved)
+            SystemRendererController.Code.UNSUPPORTED_ANDROID -> getString(R.string.renderer_result_api)
+            SystemRendererController.Code.VULKAN_UNAVAILABLE -> getString(R.string.renderer_result_vulkan_feature)
+            SystemRendererController.Code.PRIVILEGE_REQUIRED -> getString(R.string.renderer_result_privilege)
+            SystemRendererController.Code.PROPERTY_UNREADABLE -> getString(R.string.renderer_result_unreadable)
+            SystemRendererController.Code.UNKNOWN_PROPERTY_VALUE -> getString(R.string.renderer_result_unknown)
+            SystemRendererController.Code.JOURNAL_BLOCKED -> getString(R.string.renderer_result_journal)
+            SystemRendererController.Code.APPLY_FAILED -> getString(R.string.renderer_result_apply_failed)
+            SystemRendererController.Code.RESTORE_FAILED -> getString(R.string.renderer_result_restore_failed)
+        }
+    }
+
+    private fun refreshRenderer() {
+        if (rendererActionPending || rendererRefreshJob?.isActive == true) return
+        val appContext = context?.applicationContext ?: return
+        rendererRefreshJob = viewLifecycleOwner.lifecycleScope.launch {
+            val state = withContext(Dispatchers.IO) {
+                val executor = AndroidExecutor(appContext)
+                val journal = AppStore.rendererJournal()
+                val privileged = try {
+                    executor.privileged
+                } catch (_: Exception) {
+                    false
+                }
+                val current = if (privileged) {
+                    try {
+                        executor.systemPropertyGet(SystemRendererController.PROPERTY)
+                    } catch (_: Exception) {
+                        null
+                    }
+                } else null
+                val hasSaved = journal.snapshot().any {
+                    it.taskId == SystemRendererController.TASK_ID &&
+                        it.kind == com.nitroboost.app.core.JournalEntry.Kind.SYSTEM_PROPERTY &&
+                        it.key == SystemRendererController.PROPERTY
+                }
+                RendererUiState(
+                    apiSupported = Build.VERSION.SDK_INT >= SystemRendererController.MIN_ANDROID_API,
+                    vulkanHardware = hasVulkanHardwareFeature(appContext),
+                    privileged = privileged,
+                    currentProperty = current,
+                    hasSavedOriginal = hasSaved,
+                    journalBlocked = journal.recoveryBlocked
+                )
+            }
+            val status = view?.findViewById<TextView>(R.id.renderer_status) ?: return@launch
+            val lines = mutableListOf<String>()
+            lines += when {
+                !state.apiSupported -> getString(R.string.renderer_status_api)
+                !state.privileged -> getString(R.string.renderer_status_privilege)
+                state.currentProperty == null -> getString(R.string.renderer_status_unreadable)
+                SystemRendererController.describe(state.currentProperty) == "default" ->
+                    getString(R.string.renderer_status_default)
+                SystemRendererController.describe(state.currentProperty) == "vulkan-requested" ->
+                    getString(R.string.renderer_status_vulkan)
+                SystemRendererController.describe(state.currentProperty) == "opengl-requested" ->
+                    getString(R.string.renderer_status_opengl)
+                else -> getString(R.string.renderer_status_custom, state.currentProperty.orEmpty())
+            }
+            if (state.apiSupported && !state.vulkanHardware) {
+                lines += getString(R.string.renderer_status_vulkan_feature)
+            }
+            if (state.hasSavedOriginal) lines += getString(R.string.renderer_status_backup)
+            if (state.journalBlocked) lines += getString(R.string.renderer_status_journal_blocked)
+            status.text = lines.joinToString("\n")
+
+            val propertyKnown = state.currentProperty?.let { ShellInput.isHwuiRendererValue(it) } == true
+            val canChange = !rendererActionPending && state.apiSupported && state.privileged &&
+                propertyKnown && !state.journalBlocked
+            setRendererButtonsEnabled(
+                vulkan = canChange && state.vulkanHardware,
+                openGl = canChange,
+                restore = !rendererActionPending && state.privileged && state.hasSavedOriginal &&
+                    !state.journalBlocked
+            )
+        }
+    }
+
+    private fun setRendererButtonsEnabled(vulkan: Boolean, openGl: Boolean, restore: Boolean) {
+        view?.findViewById<MaterialButton>(R.id.btn_renderer_vulkan)?.isEnabled = vulkan
+        view?.findViewById<MaterialButton>(R.id.btn_renderer_opengl)?.isEnabled = openGl
+        view?.findViewById<MaterialButton>(R.id.btn_renderer_restore)?.isEnabled = restore
+    }
+
+    private fun hasVulkanHardwareFeature(context: android.content.Context): Boolean = try {
+        val pm = context.packageManager
+        pm.hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_LEVEL) ||
+            pm.hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_VERSION)
+    } catch (_: Exception) {
+        false
     }
 
     // ---------------- System & RAM ----------------

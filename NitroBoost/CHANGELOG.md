@@ -1,4 +1,10 @@
 # Changelog
+## Unreleased — Experimental Android HWUI renderer control
+- Added a manual, confirmation-gated control for Android's `debug.hwui.renderer`, using GAMA's transaction-state pattern with a dedicated write-ahead rollback journal.
+- The experiment is limited to Android 10+ (API 29+) with a reported Vulkan hardware feature for Vulkan requests; the app's `minSdk=24` and `targetSdk=36` remain unchanged.
+- Clearly scopes the property to Android HWUI/Skia rather than a game engine's graphics API; no System UI process is force-stopped and no boot-time reapply or performance gain is promised.
+- Added an explicit original-value restore action, strict property/value allow-list, MIT attribution, and JVM regression tests. Physical-device/OEM validation remains required.
+
 ## v1.22.0 — Android 7 support and session comparison correctness
 - Lowered `minSdk` to API 24 (Android 7.0) while retaining `targetSdk` 36.
 - Removed `java.nio.file` calls from journal, adaptive-ledger, and profile persistence; same-directory rename/copy paths now work on API 24 without truncating the live file on failure.

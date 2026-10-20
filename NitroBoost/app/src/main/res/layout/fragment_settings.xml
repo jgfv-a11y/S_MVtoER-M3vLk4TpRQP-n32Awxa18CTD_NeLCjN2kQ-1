@@ -71,6 +71,79 @@
                 android:textSize="11sp" />
         </LinearLayout>
 
+        <!-- Experimental Android HWUI renderer control (not a per-game API switch) -->
+        <TextView
+            style="@style/NbSectionTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/sec_renderer" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_card"
+            android:orientation="vertical"
+            android:padding="14dp">
+
+            <TextView
+                android:id="@+id/renderer_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/renderer_status_loading"
+                android:textColor="@color/nb_text"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="7dp"
+                android:lineSpacingExtra="3dp"
+                android:text="@string/renderer_scope_notice"
+                android:textColor="@color/nb_subtext"
+                android:textSize="11sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:orientation="horizontal">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_renderer_vulkan"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:minHeight="52dp"
+                    android:enabled="false"
+                    android:text="@string/btn_renderer_vulkan"
+                    android:textSize="11sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_renderer_opengl"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_weight="1"
+                    android:minHeight="52dp"
+                    android:enabled="false"
+                    android:text="@string/btn_renderer_opengl"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_renderer_restore"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:enabled="false"
+                android:text="@string/btn_renderer_restore"
+                android:textSize="11sp" />
+        </LinearLayout>
+
         <!-- Floating monitor -->
         <TextView
             style="@style/NbSectionTitle"

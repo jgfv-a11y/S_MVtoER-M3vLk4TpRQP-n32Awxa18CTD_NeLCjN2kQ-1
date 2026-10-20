@@ -10,6 +10,10 @@ object ShellInput {
     private val settingValuePattern = Regex("[A-Za-z0-9_.:+-]{0,256}")
     private val tokenPattern = Regex("[A-Za-z0-9_.+-]{1,64}")
 
+    /** Narrow allow-list for the optional Android HWUI renderer experiment. */
+    const val HWUI_RENDERER_PROPERTY = "debug.hwui.renderer"
+    private val hwuiRendererValues = setOf("", "skiavk", "opengl", "skiagl")
+
     fun isPackageName(value: String): Boolean =
         value.length <= 255 && packageNamePattern.matches(value)
 
@@ -28,4 +32,9 @@ object ShellInput {
 
     /** Single shell token used for values such as CPU governors. */
     fun isToken(value: String): Boolean = tokenPattern.matches(value)
+
+    fun isHwuiRendererProperty(value: String): Boolean = value == HWUI_RENDERER_PROPERTY
+
+    /** Empty means Android's default/unset property; other values are deliberately limited. */
+    fun isHwuiRendererValue(value: String): Boolean = value in hwuiRendererValues
 }
