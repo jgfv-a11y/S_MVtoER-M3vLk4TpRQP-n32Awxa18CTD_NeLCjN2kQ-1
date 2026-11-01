@@ -121,6 +121,8 @@ jobs:
             "NitroBoost-v${{ steps.ver.outputs.name }}-debug.apk" \
             "NitroBoost-v${{ steps.ver.outputs.name }}-source.zip" \
             > SHA256SUMS
+          CHECKSUMS="$(tr '\n' ';' < SHA256SUMS)"
+          echo "::notice title=Artifact checksums::$CHECKSUMS"
 
       - name: Summarize build log on failure
         if: failure()
