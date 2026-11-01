@@ -114,8 +114,11 @@ class ProfileStore(private val ctx: Context) {
      * Export only user profiles. Built-ins remain app-owned and are recreated
      * from the APK, which prevents a stale export from replacing the catalog.
      */
-    fun exportCustomProfiles(exportedAtMs: Long = System.currentTimeMillis()): String =
-        ProfileExchange.encode(customs(), exportedAtMs)
+    fun exportCustomProfiles(exportedAtMs: Long = System.currentTimeMillis()): String {
+        val profiles = customs()
+        lastLoadIssue?.let { error(it) }
+        return ProfileExchange.encode(profiles, exportedAtMs)
+    }
 
     /**
      * Import is validate-then-commit. Conflicts are reported without writing
