@@ -174,10 +174,17 @@ class BoostEngine(private val tasks: List<BoostTask>) {
     fun states(ctx: BoostContext): List<TaskState> {
         return tasks.map { t ->
             val capability = capabilityRegistry.status(t, ctx)
-            val applied = capability.state == CapabilityState.APPLIED || try {
-                t.isApplied(ctx)
-            } catch (_: Exception) {
-                false
+            // Do not run an applied-state probe when permission/capability
+            // probing already says it cannot be safe; several probes use a
+            // privileged shell and would defeat the fail-closed state.
+            val applied = when (capability.state) {
+                CapabilityState.APPLIED -> true
+                CapabilityState.SUPPORTED -> try {
+                    t.isApplied(ctx)
+                } catch (_: Exception) {
+                    false
+                }
+                else -> false
             }
             val supported = capability.state == CapabilityState.SUPPORTED ||
                 capability.state == CapabilityState.APPLIED

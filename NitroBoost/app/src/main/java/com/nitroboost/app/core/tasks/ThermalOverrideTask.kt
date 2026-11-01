@@ -35,6 +35,6 @@ class ThermalOverrideTask : BoostTask {
         TaskResult(
             id,
             TaskStatus.Skipped,
-            "rejected by immutable thermal-safety policy; use Restore to clean a legacy entry"
+            "rejected by [safety-policy]: thermal protection is immutable; use Restore to clean a legacy entry"
         )
 }
