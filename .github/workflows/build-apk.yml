@@ -113,6 +113,14 @@ jobs:
           echo "Verified APK minSdk=$MIN_SDK"
           "$BUILD_TOOLS/apksigner" verify --verbose nitroboost-debug.apk
           sha256sum nitroboost-debug.apk > nitroboost-debug.apk.sha256
+          # Produce stable, release-scoped names for the requested hand-off.
+          cp nitroboost-debug.apk "NitroBoost-v${{ steps.ver.outputs.name }}-debug.apk"
+          git archive --format=zip --prefix="NitroBoost-v${{ steps.ver.outputs.name }}/" HEAD \
+            -o "NitroBoost-v${{ steps.ver.outputs.name }}-source.zip"
+          sha256sum \
+            "NitroBoost-v${{ steps.ver.outputs.name }}-debug.apk" \
+            "NitroBoost-v${{ steps.ver.outputs.name }}-source.zip" \
+            > SHA256SUMS
 
       - name: Summarize build log on failure
         if: failure()
@@ -163,6 +171,9 @@ jobs:
           path: |
             NitroBoost/nitroboost-debug.apk
             NitroBoost/nitroboost-debug.apk.sha256
+            NitroBoost/NitroBoost-v${{ steps.ver.outputs.name }}-debug.apk
+            NitroBoost/NitroBoost-v${{ steps.ver.outputs.name }}-source.zip
+            NitroBoost/SHA256SUMS
           if-no-files-found: error
 
   prepare-release:
@@ -339,7 +350,7 @@ jobs:
       - name: Collect release assets
         id: collect
         run: |
-          FILES="NitroBoost/nitroboost-debug.apk\nNitroBoost/nitroboost-debug.apk.sha256"
+          FILES="NitroBoost/NitroBoost-v${{ needs['verify-build'].outputs.name }}-debug.apk\nNitroBoost/NitroBoost-v${{ needs['verify-build'].outputs.name }}-source.zip\nNitroBoost/SHA256SUMS\nNitroBoost/nitroboost-debug.apk\nNitroBoost/nitroboost-debug.apk.sha256"
           if [ -f NitroBoost/nitroboost-release.apk ]; then
             FILES="$FILES\nNitroBoost/nitroboost-release.apk\nNitroBoost/nitroboost-release.apk.sha256"
           fi

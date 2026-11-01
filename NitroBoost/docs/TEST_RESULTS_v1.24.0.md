@@ -1,6 +1,6 @@
 # NitroBoost 1.24.0 — Test Results
 
-**Test date:** 2026-11-01  
+**Test date:** 2026-11-01
 **Branch:** `arena/4bed7c6c-s-mvtoer-m3vlk4tprqp-n32Awxa18CTD_NeLCjN2kQ-1`
 
 ## Completed in workspace
@@ -12,18 +12,17 @@
 | Python tool tests | `python3 -m unittest discover -s tools -p 'test_*.py' -v` | PASS — 25 tests |
 | Diff whitespace | `git diff --check` | PASS at audit time |
 
-## Required CI gate
+## GitHub Actions result
 
-The following must be recorded from the GitHub Actions run after the v1.24.0 source is pushed:
+Run: [41347857137](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/actions/runs/41347857137)
+Commit: `2201ce5c70368e3d69e4d3fd4eb8bf62e46d9200`
+Job: `verify-build` — **PASS** on 2026-11-01.
 
-- JDK 17 / Gradle 8.14.3 setup
-- `./gradlew test lintDebug assembleDebug --no-daemon --stacktrace`
-- APK package/version: `com.nitroboost.app`, `31`, `1.24.0`
-- APK `minSdk=24`, `targetSdk=36`
-- `apksigner verify --verbose`
-- Debug APK SHA-256
+The run completed the JDK 17 / Gradle 8.14.3 setup, static/security gates, `test`, `lintDebug`, `assembleDebug`, APK metadata checks for `com.nitroboost.app` version `31` / `1.24.0`, `minSdk=24`, `targetSdk=36`, and `apksigner verify --verbose`. The JVM task reported 278 tests completed with no failures after the fail-closed probe regression was fixed.
 
-**CI status at document creation:** pending. This line must be replaced with the run URL/ID and final outcome before calling the release verified.
+The debug artifact is available from the workflow as `nitroboost-debug-apk`. The workflow also now creates `NitroBoost-v1.24.0-debug.apk`, `NitroBoost-v1.24.0-source.zip`, and `SHA256SUMS`. The sandbox could not copy the Actions blob into the workspace because the artifact download redirect is outside the permitted outbound hosts; the GitHub Actions artifact is the authoritative binary hand-off.
+
+The workflow's release-only jobs were correctly skipped on this feature branch. No signed release APK was produced.
 
 ## Not tested here
 

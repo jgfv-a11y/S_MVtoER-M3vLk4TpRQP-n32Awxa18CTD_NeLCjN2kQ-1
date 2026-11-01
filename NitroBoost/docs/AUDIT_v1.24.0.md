@@ -1,21 +1,21 @@
 # NitroBoost 1.24.0 — Release Audit
 
-**Date:** 2026-11-01  
-**Baseline:** v1.23.0 audit in `AUDIT_v1.23.0.md`  
+**Date:** 2026-11-01
+**Baseline:** v1.23.0 audit in `AUDIT_v1.23.0.md`
 **Target:** v1.24.0 / versionCode 31
 
 ## Implementation status
 
 | Acceptance area | Evidence in source | Status |
 |---|---|---|
-| Identity/API compatibility | `app/build.gradle.kts` | Implemented; CI APK metadata gate pending/required |
+| Identity/API compatibility | `app/build.gradle.kts` | Implemented; CI APK metadata gate passed in run 41347857137 |
 | Thermal protection | `ThermalOverrideTask`, `JournaledSystemExecutor`, `ProfileValidation`, profile UI | Implemented; new override rejected; legacy restore retained |
 | Capability states | `CapabilityRegistry`, `TaskState`, `BoostEngine`, `BoostFragment` | Implemented |
 | Profile exchange | `ProfileExchange`, `ProfileStore`, Profiles UI | Implemented with checksum/conflict/atomic-write paths |
 | Measurement provenance | `MeasurementProvenance`, Home dashboard | Implemented; source availability remains device-dependent |
-| Adaptive concurrency/cooldown | `AdaptiveLoop`, `TrialConfig`, Journal/task locks | Implemented; requires JVM/CI verification |
+| Adaptive concurrency/cooldown | `AdaptiveLoop`, `TrialConfig`, Journal/task locks | Implemented; JVM/CI verification passed in run 41347857137 |
 | Static/security gates | `tools/verify.py`, `tools/security_verify.py`, Python tests | Passed locally on 2026-11-01 |
-| Android compile/lint/unit tests | GitHub Actions workflow | Must be confirmed from v1.24.0 run |
+| Android compile/lint/unit tests | GitHub Actions run 41347857137 (`verify-build`) | Passed: `test`, `lintDebug`, `assembleDebug`, APK metadata, `apksigner verify` |
 | Physical API 24–36/OEM test | No device supplied | Not performed |
 | Signed update compatibility | No confirmed prior release key | Not established |
 | FPS/GPU/frame-time improvement | No repeatable game benchmark | Not claimed |
