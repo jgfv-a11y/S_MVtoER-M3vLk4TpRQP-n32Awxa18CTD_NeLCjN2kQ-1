@@ -43,8 +43,11 @@ class BoostLevelTest {
         // Level 1 — safe basics, no privilege
         assertEquals(1, t["dnd"]!!.boostLevel)
         assertEquals(1, t["animations"]!!.boostLevel)
-        assertEquals(1, t["game_mode"]!!.boostLevel)
         assertEquals(1, t["data_saver"]!!.boostLevel)
+        // game_mode moved to level 2 in v1.23.0: it is always a
+        // secure-setting write that requires Shizuku/root, and level 1 is
+        // documented as "works with no privileges".
+        assertEquals(2, t["game_mode"]!!.boostLevel)
         // Level 3 — aggressive, opt-in only
         assertEquals(3, t["walt_tuning"]!!.boostLevel)
         assertEquals(3, t["touch_boost"]!!.boostLevel)

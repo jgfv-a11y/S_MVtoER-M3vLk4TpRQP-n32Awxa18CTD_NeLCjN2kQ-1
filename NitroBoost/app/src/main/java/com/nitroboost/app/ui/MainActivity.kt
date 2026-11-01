@@ -67,6 +67,18 @@ class MainActivity : AppCompatActivity() {
     /** Shizuku is opened at most once per launch — the poller keeps the rest automatic. */
     private var shizukuOpenedThisLaunch = false
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // launchMode="singleTask": a widget tap while this activity already
+        // exists is delivered here, not through onCreate — honour the boost
+        // hint on the warm path too, otherwise the widget only boosts on a
+        // cold start.
+        if (intent.getBooleanExtra("boost", false)) {
+            onBoostTap()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Android 15+ enforces edge-to-edge for modern targets. Apply the

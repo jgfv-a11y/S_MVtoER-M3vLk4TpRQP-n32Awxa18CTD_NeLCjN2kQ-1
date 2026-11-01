@@ -1,5 +1,6 @@
 package com.nitroboost.app.platform
 
+import android.os.Build
 import com.nitroboost.app.core.ShellResult
 import java.io.InputStream
 import java.util.concurrent.Executors
@@ -53,10 +54,11 @@ object RootShell {
     }
 
     private fun probe(): Boolean {
+        var p: Process? = null
         return try {
-            val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
+            p = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
             if (!p.waitFor(PROBE_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-                p.destroy()
+                terminate(p)
                 available = false
                 return false
             }
@@ -75,6 +77,34 @@ object RootShell {
         } catch (e: Exception) {
             available = false
             false
+        } finally {
+            closeQuietly(p?.inputStream)
+            closeQuietly(p?.errorStream)
+        }
+    }
+
+    /**
+     * Escalating termination. destroyForcibly() only exists from API 26;
+     * calling it on Android 7.x throws NoSuchMethodError (an Error, which
+     * catch(Exception) does not intercept).
+     */
+    internal fun terminate(p: Process) {
+        try {
+            p.destroy()
+            if (!p.waitFor(500, TimeUnit.MILLISECONDS) &&
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+            ) {
+                p.destroyForcibly()
+            }
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                try {
+                    p.destroyForcibly()
+                } catch (_: Exception) {
+                }
+            }
+        } catch (_: Exception) {
         }
     }
 
@@ -101,13 +131,7 @@ object RootShell {
                 false
             }
             if (!done) {
-                p.destroy()
-                try {
-                    if (!p.waitFor(500, TimeUnit.MILLISECONDS)) p.destroyForcibly()
-                } catch (_: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    p.destroyForcibly()
-                }
+                terminate(p)
                 closeQuietly(p.inputStream)
                 closeQuietly(p.errorStream)
                 outFuture.cancel(true)
@@ -145,9 +169,9 @@ object RootShell {
         ""
     }
 
-    private fun closeQuietly(stream: InputStream) {
+    private fun closeQuietly(stream: InputStream?) {
         try {
-            stream.close()
+            stream?.close()
         } catch (_: Exception) {
         }
     }

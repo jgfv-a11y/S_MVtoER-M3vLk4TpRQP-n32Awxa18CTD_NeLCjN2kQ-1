@@ -44,8 +44,14 @@ object ShizukuShell {
     @Volatile
     private var bound = false
 
+    // These are rebound together by ensureBound/unbind from arbitrary
+    // threads; volatile visibility prevents a torn unbind/ensureBound
+    // interleave from leaking a stale registration.
+    @Volatile
     private var conn: ServiceConnection? = null
+    @Volatile
     private var args: Shizuku.UserServiceArgs? = null
+    @Volatile
     private var appCtx: Context? = null
 
     /** True when the Shizuku app is installed. */

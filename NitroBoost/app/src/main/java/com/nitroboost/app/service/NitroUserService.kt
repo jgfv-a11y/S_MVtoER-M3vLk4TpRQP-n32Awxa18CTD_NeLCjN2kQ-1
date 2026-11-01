@@ -78,12 +78,25 @@ class NitroUserService constructor() : INitroService.Stub() {
     }
 
     private fun terminate(process: Process) {
-        process.destroy()
+        // destroyForcibly() exists only from API 26 (project minSdk = 24);
+        // on Android 7.x it throws NoSuchMethodError and would kill this
+        // Shizuku user-service process. Escalate via the guarded path below.
         try {
-            if (!process.waitFor(500, TimeUnit.MILLISECONDS)) process.destroyForcibly()
-        } catch (_: InterruptedException) {
+            process.destroy()
+            if (!process.waitFor(500, TimeUnit.MILLISECONDS) &&
+                android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O
+            ) {
+                process.destroyForcibly()
+            }
+        } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
-            process.destroyForcibly()
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                try {
+                    process.destroyForcibly()
+                } catch (_: Exception) {
+                }
+            }
+        } catch (_: Exception) {
         }
         try {
             process.inputStream.close()

@@ -47,7 +47,13 @@ class PeakBrightnessTask : BoostTask {
         if (isApplied(ctx)) return TaskResult(id, TaskStatus.NoChange, "already locked")
         val curBrightness = ctx.executor.sysSettingGet(KEY_BRIGHTNESS) ?: "128"
         val curMode = ctx.executor.sysSettingGet(KEY_MODE) ?: MODE_MANUAL
-        val bOk = ctx.executor.sysSettingPut(KEY_BRIGHTNESS, "$MAX_BRIGHTNESS")
+        // Never dim: some panels use wider integer ranges (1..2047/4095), so
+        // a hardcoded 255 would LOWER the user's current brightness. The
+        // target is the brighter of the current value and the classic max;
+        // both journaled values restore exactly on exit either way.
+        val curValue = curBrightness.toIntOrNull()?.takeIf { it > 0 } ?: MAX_BRIGHTNESS
+        val targetBrightness = maxOf(curValue, MAX_BRIGHTNESS).toString()
+        val bOk = ctx.executor.sysSettingPut(KEY_BRIGHTNESS, targetBrightness)
         val mOk = ctx.executor.sysSettingPut(KEY_MODE, MODE_MANUAL)
         if (!bOk && !mOk) {
             return TaskResult(
@@ -62,7 +68,7 @@ class PeakBrightnessTask : BoostTask {
                 kind = JournalEntry.Kind.SYS_SETTING,
                 key = KEY_BRIGHTNESS,
                 oldValue = curBrightness,
-                newValue = "$MAX_BRIGHTNESS"
+                newValue = targetBrightness
             )
         }
         if (mOk) {

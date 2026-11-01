@@ -326,44 +326,101 @@ class Journal(val file: File) {
         /**
          * Revert a single entry using the executor.
          * Returns true when the original state was successfully restored.
+         *
+         * Ownership rule: the journal's obligation is only to undo the change
+         * THIS app made (oldValue -> newValue). When a readable current value
+         * is neither our new value nor the original old value, the state now
+         * belongs to the user, the system, or another app — writing the old
+         * value would clobber that external change, so the undo is complete
+         * without writing. An unreadable current value keeps the historical
+         * best-effort behaviour (attempt the write and verify the read-back).
          */
         fun restore(entry: JournalEntry, ex: SystemExecutor): Boolean {
             return try {
                 when (entry.kind) {
                     JournalEntry.Kind.SYS_SETTING -> {
                         val old = entry.oldValue
-                        if (ex.sysSettingGet(entry.key) == old) true
-                        else if (old == null) {
-                            ex.sysSettingDelete(entry.key) && ex.sysSettingGet(entry.key) == null
+                        val current = ex.sysSettingGet(entry.key)
+                        when {
+                            current == old -> true
+                            // old == null restores by deleting; an absent key is
+                            // already at the original state.
+                            current == null && old == null -> true
+                            // Our change was externally removed (or the read
+                            // failed): restoring would create a key someone
+                            // else deleted; nothing of ours is left to undo.
+                            current == null -> true
+                            // Our value is still live — undo it.
+                            current == entry.newValue ->
+                                if (old == null) {
+                                    ex.sysSettingDelete(entry.key) && ex.sysSettingGet(entry.key) == null
+                                } else {
+                                    ex.sysSettingPut(entry.key, old) && ex.sysSettingGet(entry.key) == old
+                                }
+                            // Readable third-party value: never clobber it.
+                            else -> true
                         }
-                        else ex.sysSettingPut(entry.key, old) && ex.sysSettingGet(entry.key) == old
                     }
                     JournalEntry.Kind.SECURE_SETTING -> {
                         val old = entry.oldValue
-                        if (ex.secureSettingGet(entry.key) == old) true
-                        else if (old == null) {
-                            ex.secureSettingDelete(entry.key) && ex.secureSettingGet(entry.key) == null
+                        val current = ex.secureSettingGet(entry.key)
+                        when {
+                            current == old -> true
+                            current == null && old == null -> true
+                            current == null -> true
+                            current == entry.newValue ->
+                                if (old == null) {
+                                    ex.secureSettingDelete(entry.key) && ex.secureSettingGet(entry.key) == null
+                                } else {
+                                    ex.secureSettingPut(entry.key, old) && ex.secureSettingGet(entry.key) == old
+                                }
+                            else -> true
                         }
-                        else ex.secureSettingPut(entry.key, old) && ex.secureSettingGet(entry.key) == old
                     }
                     JournalEntry.Kind.GLOBAL_SETTING -> {
                         val old = entry.oldValue
-                        if (ex.globalSettingGet(entry.key) == old) true
-                        else if (old == null) {
-                            ex.globalSettingDelete(entry.key) && ex.globalSettingGet(entry.key) == null
+                        val current = ex.globalSettingGet(entry.key)
+                        when {
+                            current == old -> true
+                            current == null && old == null -> true
+                            current == null -> true
+                            current == entry.newValue ->
+                                if (old == null) {
+                                    ex.globalSettingDelete(entry.key) && ex.globalSettingGet(entry.key) == null
+                                } else {
+                                    ex.globalSettingPut(entry.key, old) && ex.globalSettingGet(entry.key) == old
+                                }
+                            else -> true
                         }
-                        else ex.globalSettingPut(entry.key, old) && ex.globalSettingGet(entry.key) == old
                     }
                     JournalEntry.Kind.SYSFS -> {
                         val old = entry.oldValue ?: return false
-                        if (ex.readSys(entry.key)?.trim() == old) true
-                        else ex.writeSys(entry.key, old) && ex.readSys(entry.key)?.trim() == old
+                        val current = ex.readSys(entry.key)?.trim()
+                        when {
+                            // Unreadable node: best-effort write + verify, as before.
+                            current == null ->
+                                ex.writeSys(entry.key, old) && ex.readSys(entry.key)?.trim() == old
+                            current == old -> true
+                            current == entry.newValue?.trim() ->
+                                ex.writeSys(entry.key, old) && ex.readSys(entry.key)?.trim() == old
+                            // Readable third-party value: never clobber it.
+                            else -> true
+                        }
                     }
                     JournalEntry.Kind.DND -> {
                         val old = entry.oldValue?.toIntOrNull()
                             ?.takeIf { it in DndFilters.ALL..DndFilters.NONE } ?: return false
-                        if (ex.dndFilterGet() == old) true
-                        else ex.dndFilterSet(old) && ex.dndFilterGet() == old
+                        val current = ex.dndFilterGet()
+                        when {
+                            current == old -> true
+                            current == entry.newValue?.toIntOrNull()
+                                ?.takeIf { it in DndFilters.ALL..DndFilters.NONE } -> {
+                                ex.dndFilterSet(old) && ex.dndFilterGet() == old
+                            }
+                            // Filter changed by user/system during the session:
+                            // our state is gone; respect the new owner.
+                            else -> true
+                        }
                     }
                     JournalEntry.Kind.THERMAL_OVERRIDE, JournalEntry.Kind.CMD -> {
                         val command = safeRevertCommand(entry) ?: return false

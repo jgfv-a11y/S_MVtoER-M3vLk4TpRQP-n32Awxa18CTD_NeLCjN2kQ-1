@@ -1,6 +1,6 @@
 # 🚀 NitroBoost — معزّز ألعاب احترافي
 
-**الإصدار الحالي: v1.22.0 (versionCode 29)** — يدعم التثبيت من Android 7.0 / API 24 مع الاستمرار في استهداف Android 16 / API 36. كما يقارن FPS بآخر جلسة للعبة نفسها فقط، ويعرضها كمقارنة وصفية لا كاختبار A/B.
+**الإصدار الحالي: v1.23.0 (versionCode 30)** — يدعم التثبيت من Android 7.0 / API 24 مع الاستمرار في استهداف Android 16 / API 36. يتضمن تقوية الاستعادة والـJournal، معالجة آمنة لانتهاء مهلة العمليات على Android 7، وإصلاحات للرصد والسطوع والويدجت؛ كما يقارن FPS بآخر جلسة للعبة نفسها فقط، ويعرضها كمقارنة وصفية لا كاختبار A/B.
 
 **NitroBoost** تطبيق Android أصلي (Kotlin + Material 3) مبني من الصفر مع
 خيارات ضبط قابلة للتخصيص، **سجلّ تغييرات (Journal)** و**استعادة تلقائية**
@@ -9,7 +9,7 @@
 
 > 📱 للتفاصيل الكاملة: [NitroBoost/README.md](NitroBoost/README.md)
 >
-> 🔍 تحليل المستودع والهندسة العكسية وخارطة التحسين: [REVERSE_ENGINEERING_REVIEW_v1.22.0.md](NitroBoost/docs/REVERSE_ENGINEERING_REVIEW_v1.22.0.md)
+> 🔍 تحليل المستودع والهندسة العكسية وخارطة التحسين: [ENGINEERING_UPDATE_v1.23.0.md](NitroBoost/docs/ENGINEERING_UPDATE_v1.23.0.md) و[REVERSE_ENGINEERING_REVIEW_v1.22.0.md](NitroBoost/docs/REVERSE_ENGINEERING_REVIEW_v1.22.0.md)
 
 ## لماذا NitroBoost أفضل؟
 
@@ -21,7 +21,7 @@
 | الشاشة | معدل تحديث ثابت | **معدل تحديث وكثافة اختياريان؛ `0` يبقي سياسة الجهاز** |
 | الرصد | لا شيء | **FpsOverlay: FPS/CPU/RAM/حرارة/Ping فوق اللعبة** |
 | الوضع الصامت | DND فقط | **DND + إيقاف إشعارات الحركات + Data Saver + Battery Saver** |
-| التخصيص | محدود | **17 ملف جاهز + إنشاء ملفات مخصصة لكل لعبة** |
+| التخصيص | محدود | **16 ملفًا جاهزًا + إنشاء ملفات مخصصة لكل لعبة** |
 | اللغات | — | **عربي + إنجليزي** |
 | الرصد | — | لقطات monitor كل ثانية؛ مصادر FPS/الشبكة/الحرارة لها معدلات أبطأ لتقليل العمل غير الضروري |
 
@@ -29,6 +29,8 @@
 
 افتح مجلد `NitroBoost/` في **Android Studio** (Koala أو أحدث) → انتظر المزامنة →
 `Run`. التفاصيل الكاملة وتثبيت Shizuku في [NitroBoost/README.md](NitroBoost/README.md).
+
+> 📲 [تنزيل APK v1.23.0](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases/download/nitroboost-v1.23.0/nitroboost-debug.apk) — نسخة debug للاختبار، مع ملف SHA-256 مرفق في الإصدار.
 
 ## هيكل المستودع
 

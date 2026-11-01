@@ -22,7 +22,10 @@ class GameModeTask : BoostTask {
     override val descEn = "System Game Mode — full priority for the game"
     override val module = Module.CPU
     override val requiresPrivilege = true
-    override val boostLevel = 1
+    // Level 2: the documented meaning of level 1 is "basics that work with
+    // no privileges" — this task is a secure-setting write that always needs
+    // Shizuku/root, so it must not be offered at level 1.
+    override val boostLevel = 2
 
     private fun current(ctx: BoostContext): Int {
         val r = ctx.executor.shell("settings get secure game_mode")
