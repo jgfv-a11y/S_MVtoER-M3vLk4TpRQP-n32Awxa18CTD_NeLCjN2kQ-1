@@ -1,4 +1,88 @@
 # Changelog
+## v1.23.0 — correctness hardening: journal ownership, io_scheduler durability, Android 7 process handling
+Engineering-update release: every fix below was verified against the current v1.22.0 source before being applied.
+
+### Fixed
+- **io_scheduler journal entries were permanently unrestorable (critical).**
+  `JournaledSystemExecutor.writeSys` journaled the raw kernel display list
+  (`"[mq-deadline] kyber none"`) as the pre-change value; that string can never
+  be written back (`ShellInput.isSysValue` rejects spaces/brackets), so every
+  applied `io_scheduler` change left a journal entry that failed restore
+  forever and kept `restoreAll`/session-stop/stale-guard retrying. The task now
+  pre-seeds the journal with the ACTIVE scheduler token before the write
+  (`IoSchedulerTask.apply`), and the wrapper's raw entry loses the dedupe.
+  Added an engine-path regression test (`IoSchedulerJournalPathTest`).
+- **Journal restore no longer clobbers third-party changes (ownership rule).**
+  `Journal.restore` wrote the pre-session value back even when the current
+  value had been changed by the user, the system, or another app during the
+  session. Restore now only writes when the readable current value is still the
+  app's journaled `newValue` (or equals the original `oldValue` — nothing to
+  do); an externally-owned readable value is respected and the undo reports
+  complete. Unreadable sysfs nodes keep the historical best-effort write+verify
+  behaviour. Applies to SYSFS, System/Secure/Global settings, and DND.
+  Covered by the new `JournalOwnershipTest`.
+- **`Process.destroyForcibly()` crashed Android 7.x on privileged-command
+  timeout.** The method only exists from API 26; `RootShell.run`/`probe` and
+  `NitroUserService.terminate` called it unguarded while `minSdk` is 24, and
+  `NoSuchMethodError` is not caught by `catch (Exception)`. Escalating
+  termination is now API-guarded (`RootShell.terminate`, NitroUserService), and
+  the `su` probe timeout path now also closes its streams.
+- **Boost aborted whenever the overlay was enabled but not permitted.**
+  `AppStore.boost` set `overlayPermNeeded.value` from an IO-dispatch coroutine;
+  `MutableLiveData.setValue` throws off the main thread, the exception was
+  swallowed by the generic catch as "boost crashed", and the whole session was
+  rolled back. Now uses `postValue`.
+- **Per-core CPU sampling never produced data.** The `/proc/stat` per-core
+  regex anchored `^cpuN` without `RegexOption.MULTILINE`, so only the first
+  line of the file (the aggregate `cpu ` row) could ever match. Per-core
+  utilisation now parses; regression-tested against the host's real
+  `/proc/stat` (`ProcStatParsingTest`).
+- **Peak brightness could DIM wide-range panels.** The task hardcoded
+  `screen_brightness=255`; panels using 1..2047/4095 ranges got darker. The
+  target is now `max(current, 255)` — brightness never goes down, and both
+  journaled values still restore exactly (`PeakBrightnessWideRangeTest`).
+- **Widget boost tap ignored while the app was alive.** With
+  `launchMode="singleTask"` the `"boost"` extra arrives via `onNewIntent`,
+  which `MainActivity` never handled — the widget only boosted on a cold
+  start. `onNewIntent` now re-reads the hint.
+- **Stale-journal guard could revert a freshly started session.** The guard's
+  active-check and its `restoreAll` were not serialized against
+  `boost()`/stop paths; the restore now runs under `sessionLifecycleLock`
+  with a re-check inside, closing the race window.
+- **`AppStore.journal()`/`ledger()` lazy singletons were not thread-safe.**
+  Two racing first-callers could construct divergent Journal instances and
+  split durable state. Both getters are now synchronized; the adaptive loop
+  reference is `@Volatile`; startup file reads (session log, adaptive ledger)
+  moved off the main thread.
+- **`SessionLog` trimming was truncate-then-write.** A crash mid-trim could
+  cut the live log; trimming now uses temp + fsync + same-directory rename
+  like Journal/ProfileStore.
+- **CPU utilisation slightly under-reported.** `CpuMath.parseLine` summed
+  `guest`/`guest_nice`, which the kernel already counts inside
+  `user`/`nice`; the busy total now excludes fields 8–9.
+- **Dead "Genshin Impact" profile removed.** `game_profiles.json` shipped a
+  lowercase `com.mihoyo.genshinimpact` entry that can never match an
+  installed package (the real global package is `com.miHoYo.GenshinImpact`,
+  already present). The dead chip, its auto-boost entry, and its game-watch
+  black hole are gone; 16 built-in profiles remain.
+- **`ShizukuShell` connection fields are volatile** so a cross-thread
+  `unbind`/`ensureBound` interleave cannot leak a stale user-service
+  registration.
+- **Boot/sticky restart without an active profile no longer starts an empty
+  "General" session** that the game-watch could never verify; the service
+  logs `session_refused` and stops cleanly.
+- **`game_mode` moved to boost level 2** — level 1 is documented as "works
+  with no privileges", and this task is always a secure-setting write needing
+  Shizuku/root.
+
+### Validation
+- All 46 pre-existing JVM test files kept; added `IoSchedulerJournalPathTest`
+  (engine-path io_scheduler journal/restore), `JournalOwnershipTest`
+  (9 ownership cases), `PeakBrightnessWideRangeTest` (3 cases),
+  `ProcStatParsingTest` (guest exclusion, MULTILINE anchors, live per-core).
+- Static gates: `tools/verify.py` and `tools/security_verify.py` pass.
+- No new dependencies; Kotlin/Gradle/AGP versions unchanged from v1.21.0.
+
 ## v1.22.0 — Android 7 support and session comparison correctness
 - Lowered `minSdk` to API 24 (Android 7.0) while retaining `targetSdk` 36.
 - Removed `java.nio.file` calls from journal, adaptive-ledger, and profile persistence; same-directory rename/copy paths now work on API 24 without truncating the live file on failure.

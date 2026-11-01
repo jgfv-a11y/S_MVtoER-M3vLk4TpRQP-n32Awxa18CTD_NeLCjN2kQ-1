@@ -81,22 +81,41 @@ class IoSchedulerTask : BoostTask {
             return TaskResult(id, TaskStatus.Skipped, "device offers a single scheduler (${node.active})")
         }
         val p = path(node.dev)
-        val ok = ctx.executor.writeSys(p, TARGET) &&
-            ctx.executor.readSys(p)?.let { active(it) == TARGET } == true
+        // Pre-seed the journal with the ACTIVE scheduler token as oldValue.
+        // JournaledSystemExecutor.writeSys would otherwise record the raw
+        // kernel display list ("[mq-deadline] kyber none"), which
+        // ShellInput.isSysValue can never write back — leaving a journal
+        // entry that fails restore forever. Journal.add dedupes per
+        // taskId+kind+key and keeps the FIRST entry, so this accurate
+        // entry wins over the wrapper's raw read.
+        val seeded = JournalEntry(
+            taskId = id,
+            kind = JournalEntry.Kind.SYSFS,
+            key = p,
+            oldValue = node.active,
+            newValue = TARGET
+        )
+        val preRecorded = ctx.journal.containsTaskKey(id, p)
+        if (!preRecorded && !ctx.journal.add(listOf(seeded))) {
+            return TaskResult(id, TaskStatus.Failed("journal persistence failed; write refused"))
+        }
+        val ok = try {
+            ctx.executor.writeSys(p, TARGET) &&
+                ctx.executor.readSys(p)?.let { active(it) == TARGET } == true
+        } catch (e: Exception) {
+            false
+        }
+        if (!ok && !preRecorded) {
+            // Write did not happen or did not stick: drop our pre-seed so the
+            // journal never records a change that was not applied.
+            ctx.journal.remove(listOf(seeded))
+        }
         return if (ok) {
             TaskResult(
                 id,
                 TaskStatus.Applied,
                 "${node.dev}: ${node.active} -> $TARGET",
-                listOf(
-                    JournalEntry(
-                        taskId = id,
-                        kind = JournalEntry.Kind.SYSFS,
-                        key = p,
-                        oldValue = node.active,
-                        newValue = TARGET
-                    )
-                )
+                listOf(seeded)
             )
         } else {
             TaskResult(id, TaskStatus.Skipped, "ROM locks the scheduler on ${node.dev}")

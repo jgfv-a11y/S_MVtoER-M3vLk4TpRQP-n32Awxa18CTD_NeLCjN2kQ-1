@@ -171,6 +171,22 @@ class BoosterService : Service() {
     private fun startSession(profilePkg: String?) {
         if (ending) return
         val profile = ProfileStore(this).resolve(profilePkg ?: Prefs.activeProfile(this))
+        if (profile.packageName.isBlank()) {
+            // A boot/sticky restart with no configured profile would otherwise
+            // run a system-wide "General" session with no game to watch; that
+            // degrades into a session the game-watch can never verify. Refuse
+            // and stop — a real boost always needs an explicit profile.
+            SessionLog.log(this, "session_refused", "no active profile configured")
+            ending = true
+            active = false
+            AppStore.setMonitorClient(MonitorClient.SESSION, false)
+            try {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } catch (_: Exception) {
+            }
+            stopSelf()
+            return
+        }
         gamePackage = profile.packageName
         AppStore.setGamePackage(gamePackage)
         SessionLog.log(this, "session_start", profile.name)

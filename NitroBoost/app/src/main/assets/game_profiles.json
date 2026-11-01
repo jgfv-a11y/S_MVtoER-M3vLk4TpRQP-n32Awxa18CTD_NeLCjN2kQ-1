@@ -89,27 +89,6 @@
     "extraProtected": []
   },
   {
-    "packageName": "com.mihoyo.genshinimpact",
-    "name": "Genshin Impact",
-    "enabledModules": [
-      "cpu",
-      "ram",
-      "dnd",
-      "power",
-      "tweaks",
-      "gpu"
-    ],
-    "dpi": 0,
-    "refreshRate": 0,
-    "fpsCap": 0,
-    "dnd": true,
-    "killAnimations": true,
-    "aggressiveRamClean": false,
-    "thermalOverride": false,
-    "gameMode": 4,
-    "extraProtected": []
-  },
-  {
     "packageName": "com.supercell.clashofclans",
     "name": "Clash of Clans",
     "enabledModules": [

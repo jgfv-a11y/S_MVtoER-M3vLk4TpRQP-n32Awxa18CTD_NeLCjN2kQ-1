@@ -123,6 +123,7 @@ object AppStore {
     private var hub: MonitorHub? = null
     private var theJournal: Journal? = null
     private var theLedger: DecisionLedger? = null
+    @Volatile
     private var adaptiveLoop: AdaptiveLoop? = null
     private val trialConfig = TrialConfig()
     private val adaptiveContextLock = Any()
@@ -159,10 +160,13 @@ object AppStore {
 
     fun ledger(): DecisionLedger {
         theLedger?.let { return it }
-        val l = DecisionLedger(File(ctx().filesDir, "adaptive_ledger.json"))
-        l.load()
-        theLedger = l
-        return l
+        synchronized(this) {
+            theLedger?.let { return it }
+            val l = DecisionLedger(File(ctx().filesDir, "adaptive_ledger.json"))
+            l.load()
+            theLedger = l
+            return l
+        }
     }
 
     /** OS thermal status escalated by the predictive trend (never below OS). */
@@ -485,25 +489,36 @@ object AppStore {
 
     fun init(ctx: Context) {
         app = ctx.applicationContext
-        loadLogs()
-        adaptiveLoop = AdaptiveLoop(
-            engine = engine,
-            context = {
-                val c = ctx()
-                BoostContext(
-                    ProfileStore(c).resolve(Prefs.activeProfile(c)),
-                    AndroidExecutor(c),
-                    journal()
-                ) { line -> appendLog(line) }
-            },
-            ledger = ledger(),
-            sampler = sampler,
-            cfg = trialConfig,
-            effectiveThermal = { effectiveThermalStatus() },
-            log = { line -> appendLog("adaptive: $line") },
-            maxLevel = { Prefs.boostLevel(ctx()) },
-            trialContextFactory = { bctx, tier -> makeTrialContext(bctx, tier) }
-        )
+        // Startup disk reads (session log + adaptive ledger file) must not
+        // run on the main thread; consumers tolerate a not-yet-assigned
+        // adaptive loop (null-safe access everywhere).
+        scope.launch(Dispatchers.IO) {
+            try {
+                loadLogs()
+                val ledger = ledger()
+                adaptiveLoop = AdaptiveLoop(
+                    engine = engine,
+                    context = {
+                        val c = ctx()
+                        BoostContext(
+                            ProfileStore(c).resolve(Prefs.activeProfile(c)),
+                            AndroidExecutor(c),
+                            journal()
+                        ) { line -> appendLog(line) }
+                    },
+                    ledger = ledger,
+                    sampler = sampler,
+                    cfg = trialConfig,
+                    effectiveThermal = { effectiveThermalStatus() },
+                    log = { line -> appendLog("adaptive: $line") },
+                    maxLevel = { Prefs.boostLevel(ctx()) },
+                    trialContextFactory = { bctx, tier -> makeTrialContext(bctx, tier) }
+                )
+            } catch (e: Exception) {
+                // The app stays fully usable without the adaptive engine;
+                // monitor and journal guard below are independent.
+            }
+        }
         // Self-healing monitor: if the sampling hub ever dies (process
         // pressure, ANR recovery), restart it so the UI and the adaptive
         // engine never go blind.
@@ -554,10 +569,17 @@ object AppStore {
                     val ex = AndroidExecutor(c)
                     val profile = ProfileStore(c).resolve(Prefs.activeProfile(c))
                     val before = j.snapshot().size
-                    // Re-check right before the destructive step: a boost
-                    // started in the gap owns the journal and wins.
-                    if (BoosterService.active) continue
-                    engine.restoreAll(BoostContext(profile, ex, j) { line -> appendLog(line) })
+                    // Serialize against boost()/stop paths: without this lock a
+                    // session starting between the active-check above and the
+                    // restore below could have its fresh entries reverted as
+                    // if they were stale. Inside the lock a starting session
+                    // either already flipped BoosterService.active (guard
+                    // skips) or completes its own must-restore check after we
+                    // release (seeing an empty journal).
+                    synchronized(sessionLifecycleLock) {
+                        if (BoosterService.active) continue
+                        engine.restoreAll(BoostContext(profile, ex, j) { line -> appendLog(line) })
+                    }
                     val remaining = j.snapshot().size
                     if (remaining < before) {
                         appendLog(
@@ -685,6 +707,7 @@ object AppStore {
         return c
     }
 
+    @Synchronized
     fun journal(): Journal {
         theJournal?.let { return it }
         val j = Journal(File(ctx().filesDir, "journal.json"))
@@ -825,7 +848,10 @@ object AppStore {
                         } catch (e: Exception) {
                         }
                     } else {
-                        overlayPermNeeded.value = true
+                        // setValue would throw IllegalStateException on this
+                        // IO-dispatch coroutine and abort the whole boost
+                        // session; observers live on the main thread anyway.
+                        overlayPermNeeded.postValue(true)
                     }
                 }
             } catch (e: Exception) {

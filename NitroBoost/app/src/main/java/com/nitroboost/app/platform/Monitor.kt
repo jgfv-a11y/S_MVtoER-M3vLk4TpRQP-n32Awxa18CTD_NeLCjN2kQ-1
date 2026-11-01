@@ -57,13 +57,13 @@ data class CpuReading(
     val perCoreUtilizationPct: List<Int>?
 )
 
-class CpuSampler {
+class CpuSampler(private val statFile: File = File("/proc/stat")) {
     private var prevAgg: CpuMath.Sample? = null
     private val prevCores = HashMap<Int, CpuMath.Sample>()
 
     fun sample(): CpuReading {
         val text = try {
-            File("/proc/stat").readText()
+            statFile.readText()
         } catch (_: Exception) {
             return CpuReading(null, null)
         }
@@ -71,13 +71,18 @@ class CpuSampler {
             .firstOrNull { it.startsWith("cpu ") }
             ?.let(CpuMath::parseLine)
 
-        val coreRegex = Regex("^cpu(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+(\\d+)")
+        // Per-core rows: parse each "cpuN" line with the same CpuMath rules
+        // as the aggregate. Two historical bugs lived here: an un-anchored
+        // "^cpuN" regex without MULTILINE only ever matched the file's first
+        // line (the aggregate row), and the captured-group count never
+        // satisfied the field check, so per-core utilisation stayed empty
+        // forever. Line-based parsing keeps one source of truth for the math.
         val cores = LinkedHashMap<Int, Int>()
-        for (m in coreRegex.findAll(text)) {
-            val n = m.groupValues[1].toIntOrNull() ?: continue
-            val nums = m.groupValues.drop(2).mapNotNull { it.toLongOrNull() }
-            if (nums.size < 5) continue
-            val sample = CpuMath.Sample(nums.sum(), nums[3] + nums[4])
+        for (line in text.lineSequence()) {
+            if (!line.startsWith("cpu") || line.startsWith("cpu ")) continue
+            val n = line.trim().split(Regex("\\s+")).firstOrNull()
+                ?.removePrefix("cpu")?.toIntOrNull() ?: continue
+            val sample = CpuMath.parseLine(line) ?: continue
             val previous = prevCores[n]
             if (previous != null && sample.total > previous.total) {
                 cores[n] = CpuMath.usagePercent(previous, sample)

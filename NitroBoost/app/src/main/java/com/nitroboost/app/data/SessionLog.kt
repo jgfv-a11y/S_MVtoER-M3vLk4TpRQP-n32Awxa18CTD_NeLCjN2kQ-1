@@ -59,9 +59,21 @@ object SessionLog {
         try {
             val lines = f.readLines()
             if (lines.size > MAX_LINES) {
-                f.writeText(lines.takeLast(MAX_LINES).joinToString("\n", "", "\n"))
+                // Atomic replacement (temp + fsync + same-dir rename): a crash
+                // mid-trim must not truncate or corrupt the live log, matching
+                // the durability used by Journal and ProfileStore.
+                val tmp = File(f.parentFile, f.name + ".tmp")
+                java.io.FileOutputStream(tmp).use { out ->
+                    out.write(lines.takeLast(MAX_LINES).joinToString("\n", "", "\n").toByteArray())
+                    out.fd.sync()
+                }
+                com.nitroboost.app.core.AtomicFileOps.replace(tmp, f)
             }
         } catch (e: Exception) {
+            try {
+                File(f.parentFile, f.name + ".tmp").delete()
+            } catch (_: Exception) {
+            }
         }
     }
 }

@@ -10,6 +10,10 @@ object CpuMath {
     /**
      * Parse the aggregate "cpu" line (or a "cpuN" line) of /proc/stat.
      * Fields: user nice system idle iowait irq softirq steal guest guest_nice
+     *
+     * `guest`/`guest_nice` are already accounted inside `user`/`nice` by the
+     * kernel, so the busy total must exclude them — including both would
+     * inflate the denominator and skew utilization downwards.
      */
     fun parseLine(line: String): Sample? {
         val parts = line.trim().split(Regex("\\s+"))
@@ -18,7 +22,8 @@ object CpuMath {
         if (!name.startsWith("cpu")) return null
         val nums = parts.drop(1).mapNotNull { it.toLongOrNull() }
         if (nums.size < 4) return null
-        val total = nums.sum()
+        // user nice system idle iowait irq softirq steal = first 8 fields.
+        val total = nums.take(8).sum()
         val idle = nums[3] + (if (nums.size > 4) nums[4] else 0L) // idle + iowait
         return Sample(total, idle)
     }
