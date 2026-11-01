@@ -1,7 +1,7 @@
 # 🚀 NitroBoost — Game Booster
 
 
-**أحدث إصدار: v1.23.0 (versionCode 30)**؛ يدعم Android 7.0 / API 24 فأحدث ويستهدف Android 16 / API 36. راجع [GitHub Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) لتنزيل APK والتحقق من بصمة SHA-256.
+**أحدث إصدار: v1.24.0 (versionCode 31)**؛ يدعم Android 7.0 / API 24 فأحدث ويستهدف Android 16 / API 36. راجع [GitHub Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) لتنزيل APK والتحقق من بصمة SHA-256.
 تطبيق معزّز ألعاب Android احترافي، عربي + إنجليزي، مبني بـ **Kotlin** و**Material 3**
 (بدون Compose) على Shizuku API 13.1.5.
 
@@ -16,7 +16,7 @@
 ## ✨ المزايا
 
 - **محرك تعزيز بمهام منفصلة** (DND، Game Mode، Governor، GPU Boost، الشاشة،
-  Battery Saver، RAM Trim/Kill، Data Saver، Thermal Override، الحركات) —
+  Battery Saver، RAM Trim/Kill، Data Saver، الحماية الحرارية (غير قابلة للتجاوز)، الحركات) —
   كل مهمة مستقلة: فشل واحدة لا يوقف البقية.
 - **سجلّ تعديلات (Journal)**: يحفظ القيمة السابقة والجديدة وأمر الاستعادة
   للتغييرات القابلة للعكس في `filesDir/journal.json`؛ العمليات أحادية الاتجاه لا توصف بأنها قابلة للاستعادة.
@@ -57,6 +57,14 @@
 
 ---
 
+## v1.24.0 safety and evidence changes
+
+- **Capability Registry:** every task is classified as Supported, Unsupported, Permission Required, Temporarily Unavailable, Failed, Applied, or Rejected, with a reason, source, and short-lived freshness cache.
+- **Thermal safety:** the legacy thermal-override profile field is normalized to `false`; the old task remains only so a legacy journal can be restored. NitroBoost never sends `cmd thermalservice override-status 0` and never claims to disable Android thermal throttling.
+- **Profile exchange:** custom profiles can be exported/imported as a versioned JSON envelope with SHA-256 corruption detection, strict limits, package isolation, atomic writes, and explicit conflict confirmation.
+- **Dashboard provenance:** values identify their real source and freshness; unavailable or stale values are not presented as live FPS/GPU/frame-time measurements.
+- **Adaptive safety:** candidate trials are serialized, cancellation-aware, journal-restored, and separated by a mandatory quiet cooldown. A KEEP result still requires real, repeatable evidence and does not prove improvement without a benchmark.
+
 ## Adaptive measurement and scoring
 
 The adaptive engine measures deterministic paired baseline/candidate blocks using full quality-gated windows, alternating order (`baseline → candidate`, then `candidate → baseline`). Each attempt's order is persisted before measurement; accepted observations retain their order, timestamps, duration, and temporal separation. Incomplete, stale, unstable, thermally contaminated, or otherwise invalid blocks request `MORE_DATA` and add no statistical evidence. The game package, process epoch, thermal tier, monitor freshness, sample counts, sampling gaps, and measured FPS coefficient of variation must pass the existing quality gates. A candidate is reverted from the durable Journal after measurement unless a statistically supported `KEEP` is safely re-applied and finalized.
@@ -81,7 +89,8 @@ Frame times are read only from `dumpsys gfxinfo ... framestats` when exposed by 
 - **Shizuku** (اختياري لكن ضروري للمزايا الكاملة):
   بدون Shizuku يعمل التطبيق على ما تسمحه صلاحيات النظام العامة (DND،
   الحركات، Battery Saver، بيانات الشبكة…) — ومع Shizuku تُفعل التعديلات
-  العميقة (Governor، GPU، DPI، Thermal Override، قتل العمليات…).
+  العميقة (Governor، GPU، DPI، Game API، قتل العمليات…). الحماية الحرارية
+  لا تُعطّل ولا تُتجاوز في أي مستوى.
 
 ### تثبيت Shizuku (خطوة بخطوة)
 
@@ -116,7 +125,7 @@ gradle wrapper --gradle-version 8.14.3   # إذا كان Gradle مثبتًا
 
 APK الناتج في `app/build/outputs/apk/debug/`.
 
-> 📲 **APK منشورة (v1.23.0)**: [تنزيل nitroboost-debug.apk](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases/download/nitroboost-v1.23.0/nitroboost-debug.apk) — نسخة debug للاختبار؛ استخدم ملف `.sha256` المرفق للتحقق من التنزيل. تُرفق APK release موقّعة فقط عند تهيئة أسرار توقيع المشروع.
+> 📲 **APK منشورة (v1.24.0)**: سيُرفق `NitroBoost-v1.24.0-debug.apk` مع نتيجة CI/الإصدار بعد نجاح البناء. هذه نسخة debug للاختبار؛ لا تثبت تحسن الأداء ولا صلاحية التحديث فوق v1.23.0. استخدم `SHA256SUMS` للتحقق من سلامة الملف. لا تُعد APK release تحديثًا صالحًا إلا بعد التحقق من أنها موقعة بالمفتاح السابق.
 > (أو من صفحة [Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) —
 > يُعاد بناؤه تلقائيًا عبر GitHub Actions عند كل تغيير).
 

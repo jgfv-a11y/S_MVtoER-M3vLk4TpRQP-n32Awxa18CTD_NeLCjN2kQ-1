@@ -391,6 +391,17 @@
             </LinearLayout>
         </LinearLayout>
 
+        <TextView
+            android:id="@+id/metrics_provenance"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp"
+            android:text="@string/metrics_unavailable"
+            android:textColor="@color/nb_subtext"
+            android:textSize="11sp" />
+
         <!-- Shizuku / privilege card (shown only when not ready) -->
         <LinearLayout
             android:id="@+id/shizuku_card"

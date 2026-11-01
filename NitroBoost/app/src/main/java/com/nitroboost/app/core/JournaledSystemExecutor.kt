@@ -74,14 +74,12 @@ class JournaledSystemExecutor(
             } else return ShellResult.fail("unowned_deviceidle_mutation")
             return runUnverifiableMutation(entry, cmd)
         }
+        // Thermal policy is immutable in 1.24. Keep this explicit guard so a
+        // stale/custom task cannot bypass the safety policy through the
+        // journal wrapper. Journal.restore may still use the allow-listed
+        // -1 command to clean an entry created by an older release.
         if (cmd == "cmd thermalservice override-status 0") {
-            if (taskId != "thermal_override") return ShellResult.fail("unowned_thermal_mutation")
-            return runUnverifiableMutation(
-                JournalEntry(
-                    taskId, JournalEntry.Kind.THERMAL_OVERRIDE, "thermal_override", "-1", "0",
-                    "cmd thermalservice override-status -1"
-                ), cmd
-            )
+            return ShellResult.fail("thermal_override_rejected_by_safety_policy")
         }
         return delegate.shell(cmd)
     }

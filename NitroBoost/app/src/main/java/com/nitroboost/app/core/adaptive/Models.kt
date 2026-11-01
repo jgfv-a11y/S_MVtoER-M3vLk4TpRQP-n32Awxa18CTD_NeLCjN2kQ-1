@@ -86,6 +86,8 @@ data class TrialConfig(
     val maxScoreStdDev: Double = 0.30,
     val windowMs: Long = 12_000L,
     val settleMs: Long = 2_000L,
+    /** Mandatory quiet period between candidate trials to reduce heat and carry-over. */
+    val cooldownMs: Long = 10_000L,
     val sampleIntervalMs: Long = 1_000L,
     val minWindowFpsSamples: Int = 5,
     val minWindowThermalSamples: Int = 6,

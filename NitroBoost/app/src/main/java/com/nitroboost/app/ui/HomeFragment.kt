@@ -14,6 +14,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.Observer
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.button.MaterialButton
 import com.nitroboost.app.AppStore
 import com.nitroboost.app.BuildConfig
@@ -22,6 +23,8 @@ import com.nitroboost.app.SessionState
 import com.nitroboost.app.core.AppProfile
 import com.nitroboost.app.core.FpsDisplayCache
 import com.nitroboost.app.core.GameSpaceDetector
+import com.nitroboost.app.core.MeasurementProvenanceEvaluator
+import com.nitroboost.app.core.MeasurementState
 import com.nitroboost.app.core.SessionReport
 import com.nitroboost.app.core.adaptive.Decision
 import com.nitroboost.app.core.performance.EvidenceDomain
@@ -38,6 +41,10 @@ import com.nitroboost.app.platform.RootShell
 import com.nitroboost.app.platform.ShizukuShell
 import com.nitroboost.app.service.BoosterService
 import com.nitroboost.app.service.FpsOverlayService
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The single main screen (v1.5 redesign): pick a game, hit the big boost
@@ -56,6 +63,7 @@ class HomeFragment : Fragment() {
     private var statTemp: TextView? = null
     private var statFps: TextView? = null
     private var statPing: TextView? = null
+    private var metricsProvenance: TextView? = null
     private val fpsDisplayCache = FpsDisplayCache()
     private var btnBoost: MaterialButton? = null
     private var reportCard: View? = null
@@ -72,6 +80,9 @@ class HomeFragment : Fragment() {
     private var shizukuStatus: TextView? = null
     private var btnShizuku: MaterialButton? = null
     private var levelChips: List<TextView> = emptyList()
+    private var profilesJob: Job? = null
+    private var shizukuJob: Job? = null
+    private var gameSpaceJob: Job? = null
 
     private val shizukuPoller = object : Runnable {
         override fun run() {
@@ -104,6 +115,7 @@ class HomeFragment : Fragment() {
         statTemp = view.findViewById(R.id.stat_temp_value)
         statFps = view.findViewById(R.id.stat_fps_value)
         statPing = view.findViewById(R.id.stat_ping_value)
+        metricsProvenance = view.findViewById(R.id.metrics_provenance)
         btnBoost = view.findViewById(R.id.btn_boost)
         reportCard = view.findViewById(R.id.report_card)
         reportText = view.findViewById(R.id.report_text)
@@ -167,6 +179,17 @@ class HomeFragment : Fragment() {
         shizukuPoller.run()
     }
 
+    override fun onDestroyView() {
+        view?.removeCallbacks(shizukuPoller)
+        profilesJob?.cancel()
+        shizukuJob?.cancel()
+        gameSpaceJob?.cancel()
+        profilesJob = null
+        shizukuJob = null
+        gameSpaceJob = null
+        super.onDestroyView()
+    }
+
     override fun onHiddenChanged(hidden: Boolean) {
         super.onHiddenChanged(hidden)
         if (hidden) {
@@ -196,29 +219,34 @@ class HomeFragment : Fragment() {
 
     private fun buildChips() {
         val container = chips ?: return
-        container.removeAllViews()
-        val c = requireContext()
-        val store = ProfileStore(c)
-        val active = Prefs.activeProfile(c) ?: ""
-        val inflater = LayoutInflater.from(c)
-        for (p in store.all()) {
-            val chip = inflater.inflate(R.layout.item_chip, container, false)
-            val row = chip.findViewById<LinearLayout>(R.id.chip_root)
-            chip.findViewById<TextView>(R.id.chip_name).text = p.name
-            chip.findViewById<View>(R.id.chip_active).visibility =
-                if (p.packageName == active) View.VISIBLE else View.GONE
-            row.setOnClickListener {
-                Prefs.setActiveProfile(c, p.packageName)
-                if (BoosterService.active) AppStore.boost(p.packageName)
-                buildChips()
+        val c = context ?: return
+        profilesJob?.cancel()
+        profilesJob = viewLifecycleOwner.lifecycleScope.launch {
+            // Assets and the custom profile file are disk reads. Keep them
+            // off the UI thread so tab switches do not hitch.
+            val profiles = withContext(Dispatchers.IO) { ProfileStore(c).all() }
+            if (!isAdded || view == null) return@launch
+            container.removeAllViews()
+            val active = Prefs.activeProfile(c) ?: ""
+            val inflater = LayoutInflater.from(c)
+            for (p in profiles) {
+                val chip = inflater.inflate(R.layout.item_chip, container, false)
+                val row = chip.findViewById<LinearLayout>(R.id.chip_root)
+                chip.findViewById<TextView>(R.id.chip_name).text = p.name
+                chip.findViewById<View>(R.id.chip_active).visibility =
+                    if (p.packageName == active) View.VISIBLE else View.GONE
+                row.setOnClickListener {
+                    Prefs.setActiveProfile(c, p.packageName)
+                    if (BoosterService.active) AppStore.boost(p.packageName)
+                    buildChips()
+                }
+                val margin = (8 * c.resources.displayMetrics.density).toInt()
+                row.layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { marginEnd = margin }
+                container.addView(chip)
             }
-            val m = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            m.marginEnd = (8 * c.resources.displayMetrics.density).toInt()
-            row.layoutParams = m
-            container.addView(chip)
         }
     }
 
@@ -251,84 +279,78 @@ class HomeFragment : Fragment() {
 
     private fun refreshShizukuCard() {
         val card = shizukuCard ?: return
-        val c = requireContext()
-        Thread {
-            val state = try {
-                ShizukuShell.state(c)
-            } catch (e: Exception) {
-                ShizukuShell.ShizukuState.NOT_STARTED
-            }
-            val root = try {
-                RootShell.isAvailable()
-            } catch (e: Exception) {
-                false
-            }
-            val ready = state == ShizukuShell.ShizukuState.READY || root
-            activity?.runOnUiThread {
-                val v = view ?: return@runOnUiThread
-                if (ready) {
-                    card.visibility = View.GONE
-                    return@runOnUiThread
+        val c = context ?: return
+        shizukuJob?.cancel()
+        shizukuJob = viewLifecycleOwner.lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                val state = try {
+                    ShizukuShell.state(c)
+                } catch (_: Exception) {
+                    ShizukuShell.ShizukuState.NOT_STARTED
                 }
-                card.visibility = View.VISIBLE
-                val (statusText, buttonLabel) = when (state) {
-                    ShizukuShell.ShizukuState.NOT_INSTALLED ->
-                        getString(R.string.shizuku_state_not_installed) to getString(R.string.btn_open_shizuku)
-                    ShizukuShell.ShizukuState.NOT_STARTED ->
-                        getString(R.string.shizuku_state_not_started) to getString(R.string.btn_open_shizuku)
-                    ShizukuShell.ShizukuState.PENDING_PERMISSION ->
-                        getString(R.string.shizuku_state_pending) to getString(R.string.btn_grant)
-                    ShizukuShell.ShizukuState.NOT_BOUND ->
-                        getString(R.string.shizuku_state_not_bound) to getString(R.string.btn_retry)
-                    ShizukuShell.ShizukuState.READY ->
-                        getString(R.string.shizuku_ready) to getString(R.string.btn_retry)
-                }
-                shizukuStatus?.text = statusText
-                btnShizuku?.text = buttonLabel
+                val root = runCatching { RootShell.isAvailable() }.getOrDefault(false)
+                state to root
             }
-        }.start()
+            if (!isAdded || view == null) return@launch
+            val (state, root) = result
+            if (state == ShizukuShell.ShizukuState.READY || root) {
+                card.visibility = View.GONE
+                return@launch
+            }
+            card.visibility = View.VISIBLE
+            val (statusText, buttonLabel) = when (state) {
+                ShizukuShell.ShizukuState.NOT_INSTALLED ->
+                    getString(R.string.shizuku_state_not_installed) to getString(R.string.btn_open_shizuku)
+                ShizukuShell.ShizukuState.NOT_STARTED ->
+                    getString(R.string.shizuku_state_not_started) to getString(R.string.btn_open_shizuku)
+                ShizukuShell.ShizukuState.PENDING_PERMISSION ->
+                    getString(R.string.shizuku_state_pending) to getString(R.string.btn_grant)
+                ShizukuShell.ShizukuState.NOT_BOUND ->
+                    getString(R.string.shizuku_state_not_bound) to getString(R.string.btn_retry)
+                ShizukuShell.ShizukuState.READY ->
+                    getString(R.string.shizuku_ready) to getString(R.string.btn_retry)
+            }
+            shizukuStatus?.text = statusText
+            btnShizuku?.text = buttonLabel
+        }
     }
 
     private fun onShizukuAction() {
-        val c = requireContext()
-        val act = activity ?: return
-        Thread {
-            val state = try {
-                ShizukuShell.state(c)
-            } catch (e: Exception) {
-                ShizukuShell.ShizukuState.NOT_STARTED
+        val c = context ?: return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val state = withContext(Dispatchers.IO) {
+                try {
+                    ShizukuShell.state(c)
+                } catch (_: Exception) {
+                    ShizukuShell.ShizukuState.NOT_STARTED
+                }
             }
             when (state) {
                 ShizukuShell.ShizukuState.NOT_INSTALLED,
-                ShizukuShell.ShizukuState.NOT_STARTED ->
-                    ShizukuShell.openShizukuApp(c)
-                ShizukuShell.ShizukuState.PENDING_PERMISSION ->
-                    ShizukuShell.requestPermission()
-                else -> ShizukuShell.ensureBound(c)
+                ShizukuShell.ShizukuState.NOT_STARTED -> ShizukuShell.openShizukuApp(c)
+                ShizukuShell.ShizukuState.PENDING_PERMISSION -> ShizukuShell.requestPermission()
+                else -> withContext(Dispatchers.IO) { ShizukuShell.ensureBound(c) }
             }
-            act.runOnUiThread {
-                if (isResumed) refreshShizukuCard()
-            }
-        }.start()
+            if (isResumed) refreshShizukuCard()
+        }
     }
 
     // ---------------- Game-space hint ----------------
 
     private fun detectGameSpace() {
-        val c = requireContext()
-        Thread {
-            val found = GameSpaceDetector.detect(c)
-            val tv = gameSpaceHint ?: return@Thread
+        val c = context ?: return
+        gameSpaceJob?.cancel()
+        gameSpaceJob = viewLifecycleOwner.lifecycleScope.launch {
+            val found = withContext(Dispatchers.IO) { GameSpaceDetector.detect(c) }
+            if (!isAdded || view == null) return@launch
             if (found.isEmpty()) {
-                tv.post { tv.visibility = View.GONE }
+                gameSpaceHint?.visibility = View.GONE
             } else {
                 val names = found.joinToString(", ") { it.second }
-                tv.post {
-                    tv.text = getString(R.string.game_space_hint, names)
-                    tv.visibility = View.VISIBLE
-                }
+                gameSpaceHint?.text = getString(R.string.game_space_hint, names)
+                gameSpaceHint?.visibility = View.VISIBLE
             }
-        }.start()
+        }
     }
 
     // ---------------- Renderers ----------------
@@ -566,6 +588,17 @@ class HomeFragment : Fragment() {
         requireContext().resources.configuration.locales[0], "%.1f", value
     )
 
+    private fun buildMeasurementSourceLabel(snapshot: MonitorSnapshot): String {
+        val sources = buildList {
+            if (snapshot.cpuSampleAvailable) add("/proc/stat")
+            if (snapshot.ramSampleAvailable) add("ActivityManager")
+            if (snapshot.thermalSampleAvailable) add("thermal zones")
+            if (snapshot.fpsSourceAvailable) add("gfxinfo")
+            if (snapshot.pingMs != null) add("TCP probe")
+        }
+        return if (sources.isEmpty()) "none" else sources.joinToString(" + ")
+    }
+
     // ---------------- Observers ----------------
 
     private fun observeAll(owner: LifecycleOwner) {
@@ -585,6 +618,24 @@ class HomeFragment : Fragment() {
                 snap.fps, snap.gamePackage, android.os.SystemClock.elapsedRealtime()
             )?.toString() ?: "--"
             statPing?.text = snap.pingMs?.let { "${it}ms" } ?: "--"
+            val now = android.os.SystemClock.elapsedRealtime()
+            val available = snap.cpuSampleAvailable || snap.ramSampleAvailable ||
+                snap.thermalSampleAvailable || snap.fpsSourceAvailable || snap.pingMs != null
+            val provenance = MeasurementProvenanceEvaluator.evaluate(
+                available = available,
+                source = buildMeasurementSourceLabel(snap),
+                observedAtMs = snap.ts,
+                nowMs = now
+            )
+            metricsProvenance?.text = when (provenance.state) {
+                MeasurementState.MEASURED -> getString(
+                    R.string.metrics_live,
+                    provenance.source,
+                    (provenance.ageMs ?: 0L) / 1000L
+                )
+                MeasurementState.STALE -> getString(R.string.metrics_stale, provenance.source)
+                MeasurementState.UNAVAILABLE -> getString(R.string.metrics_unavailable)
+            }
         })
         AppStore.session.observe(owner, Observer { st ->
             when (st) {

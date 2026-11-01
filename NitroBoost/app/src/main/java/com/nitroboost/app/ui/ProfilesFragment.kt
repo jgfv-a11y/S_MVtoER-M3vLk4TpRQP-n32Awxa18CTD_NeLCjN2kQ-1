@@ -1,5 +1,6 @@
 package com.nitroboost.app.ui
 
+import android.net.Uri
 import android.os.Bundle
 import android.text.InputType
 import android.view.LayoutInflater
@@ -10,6 +11,7 @@ import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.Spinner
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -39,6 +41,53 @@ class ProfilesFragment : Fragment() {
     private lateinit var store: ProfileStore
     private var installedGamesJob: Job? = null
     private var customProfilePackages: Set<String> = emptySet()
+    private var pendingImportText: String? = null
+
+    private val exportLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri == null) return@registerForActivityResult
+        val c = context ?: return@registerForActivityResult
+        lifecycleScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    c.contentResolver.openOutputStream(uri)?.use { out ->
+                        out.write(store.exportCustomProfiles().toByteArray(Charsets.UTF_8))
+                    } ?: error("output unavailable")
+                    true
+                }.getOrDefault(false)
+            }
+            if (isAdded) {
+                android.widget.Toast.makeText(
+                    c,
+                    if (ok) R.string.profile_exported else R.string.profile_exchange_failed,
+                    android.widget.Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    private val importLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@registerForActivityResult
+        val c = context ?: return@registerForActivityResult
+        lifecycleScope.launch {
+            val text = withContext(Dispatchers.IO) {
+                runCatching {
+                    c.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?.toString(Charsets.UTF_8)
+                        ?: error("input unavailable")
+                }.getOrNull()
+            }
+            if (!isAdded || text == null) {
+                if (isAdded) android.widget.Toast.makeText(c, R.string.profile_exchange_failed,
+                    android.widget.Toast.LENGTH_LONG).show()
+                return@launch
+            }
+            handleImport(text)
+        }
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -51,6 +100,9 @@ class ProfilesFragment : Fragment() {
         customProfilePackages = customProfiles.mapTo(HashSet()) { it.packageName }
         val profiles = ProfileStore.mergeProfiles(store.builtins(), customProfiles)
         return inflater.inflate(R.layout.fragment_profiles, container, false).also { root ->
+            store.lastLoadIssue?.let { issue ->
+                android.widget.Toast.makeText(c, issue, android.widget.Toast.LENGTH_LONG).show()
+            }
             val rec = root.findViewById<RecyclerView>(R.id.rec_profiles)
             rec.layoutManager = LinearLayoutManager(c)
             adapter = ProfileAdapter(
@@ -97,11 +149,65 @@ class ProfilesFragment : Fragment() {
             root.findViewById<MaterialButton>(R.id.btn_add_profile).setOnClickListener {
                 showAddDialog()
             }
+            root.findViewById<MaterialButton>(R.id.btn_export_profiles).setOnClickListener {
+                exportLauncher.launch("nitroboost-profiles-v1.json")
+            }
+            root.findViewById<MaterialButton>(R.id.btn_import_profiles).setOnClickListener {
+                importLauncher.launch(arrayOf("application/json", "text/*"))
+            }
         }
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+    }
+
+    private fun handleImport(text: String, replaceConflicts: Boolean = false) {
+        val c = context ?: return
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                store.importCustomProfiles(text, replaceConflicts)
+            }
+            if (!isAdded || view == null) return@launch
+            when (result) {
+                is com.nitroboost.app.core.ProfileExchange.ImportResult.Accepted -> {
+                    refreshProfileList(c)
+                    val suffix = if (result.replacedPackages.isEmpty()) "" else
+                        " (${result.replacedPackages.size} conflicts replaced)"
+                    android.widget.Toast.makeText(
+                        c,
+                        getString(R.string.profile_imported, result.profiles.size) + suffix,
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+                }
+                is com.nitroboost.app.core.ProfileExchange.ImportResult.Conflict -> {
+                    pendingImportText = text
+                    AlertDialog.Builder(c)
+                        .setTitle(R.string.profile_conflict_title)
+                        .setMessage(getString(R.string.profile_conflict_message,
+                            result.packages.joinToString(", ")))
+                        .setPositiveButton(R.string.profile_replace) { _, _ ->
+                            pendingImportText?.let { handleImport(it, replaceConflicts = true) }
+                            pendingImportText = null
+                        }
+                        .setNegativeButton(R.string.cancel, null)
+                        .show()
+                }
+                is com.nitroboost.app.core.ProfileExchange.ImportResult.Rejected ->
+                    android.widget.Toast.makeText(
+                        c,
+                        getString(R.string.profile_import_rejected, result.reason),
+                        android.widget.Toast.LENGTH_LONG
+                    ).show()
+            }
+        }
+    }
+
+    private fun refreshProfileList(c: android.content.Context) {
+        customProfilePackages = store.customs().mapTo(HashSet()) { it.packageName }
+        adapter.items = ProfileStore.mergeProfiles(store.builtins(), store.customs())
+        adapter.active = Prefs.activeProfile(c) ?: ""
+        adapter.notifyDataSetChanged()
     }
 
     private fun showAddDialog() {
@@ -177,7 +283,11 @@ class ProfilesFragment : Fragment() {
         swDnd.isChecked = profile.dnd
         swAnim.isChecked = profile.killAnimations
         swRamKill.isChecked = profile.aggressiveRamClean
-        swThermal.isChecked = profile.thermalOverride
+        // The field is retained only to migrate old JSON. Android thermal
+        // protection is never user-disableable in 1.24.
+        swThermal.isChecked = false
+        swThermal.isEnabled = false
+        swThermal.contentDescription = getString(R.string.thermal_protection_locked)
 
         val editDpi = view.findViewById<EditText>(R.id.edit_dpi)
         val editRefresh = view.findViewById<EditText>(R.id.edit_refresh)
@@ -211,7 +321,7 @@ class ProfilesFragment : Fragment() {
             profile.dnd = swDnd.isChecked
             profile.killAnimations = swAnim.isChecked
             profile.aggressiveRamClean = swRamKill.isChecked
-            profile.thermalOverride = swThermal.isChecked
+            profile.thermalOverride = false
             profile.dpi = dpi!!
             profile.refreshRate = refresh!!
             profile.gameMode = gameMode!!

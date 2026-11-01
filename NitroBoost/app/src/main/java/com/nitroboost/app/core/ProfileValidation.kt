@@ -52,7 +52,10 @@ object ProfileValidation {
         dnd = profile.dnd,
         killAnimations = profile.killAnimations,
         aggressiveRamClean = profile.aggressiveRamClean,
-        thermalOverride = profile.thermalOverride,
+        // Thermal throttling is an Android safety mechanism, not a user
+        // tuning option. Normalize the legacy field to false while retaining
+        // it in the JSON schema for backward compatibility.
+        thermalOverride = false,
         gameMode = gameMode,
         extraProtected = profile.extraProtected
             .asSequence()

@@ -5,6 +5,8 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.ColorUtils
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Observer
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -12,6 +14,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
 import com.nitroboost.app.AppStore
 import com.nitroboost.app.R
+import com.nitroboost.app.core.CapabilityState
 import com.nitroboost.app.core.TaskState
 import com.nitroboost.app.data.Prefs
 import com.nitroboost.app.service.BoosterService
@@ -110,19 +113,34 @@ class TaskAdapter(
         holder.desc.text = if (langAr) t.descAr else t.descEn
         holder.module.text = t.module.name
         holder.status.text = when {
-            t.applied -> c.getString(R.string.task_state_applied)
-            !t.supported && t.pending -> c.getString(R.string.task_state_pending)
-            !t.supported -> c.getString(R.string.task_state_unsupported)
+            t.applied && t.capability.state != CapabilityState.REJECTED ->
+                c.getString(R.string.task_state_applied)
+            t.capability.state == CapabilityState.REJECTED -> c.getString(R.string.task_state_rejected)
+            t.capability.state == CapabilityState.FAILED -> c.getString(R.string.task_state_failed)
+            t.capability.state == CapabilityState.PERMISSION_REQUIRED ->
+                c.getString(R.string.task_state_permission)
+            t.capability.state == CapabilityState.TEMPORARILY_UNAVAILABLE || t.pending ->
+                c.getString(R.string.task_state_pending)
+            t.capability.state == CapabilityState.UNSUPPORTED ->
+                c.getString(R.string.task_state_unsupported)
             else -> c.getString(R.string.task_state_off)
         }
-        val (fg, bg) = when {
-            t.applied -> 0xFF00E676.toInt() to 0x3300E676
-            !t.supported && t.pending -> 0xFFFFB74D.toInt() to 0x33FFB74D
-            !t.supported -> 0xFFFF5370.toInt() to 0x33FF5370
-            else -> 0xFF8FA0B3.toInt() to 0x22FFFFFF
+        val accent = ContextCompat.getColor(c, R.color.nb_accent)
+        val danger = ContextCompat.getColor(c, R.color.nb_danger)
+        val warning = ContextCompat.getColor(c, R.color.nb_warn)
+        val subtext = ContextCompat.getColor(c, R.color.nb_subtext)
+        val fg = when {
+            t.applied && t.capability.state != CapabilityState.REJECTED -> accent
+            t.capability.state == CapabilityState.REJECTED ||
+                t.capability.state == CapabilityState.FAILED -> danger
+            t.capability.state == CapabilityState.PERMISSION_REQUIRED ||
+                t.capability.state == CapabilityState.TEMPORARILY_UNAVAILABLE -> warning
+            t.capability.state == CapabilityState.UNSUPPORTED -> danger
+            else -> subtext
         }
         holder.status.setTextColor(fg)
-        holder.status.background.setTint(bg)
+        holder.status.background.setTint(ColorUtils.setAlphaComponent(fg, 0x33))
+        holder.status.contentDescription = t.capability.reason
         val enabled = Prefs.taskEnabled(c, t.id, true)
         holder.sw.setOnCheckedChangeListener(null)
         holder.sw.isChecked = enabled

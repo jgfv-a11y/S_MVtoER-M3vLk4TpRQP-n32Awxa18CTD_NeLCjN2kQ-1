@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.Nitro" parent="Theme.Material3.Dark.NoActionBar">
+    <style name="Theme.Nitro" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/nb_accent</item>
         <item name="colorOnPrimary">@color/nb_bg</item>
         <item name="colorSecondary">@color/nb_accent2</item>

@@ -13,6 +13,9 @@
     <string name="btn_boost_all">تحسين الكل</string>
     <string name="btn_restore_all">استعادة الكل</string>
     <string name="btn_add_profile">+ ملف لعبة جديد</string>
+    <string name="btn_export_profiles">تصدير الملفات</string>
+    <string name="btn_import_profiles">استيراد الملفات</string>
+    <string name="profile_exchange_hint">JSON بإصدار وفحص سلامة؛ لا يُستبدل التعارض تلقائيًا.</string>
     <string name="shizuku_card_title">شيزوكو / الروت غير متصل</string>
     <string name="shizuku_state_not_installed">ثبّت تطبيق شيزوكو من GitHub (shizuku.rikka.app). على جهاز بجذر (Root) يعمل التطبيق عبر الروت مباشرة.</string>
     <string name="shizuku_state_not_started">شيزوكو مثبّت. افتحه مرة واحدة واضغط «شغّل» (عبر ADB أو الجذر). كل ما بعد ذلك تلقائي.</string>
@@ -24,7 +27,10 @@
     <string name="overlay_perm_title">المؤشر العائم يحتاج صلاحية واحدة</string>
     <string name="overlay_perm_msg">لعرض FPS / المعالج / الحرارة فوق اللعبة، فعّل «العرض فوق التطبيقات الأخرى» لتطبيق نيترو بوست.</string>
     <string name="overlay_perm_open">فتح الإعدادات</string>
-    <string name="task_state_pending">بانتظار شيزوكو</string>
+    <string name="task_state_pending">غير متاح مؤقتًا</string>
+    <string name="task_state_permission">يحتاج صلاحية</string>
+    <string name="task_state_rejected">مرفوض لسياسة الأمان</string>
+    <string name="task_state_failed">فشل الفحص</string>
     <string name="sec_adaptive">المحرك التكيفي</string>
     <string name="sec_system">النظام والذاكرة</string>
     <string name="sec_journal">سجل التعديلات</string>
@@ -78,6 +84,9 @@
     <string name="stat_bat">البطارية</string>
     <string name="stat_fps">الإطار/ث</string>
     <string name="stat_ping">TCP</string>
+    <string name="metrics_live">قياس فعلي الآن · %1$s · العمر %2$d ث</string>
+    <string name="metrics_stale">آخر قياس قديم · %1$s · ليس حيًا</string>
+    <string name="metrics_unavailable">القياسات الحية غير متاحة · الشرطات تعني عدم وجود مصدر موثوق</string>
     <string name="btn_overlay">المؤشر العائم</string>
     <string name="btn_restore">استعادة</string>
     <string name="btn_perms">الصلاحيات</string>
@@ -132,7 +141,8 @@
     <string name="opt_dnd">عدم الإزعاج أثناء اللعب</string>
     <string name="opt_anim">تعطيل الأنيميشن</string>
     <string name="opt_ram_kill">إنهاء تطبيقات الخلفية الخاملة</string>
-    <string name="opt_thermal">تجاوز التبريد (مجازف — بمراقبة أوتوماتيكية)</string>
+    <string name="opt_thermal">الحماية الحرارية مفعلة دائمًا</string>
+    <string name="thermal_protection_locked">مقفلة: لا يعطل NitroBoost حماية حرارة Android</string>
     <string name="hint_dpi">الكثافة (0=أوتوماتيك)</string>
     <string name="hint_refresh">هرتز (0=أوتوماتيك)</string>
     <string name="hint_game_mode">الوضع (0=إيقاف، 1–5=وضع النظام)</string>
@@ -140,6 +150,13 @@
     <string name="profile_refresh_range">يجب أن يكون معدل التحديث 0 (اتباع سياسة الجهاز) أو بين 24 و500 هرتز.</string>
     <string name="profile_game_mode_range">يجب أن يكون وضع اللعبة بين 0 (إيقاف) و5.</string>
     <string name="profile_save_failed">تعذر حفظ الملف؛ أُبقيت الإعدادات السابقة دون تغيير.</string>
+    <string name="profile_exported">تم تصدير الملفات بنجاح.</string>
+    <string name="profile_exchange_failed">تعذر قراءة ملف الملفات أو كتابته.</string>
+    <string name="profile_imported">تم استيراد %1$d ملف.</string>
+    <string name="profile_conflict_title">وُجد تعارض في الملفات</string>
+    <string name="profile_conflict_message">هذه الحزم لها ملف مخصص مختلف: %1$s. هل تريد الاستبدال؟</string>
+    <string name="profile_replace">استبدال التعارضات</string>
+    <string name="profile_import_rejected">رُفض الاستيراد: %1$s</string>
     <string name="invalid_package_name">أدخل اسم حزمة Android صالحًا.</string>
     <string name="no_installed_apps">لا توجد تطبيقات مثبّتة متاحة لإضافتها كملف.</string>
     <string name="ok">موافق</string>

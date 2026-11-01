@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap
 class BoostEngine(private val tasks: List<BoostTask>) {
 
     private val taskMutationLocks = ConcurrentHashMap<String, Any>()
+    private val capabilityRegistry = CapabilityRegistry()
 
     /** Serialize a task's apply/restore across normal boost and adaptive paths. */
     fun <T> withTaskLock(taskId: String, block: () -> T): T {
@@ -169,24 +170,19 @@ class BoostEngine(private val tasks: List<BoostTask>) {
         return restored.size
     }
 
-    /** Live per-task state for the UI. */
+    /** Live per-task state for the UI, backed by the shared capability vocabulary. */
     fun states(ctx: BoostContext): List<TaskState> {
-        val journalEntries = ctx.journal.snapshot()
         return tasks.map { t ->
-            val applied = try {
-                when {
-                    journalEntries.any { it.taskId == t.id } -> true
-                    t.requiresPrivilege && !ctx.executor.privileged -> false
-                    else -> t.isApplied(ctx)
-                }
-            } catch (e: Exception) {
+            val capability = capabilityRegistry.status(t, ctx)
+            val applied = capability.state == CapabilityState.APPLIED || try {
+                t.isApplied(ctx)
+            } catch (_: Exception) {
                 false
             }
-            val supported = try {
-                t.isSupported(ctx)
-            } catch (e: Exception) {
-                false
-            }
+            val supported = capability.state == CapabilityState.SUPPORTED ||
+                capability.state == CapabilityState.APPLIED
+            val pending = capability.state == CapabilityState.PERMISSION_REQUIRED ||
+                capability.state == CapabilityState.TEMPORARILY_UNAVAILABLE
             TaskState(
                 id = t.id,
                 titleAr = t.titleAr,
@@ -197,7 +193,8 @@ class BoostEngine(private val tasks: List<BoostTask>) {
                 applied = applied,
                 supported = supported,
                 requiresPrivilege = t.requiresPrivilege,
-                pending = t.requiresPrivilege && !supported && !ctx.executor.privileged
+                pending = pending,
+                capability = capability
             )
         }
     }

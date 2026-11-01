@@ -2,62 +2,39 @@ package com.nitroboost.app.core.tasks
 
 import com.nitroboost.app.core.BoostContext
 import com.nitroboost.app.core.BoostTask
-import com.nitroboost.app.core.JournalEntry
 import com.nitroboost.app.core.Module
 import com.nitroboost.app.core.TaskResult
 import com.nitroboost.app.core.TaskStatus
 
 /**
- * AGGRESSIVE, opt-in only: override the thermal controller so it never
- * throttles. The device WILL get hot and drain battery faster.
+ * Compatibility placeholder for profiles and journals created before 1.24.
  *
- * Safety net: ThermalGuard reverts this automatically when the device hits
- * severe heat, so even a careless user cannot brick the device.
+ * NitroBoost must never disable or override Android thermal protection. The
+ * old task id remains in the roster so a legacy Journal can still be mapped
+ * and safely restored by Journal.restore, but no new thermal override command
+ * can be probed or executed.
  */
 class ThermalOverrideTask : BoostTask {
 
     override val id = "thermal_override"
-    override val titleAr = "تجاوز التبريد (مجازف)"
-    override val titleEn = "Thermal override (aggressive)"
-    override val descAr = "إيقاف تقليص الأداء الحراري — حرارة أعلى وبطارية أسرع (مراقبة أوتوماتيكية)"
-    override val descEn = "Disable thermal throttling — hotter device, faster drain (auto-guarded)"
+    override val titleAr = "الحماية الحرارية (غير قابلة للتجاوز)"
+    override val titleEn = "Thermal protection (immutable)"
+    override val descAr = "يحمي NitroBoost سياسة الحرارة ولا يسمح بتجاوز حماية النظام"
+    override val descEn = "NitroBoost never disables or overrides Android thermal protection"
     override val module = Module.THERMAL
-    override val requiresPrivilege = true
+    override val requiresPrivilege = false
     override val boostLevel = 3
 
-    private fun probe(ctx: BoostContext): Boolean =
-        ctx.executor.shell("cmd thermalservice override-status").ok
+    override fun isSupported(ctx: BoostContext): Boolean = false
 
-    override fun isSupported(ctx: BoostContext): Boolean =
-        ctx.executor.privileged && ctx.executor.thermalSafetyAvailable && probe(ctx)
-
+    /** A legacy entry is visible to the Journal/restore path, not a new apply. */
     override fun isApplied(ctx: BoostContext): Boolean =
         ctx.journal.containsTask(id)
 
-    override fun apply(ctx: BoostContext): TaskResult {
-        if (!ctx.executor.privileged) return TaskResult(id, TaskStatus.Skipped, "needs Shizuku or root")
-        if (isApplied(ctx)) return TaskResult(id, TaskStatus.NoChange)
-        if (!ctx.executor.thermalSafetyAvailable) {
-            return TaskResult(id, TaskStatus.Skipped, "raw thermal sensor unavailable; override refused for safety")
-        }
-        if (!probe(ctx)) return TaskResult(id, TaskStatus.Skipped, "thermal override unavailable on this ROM")
-        val r = ctx.executor.shell("cmd thermalservice override-status 0")
-        if (!r.ok) {
-            return TaskResult(id, TaskStatus.Failed("thermalservice not controllable on this ROM"))
-        }
-        return TaskResult(
+    override fun apply(ctx: BoostContext): TaskResult =
+        TaskResult(
             id,
-            TaskStatus.Applied,
-            entries = listOf(
-                JournalEntry(
-                    taskId = id,
-                    kind = JournalEntry.Kind.THERMAL_OVERRIDE,
-                    key = "thermal_override",
-                    oldValue = "-1",
-                    newValue = "0",
-                    revertCmd = "cmd thermalservice override-status -1"
-                )
-            )
+            TaskStatus.Skipped,
+            "rejected by immutable thermal-safety policy; use Restore to clean a legacy entry"
         )
-    }
 }

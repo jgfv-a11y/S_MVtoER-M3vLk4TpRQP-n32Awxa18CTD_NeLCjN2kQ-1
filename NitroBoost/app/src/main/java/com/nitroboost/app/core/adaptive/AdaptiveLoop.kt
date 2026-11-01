@@ -156,6 +156,8 @@ class AdaptiveLoop(
     @Volatile private var running = false
     @Volatile private var generation = 0L
     private var activeSessionId = "not-started"
+    /** Wall-clock-independent timestamp of the last completed trial. */
+    private var lastTrialFinishedAtMs: Long? = null
     private val attemptedThisSession: MutableSet<String> = ConcurrentHashMap.newKeySet<String>()
 
     val isRunning: Boolean get() = running
@@ -167,6 +169,7 @@ class AdaptiveLoop(
         generation += 1L
         val token = generation
         activeSessionId = sessionIdFactory()
+        lastTrialFinishedAtMs = null
         attemptedThisSession.clear()
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         job = scope?.launch { loop(token) }
@@ -184,6 +187,7 @@ class AdaptiveLoop(
         phase = "idle"
         candidateId = null
         pausedReason = null
+        lastTrialFinishedAtMs = null
         attemptedThisSession.clear()
         log("adaptive engine stop requested")
     }
@@ -261,6 +265,18 @@ class AdaptiveLoop(
             candidateId = null
             return
         }
+        val lastFinished = lastTrialFinishedAtMs
+        val cooldown = cfg.cooldownMs.coerceAtLeast(0L)
+        if (lastFinished != null && cooldown > 0L) {
+            val elapsed = (clockMs() - lastFinished).coerceAtLeast(0L)
+            val remaining = cooldown - elapsed
+            if (remaining > 0L) {
+                phase = "cooldown"
+                candidateId = null
+                wait(remaining)
+                return
+            }
+        }
         val ctx = context()
         val task = nextCandidate(ctx)
         if (task == null) {
@@ -280,8 +296,12 @@ class AdaptiveLoop(
         candidateId = task.id
         attemptedThisSession += task.id
         phase = "trial:${task.id}"
-        runTrial(task, ctx)
-        candidateId = null
+        try {
+            runTrial(task, ctx)
+        } finally {
+            lastTrialFinishedAtMs = clockMs()
+            candidateId = null
+        }
     }
 
     fun pauseReason(): String? {
@@ -320,9 +340,11 @@ class AdaptiveLoop(
         // (before A/B transitions and before the next block).
         val perPairMs = 2L * cfg.windowMs.coerceAtLeast(0L) +
             3L * cfg.settleMs.coerceAtLeast(0L)
-        val totalMs = pending.sumOf { task ->
+        val trialMs = pending.sumOf { task ->
             expectedVariantIds(task.id).size.toLong() * PAIR_BLOCKS_PER_TRIAL * perPairMs + cfg.settleMs
         }
+        val cooldownMs = cfg.cooldownMs.coerceAtLeast(0L) * (pending.size - 1).coerceAtLeast(0).toLong()
+        val totalMs = trialMs + cooldownMs
         return ((totalMs + 59_999L) / 60_000L).toInt().coerceAtLeast(if (pending.isNotEmpty()) 1 else 0)
     }
 

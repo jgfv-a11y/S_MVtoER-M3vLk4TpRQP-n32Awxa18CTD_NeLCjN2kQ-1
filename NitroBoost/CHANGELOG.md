@@ -1,4 +1,24 @@
 # Changelog
+## v1.24.0 — evidence-first adaptive safety, capability states, profile exchange
+
+### Added
+- Added `CapabilityRegistry` with explicit Supported, Unsupported, Permission Required, Temporarily Unavailable, Failed, Applied, and Rejected states. The Boost screen shows the state reason rather than collapsing permission or safety failures into “unsupported”.
+- Added versioned custom-profile import/export with deterministic JSON, SHA-256 corruption detection, strict size/count/package validation, atomic persistence, duplicate isolation, and user-confirmed conflict replacement.
+- Added measurement provenance/freshness labels to the dashboard. Missing, stale, or unavailable sources remain explicitly unavailable; the app does not synthesize FPS, GPU utilization, frame time, or energy.
+- Added lifecycle-scoped coroutine reads for profiles, Shizuku/root status, and Game Space detection.
+- Added regression tests for capability caching, thermal safety, profile exchange, checksum rejection, and measurement freshness.
+
+### Safety and correctness
+- Thermal override is now a compatibility-only rejected task. Legacy thermal journal entries may still be restored through the allow-listed Journal path, but new profiles and UI controls cannot enable thermal override and the executor rejects `cmd thermalservice override-status 0`.
+- Added a mandatory adaptive-trial cooldown and explicit cancellation-safe cleanup between candidates. Cooldown time is included in the ETA.
+- Kept Journal ownership checks, recovery blocking, atomic writes, and task locks in the apply/restore paths; no blind restore or silent overwrite of an external current value is introduced.
+- Changed the widget periodic refresh to a conservative 30-minute interval; the user tap remains the authoritative refresh action.
+- Updated the UI to Material 3 Day/Night colors, clearer state pills, profile exchange actions, and an immutable thermal-protection explanation.
+
+### Release metadata
+- `versionName=1.24.0`, `versionCode=31`, `applicationId=com.nitroboost.app`, `minSdk=24`, `targetSdk=36`.
+- The expected artifact is `NitroBoost-v1.24.0-debug.apk`. It is a debug/testing APK unless a release key is independently verified. No field benchmark or signed-update compatibility is claimed by this changelog.
+
 ## v1.23.0 — correctness hardening: journal ownership, io_scheduler durability, Android 7 process handling
 Engineering-update release: every fix below was verified against the current v1.22.0 source before being applied.
 

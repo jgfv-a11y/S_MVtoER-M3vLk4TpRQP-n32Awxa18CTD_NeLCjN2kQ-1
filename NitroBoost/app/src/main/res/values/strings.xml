@@ -13,6 +13,9 @@
     <string name="btn_boost_all">Boost All</string>
     <string name="btn_restore_all">Restore All</string>
     <string name="btn_add_profile">+ New Game Profile</string>
+    <string name="btn_export_profiles">Export profiles</string>
+    <string name="btn_import_profiles">Import profiles</string>
+    <string name="profile_exchange_hint">Versioned JSON; conflicts never overwrite silently.</string>
     <string name="shizuku_card_title">Shizuku / Root not connected</string>
     <string name="shizuku_state_not_installed">Install the Shizuku app from GitHub (shizuku.rikka.app). On a rooted device the app also works via Root directly.</string>
     <string name="shizuku_state_not_started">Shizuku is installed. Open it once and press Start (ADB or Root). Everything else is automatic.</string>
@@ -24,7 +27,10 @@
     <string name="overlay_perm_title">Floating monitor needs one permission</string>
     <string name="overlay_perm_msg">To show FPS / CPU / temperature over the game, enable "Display over other apps" for NitroBoost.</string>
     <string name="overlay_perm_open">Open Settings</string>
-    <string name="task_state_pending">Waiting for Shizuku</string>
+    <string name="task_state_pending">Temporarily unavailable</string>
+    <string name="task_state_permission">Permission required</string>
+    <string name="task_state_rejected">Rejected by safety policy</string>
+    <string name="task_state_failed">Probe failed</string>
     <string name="sec_adaptive">Adaptive engine</string>
     <string name="sec_system">System &amp; RAM</string>
     <string name="sec_journal">Modification journal</string>
@@ -78,6 +84,9 @@ The app keeps checking by itself until connected. On rooted devices, Root is use
     <string name="stat_bat">BATTERY</string>
     <string name="stat_fps">FPS</string>
     <string name="stat_ping">TCP</string>
+    <string name="metrics_live">Measured now · %1$s · age %2$ds</string>
+    <string name="metrics_stale">Last measurement is stale · %1$s · not live</string>
+    <string name="metrics_unavailable">Live measurements unavailable · dashes mean no trusted source</string>
     <string name="btn_overlay">Overlay</string>
     <string name="btn_restore">Restore</string>
     <string name="btn_perms">Permissions</string>
@@ -132,7 +141,8 @@ The app keeps checking by itself until connected. On rooted devices, Root is use
     <string name="opt_dnd">Do Not Disturb while gaming</string>
     <string name="opt_anim">Kill animations</string>
     <string name="opt_ram_kill">Force-stop idle background apps</string>
-    <string name="opt_thermal">Thermal override (aggressive — auto-guarded)</string>
+    <string name="opt_thermal">Thermal protection is always enabled</string>
+    <string name="thermal_protection_locked">Locked: Android thermal protection is never disabled</string>
     <string name="hint_dpi">DPI (0=auto)</string>
     <string name="hint_refresh">Hz (0=auto)</string>
     <string name="hint_game_mode">Mode (0=off, 1–5=platform mode)</string>
@@ -140,6 +150,13 @@ The app keeps checking by itself until connected. On rooted devices, Root is use
     <string name="profile_refresh_range">Refresh rate must be 0 (keep system policy) or between 24 and 500 Hz.</string>
     <string name="profile_game_mode_range">Game mode must be between 0 (off) and 5.</string>
     <string name="profile_save_failed">Could not save the profile. Your previous settings were kept.</string>
+    <string name="profile_exported">Profiles exported successfully.</string>
+    <string name="profile_exchange_failed">Profile file could not be read or written.</string>
+    <string name="profile_imported">Imported %1$d profile(s).</string>
+    <string name="profile_conflict_title">Profile conflicts detected</string>
+    <string name="profile_conflict_message">These packages already have a different custom profile: %1$s. Replace them?</string>
+    <string name="profile_replace">Replace conflicts</string>
+    <string name="profile_import_rejected">Import rejected: %1$s</string>
     <string name="invalid_package_name">Enter a valid Android package name.</string>
     <string name="no_installed_apps">No installed apps are available to add as a profile.</string>
     <string name="ok">OK</string>

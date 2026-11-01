@@ -74,12 +74,16 @@ data class TaskState(
     val supported: Boolean,
     val requiresPrivilege: Boolean,
     /**
-     * Needs Shizuku/root but the hardware support cannot be verified yet
-     * (no privileged shell to probe with). UI shows "بانتظار شيزوكو"
-     * instead of "غير مدعوم" — once a privileged channel appears the real
-     * support state is re-evaluated.
+     * Legacy UI flag retained for source compatibility. In 1.24 it is true
+     * for permission-required and temporarily-unavailable states.
      */
-    val pending: Boolean = false
+    val pending: Boolean = false,
+    /** Single source of truth for the capability card and task row. */
+    val capability: CapabilityStatus = CapabilityStatus(
+        CapabilityState.UNSUPPORTED,
+        "not evaluated",
+        0L
+    )
 )
 
 /** A single reversible optimization. */

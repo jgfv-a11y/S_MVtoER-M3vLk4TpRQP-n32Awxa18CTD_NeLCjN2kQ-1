@@ -19,7 +19,8 @@ data class AppProfile(
     var dnd: Boolean = true,
     var killAnimations: Boolean = true,
     var aggressiveRamClean: Boolean = false,
-    var thermalOverride: Boolean = false, // aggressive: disable thermal throttling — off by default
+    /** Legacy field retained for JSON compatibility; 1.24 always normalizes it to false. */
+    var thermalOverride: Boolean = false,
     var gameMode: Int = 4,                // 0 = do not touch game mode
     var extraProtected: MutableList<String> = mutableListOf()
 ) {
@@ -82,7 +83,7 @@ data class AppProfile(
             put("name", p.name)
             put(
                 "enabledModules",
-                JSONArray().apply { p.enabledModules.forEach { put(it.key) } }
+                JSONArray().apply { p.enabledModules.sortedBy { it.key }.forEach { put(it.key) } }
             )
             put("dpi", p.dpi)
             put("refreshRate", p.refreshRate)
