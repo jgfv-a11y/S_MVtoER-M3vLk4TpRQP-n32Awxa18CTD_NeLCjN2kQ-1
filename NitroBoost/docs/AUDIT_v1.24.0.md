@@ -8,14 +8,14 @@
 
 | Acceptance area | Evidence in source | Status |
 |---|---|---|
-| Identity/API compatibility | `app/build.gradle.kts` | Implemented; CI APK metadata gate passed in run 41347857137 |
+| Identity/API compatibility | `app/build.gradle.kts` | Implemented; CI APK metadata gate passed in run 41348861768 |
 | Thermal protection | `ThermalOverrideTask`, `JournaledSystemExecutor`, `ProfileValidation`, profile UI | Implemented; new override rejected; legacy restore retained |
 | Capability states | `CapabilityRegistry`, `TaskState`, `BoostEngine`, `BoostFragment` | Implemented |
 | Profile exchange | `ProfileExchange`, `ProfileStore`, Profiles UI | Implemented with checksum/conflict/atomic-write paths |
 | Measurement provenance | `MeasurementProvenance`, Home dashboard | Implemented; source availability remains device-dependent |
-| Adaptive concurrency/cooldown | `AdaptiveLoop`, `TrialConfig`, Journal/task locks | Implemented; JVM/CI verification passed in run 41347857137 |
+| Adaptive concurrency/cooldown | `AdaptiveLoop`, `TrialConfig`, Journal/task locks | Implemented; JVM/CI verification passed in run 41348861768 |
 | Static/security gates | `tools/verify.py`, `tools/security_verify.py`, Python tests | Passed locally on 2026-11-01 |
-| Android compile/lint/unit tests | GitHub Actions run 41347857137 (`verify-build`) | Passed: `test`, `lintDebug`, `assembleDebug`, APK metadata, `apksigner verify` |
+| Android compile/lint/unit tests | GitHub Actions run 41348861768 (`verify-build`) | Passed: `test`, `lintDebug`, `assembleDebug`, APK metadata, `apksigner verify` |
 | Physical API 24–36/OEM test | No device supplied | Not performed |
 | Signed update compatibility | No confirmed prior release key | Not established |
 | FPS/GPU/frame-time improvement | No repeatable game benchmark | Not claimed |
