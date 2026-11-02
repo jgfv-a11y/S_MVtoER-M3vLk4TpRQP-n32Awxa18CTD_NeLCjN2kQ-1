@@ -44,6 +44,14 @@ class ProfileStore(private val ctx: Context) {
     fun all(): List<AppProfile> = mergeProfiles(builtins(), customs())
 
     companion object {
+        @Volatile
+        private var companionCache: List<AppProfile>? = null
+
+        /** Test hook: drop the process-level built-ins cache. */
+        fun clearBuiltinsCache() {
+            companionCache = null
+        }
+
         /** Pure, unit-testable merge: customs shadow builtins by packageName. */
         fun mergeProfiles(builtins: List<AppProfile>, customs: List<AppProfile>): List<AppProfile> {
             val customPkgs = customs.mapTo(HashSet()) { it.packageName }

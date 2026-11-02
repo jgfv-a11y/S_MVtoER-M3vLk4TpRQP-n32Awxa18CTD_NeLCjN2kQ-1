@@ -108,6 +108,48 @@ object Prefs {
         }
     }
 
+    /**
+     * Append one finished session to the bounded per-game history.
+     * Invalid input is ignored and never corrupts the stored history.
+     */
+    fun recordSessionHistory(ctx: Context, report: SessionReport) {
+        try {
+            val prefs = sp(ctx)
+            val updated = SessionHistoryStore.record(
+                prefs.getString(KEY_SESSION_HISTORY, null),
+                report.gamePackage,
+                report.endedAt,
+                report.durationSec,
+                report.avgFps,
+                report.minFps,
+                report.peakTempC,
+                report.applied,
+                report.failed
+            ) ?: return
+            prefs.edit().putString(KEY_SESSION_HISTORY, updated).apply()
+        } catch (_: Exception) {
+            // History is optional telemetry; it must never affect session teardown.
+        }
+    }
+
+    /** Per-game session history, most recent first. */
+    fun historyForGame(ctx: Context, gamePackage: String?): List<SessionHistoryEntry> = try {
+        SessionHistoryStore.historyFor(
+            sp(ctx).getString(KEY_SESSION_HISTORY, null),
+            gamePackage
+        )
+    } catch (_: Exception) {
+        emptyList()
+    }
+
+    /** Local-only data: clearing the history removes the stored summaries. */
+    fun clearSessionHistory(ctx: Context) {
+        try {
+            sp(ctx).edit().remove(KEY_SESSION_HISTORY).apply()
+        } catch (_: Exception) {
+        }
+    }
+
     fun taskEnabled(ctx: Context, taskId: String, def: Boolean): Boolean = try {
         if (!taskId.matches(Regex("[A-Za-z0-9_]{1,80}"))) def
         else sp(ctx).getBoolean(KEY_TASK_PREFIX + taskId, def)

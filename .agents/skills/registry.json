@@ -1,0 +1,32 @@
+{
+  "schema": "nitroboost-skills/1.0",
+  "version": "1.0.0",
+  "updated": "2026-11-02",
+  "skillsRoot": ".agents/skills",
+  "entryPoint": "AGENTS.md",
+  "cycle": ["DISCOVER", "ANALYZE", "INNOVATE", "PLAN", "IMPLEMENT", "TEST", "REVIEW", "RELEASE", "LEARN"],
+  "supportingFiles": {
+    "rules": ".agents/RULES.md",
+    "team": ".agents/TEAM.md",
+    "cycle": ".agents/DEVELOPMENT_CYCLE.md",
+    "innovation": ".agents/INNOVATION.md",
+    "changelog": ".agents/CHANGELOG.md",
+    "verification": ".agents/VERIFICATION.md",
+    "report": ".agents/REPORT.md"
+  },
+  "skills": [
+    {"name": "engineering-director", "role": "director", "phases": ["ALL"], "description": "Leads the full product development cycle: priorities, task split, cross-specialty coordination, conflict prevention, merge and release-readiness decision."},
+    {"name": "repository-intelligence", "role": "analyst", "phases": ["DISCOVER", "ANALYZE"], "description": "Full repository analysis: architecture, component relationships, technical debt, dependencies and risks; produces audit documents."},
+    {"name": "android-architecture", "role": "architect", "phases": ["PLAN", "IMPLEMENT"], "description": "Android/Kotlin architecture and layering, Android 7 (API 24) to Android 16 (API 36) compatibility, CI-verifiable build constraints."},
+    {"name": "autonomous-feature-inventor", "role": "innovator", "phases": ["INNOVATE"], "description": "Proactive discovery of genuinely valuable features: user-need analysis, modern technique study, solution comparison, value/risk/cost scoring."},
+    {"name": "performance-engineering", "role": "performance", "phases": ["IMPLEMENT", "TEST"], "description": "Measurement-based performance work: FPS, frame time, CPU, RAM, thermal; bottleneck discovery; no unproven claims."},
+    {"name": "adaptive-engineering", "role": "adaptive", "phases": ["IMPLEMENT", "TEST"], "description": "Adaptive optimization engine and repeatable A/B experiments: measure before applying, stop on risk."},
+    {"name": "system-integration-engineering", "role": "integration", "phases": ["IMPLEMENT"], "description": "Shizuku/root/shell/sysfs integration: permission and session checks, command failure and timeout handling, no unsafe changes."},
+    {"name": "thermal-safety-engineering", "role": "thermal-safety", "phases": ["ALL"], "description": "Absolute priority of thermal protection; blocks any optimization that conflicts with device safety; clear experiment stop limits."},
+    {"name": "reliability-and-recovery", "role": "reliability", "phases": ["IMPLEMENT", "TEST"], "description": "Journal and rollback engineering, crash/interruption handling, no restoring over external changes, corrupted-log detection."},
+    {"name": "automated-testing", "role": "testing", "phases": ["TEST"], "description": "Comprehensive automated tests: failure and edge cases, concurrency and cancellation, Android compatibility; CI enforcement."},
+    {"name": "security-engineering", "role": "security", "phases": ["IMPLEMENT", "REVIEW"], "description": "Permission review, command-injection prevention, input validation, data and privacy protection."},
+    {"name": "adversarial-review", "role": "reviewer", "phases": ["REVIEW"], "description": "Independent adversarial code review: hunt bugs the developer missed, regressions and risks, block unsafe changes."},
+    {"name": "release-engineering", "role": "release", "phases": ["RELEASE"], "description": "Version management (versionName/versionCode), APK build, artifact and signature verification, changelog and test reports, GitHub release."}
+  ]
+}

@@ -1,7 +1,7 @@
 # 🚀 NitroBoost — Game Booster
 
 
-**أحدث إصدار: v1.23.0 (versionCode 30)**؛ يدعم Android 7.0 / API 24 فأحدث ويستهدف Android 16 / API 36. راجع [GitHub Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) لتنزيل APK والتحقق من بصمة SHA-256.
+**أحدث إصدار: v1.24.0 (versionCode 31)**؛ يدعم Android 7.0 / API 24 فأحدث ويستهدف Android 16 / API 36. يضيف سجل جلسات محلي محدود لكل لعبة مع trend وصفي (نفس اللعبة فقط، دون أي ادعاء A/B)، وزر لمسح السجل من الإعدادات. راجع [GitHub Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) لتنزيل APK والتحقق من بصمة SHA-256.
 تطبيق معزّز ألعاب Android احترافي، عربي + إنجليزي، مبني بـ **Kotlin** و**Material 3**
 (بدون Compose) على Shizuku API 13.1.5.
 

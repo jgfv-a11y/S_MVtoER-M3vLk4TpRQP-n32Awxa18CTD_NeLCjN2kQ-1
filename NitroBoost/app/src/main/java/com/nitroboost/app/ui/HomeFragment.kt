@@ -367,6 +367,34 @@ class HomeFragment : Fragment() {
         }
         if (rep.peakRamMb > 0) lines.add(getString(R.string.report_peak_ram, rep.peakRamMb / 1024))
         rep.minPingMs?.let { lines.add(getString(R.string.report_ping, it)) }
+        // Bounded per-game session history (local-only, descriptive comparison).
+        rep.gamePackage?.let { pkg ->
+            val c = context
+            if (c != null) {
+                val history = Prefs.historyForGame(c, pkg)
+                if (history.isNotEmpty()) {
+                    lines.add(
+                        getString(
+                            R.string.report_history_count,
+                            history.size,
+                            SessionHistoryStore.MAX_ENTRIES_PER_GAME
+                        )
+                    )
+                    SessionHistoryStore.trendFor(history)?.let { t ->
+                        val sign = if (t.deltaFps >= 0) "+" else ""
+                        lines.add(
+                            getString(
+                                R.string.report_history_trend,
+                                t.recentAvgFps,
+                                t.olderAvgFps,
+                                "$sign${t.deltaFps}"
+                            )
+                        )
+                        lines.add(getString(R.string.report_history_scope))
+                    }
+                }
+            }
+        }
         reportText?.text = lines.joinToString("\n")
         card.visibility = View.VISIBLE
     }

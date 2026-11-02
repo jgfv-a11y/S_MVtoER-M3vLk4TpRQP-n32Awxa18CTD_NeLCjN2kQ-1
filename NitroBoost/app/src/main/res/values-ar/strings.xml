@@ -271,6 +271,13 @@
     <string name="onboarding_incomplete_title">ما زالت هناك صلاحيات ناقصة</string>
     <string name="onboarding_incomplete_message">ما زالت هذه الصلاحيات غير مفعّلة: %1$s. لتفعيلها لاحقًا، افتح NitroBoost واضغط «الصلاحيات» في الرئيسية، ثم اختر البند وامنحه من إعدادات Android.</string>
 
+    <!-- Session history (v1.24.0) -->
+    <string name="report_history_count">الجلسات المسجّلة لهذه اللعبة: %1$d (الحد الأقصى %2$d)</string>
+    <string name="report_history_trend">متوسط FPS الحديث %1$d مقابل الجلسات السابقة %2$d (%3$s fps)</string>
+    <string name="report_history_scope">مقارنة وصفية لجلسات اللعبة نفسها فقط — ليست نتيجة A/B مضبوطة.</string>
+    <string name="btn_clear_history">مسح سجل الجلسات</string>
+    <string name="history_cleared">تم مسح سجل الجلسات</string>
+
     <!-- Common -->
     <string name="save">حفظ</string>
     <string name="cancel">إلغاء</string>

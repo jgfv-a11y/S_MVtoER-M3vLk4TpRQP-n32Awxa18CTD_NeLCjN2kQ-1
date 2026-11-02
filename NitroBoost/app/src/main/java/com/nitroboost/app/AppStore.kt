@@ -391,6 +391,7 @@ object AppStore {
                     rep.endedAt
                 )
             }
+            Prefs.recordSessionHistory(context, rep)
         } catch (e: Exception) {
             // persistence is best-effort — still surface the report
         }

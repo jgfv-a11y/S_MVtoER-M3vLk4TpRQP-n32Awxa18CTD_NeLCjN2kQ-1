@@ -1,4 +1,45 @@
 # Changelog
+## v1.24.0 — per-game session history, profile-list caching, local history management
+
+### Added
+- **Bounded per-game session history (local-only).** Every finished boost
+  session is appended to a capped JSON history (`core/SessionHistoryStore.kt`,
+  persisted under `Prefs.KEY_SESSION_HISTORY`): at most 10 entries per game and
+  32 games, package names validated via `ShellInput.isPackageName`, invalid or
+  unreadable FPS stored as `null` (never `0`), malformed stored JSON parses to
+  an empty list instead of crashing. The Home session-report card now shows how
+  many sessions are recorded for the last game and, only when at least
+  `MIN_TREND_SAMPLES` (4) sessions carry a valid FPS, a **descriptive** trend
+  line (recent-window avg FPS vs the older window) that is explicitly labeled
+  "same game only; not a controlled A/B comparison" — consistent with the
+  existing same-game delta semantics. No cloud, no analytics; a "Clear history"
+  button in Settings removes the local data.
+- 14 new JVM tests in `SessionHistoryStoreTest` covering round-trip, ordering,
+  per-game and global caps, invalid package/FPS rejection, corruption handling,
+  null preservation, and trend thresholds/sign/ordering.
+
+### Changed
+- **Built-in game profiles are read from assets once per process**
+  (`ProfileStore.builtins()` companion cache with a `clearBuiltinsCache()` test
+  hook) instead of re-reading and re-parsing `game_profiles.json` on every
+  Home tab render — removes avoidable main-thread I/O. This is a code-level
+  I/O reduction, not a measured FPS/performance claim.
+
+### Validation
+- Local (this workspace, no Android SDK): `tools/verify.py` (XML/resources/
+  manifest/Kotlin balance), `tools/security_verify.py`, Python unittest suites,
+  and the skills-system verifier `tools/verify_skills.py` — all pass.
+- CI `verify-build` runs `./gradlew test lintDebug assembleDebug` plus APK
+  badging (versionName/versionCode, targetSdk 36, minSdk 24), `apksigner
+  verify`, and SHA-256 — run link recorded in `docs/daily/2026-11-02.md`.
+- **Not claimed:** any FPS/performance gain (no physical-device benchmark was
+  run); installation on a device was not performed in this environment.
+
+### Compatibility
+- `minSdk 24` / `targetSdk 36` unchanged; no new permission, no dependency,
+  Gradle, or Kotlin change. Stored history is optional and additive; old
+  prefs without `session_history` read as empty.
+
 ## v1.23.0 — correctness hardening: journal ownership, io_scheduler durability, Android 7 process handling
 Engineering-update release: every fix below was verified against the current v1.22.0 source before being applied.
 
