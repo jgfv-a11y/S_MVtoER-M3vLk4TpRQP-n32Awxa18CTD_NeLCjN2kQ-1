@@ -81,13 +81,29 @@ class HomeFragment : Fragment() {
     private var shizukuStatus: TextView? = null
     private var btnShizuku: MaterialButton? = null
     private var levelChips: List<TextView> = emptyList()
+    private var shizukuCommandStatus: TextView? = null
+    private var thermalGuardStatus: TextView? = null
+
+    // v1.24.1: single-flight poller (no thread pile-up) + adaptive delay.
+    private val shizukuPollerInFlight = AtomicBoolean(false)
+    private var connectionReady = false
+    private var lastLegacyState: ShizukuShell.ShizukuState = ShizukuShell.ShizukuState.NOT_STARTED
 
     private val shizukuPoller = object : Runnable {
         override fun run() {
             if (!isResumed || view == null) return
             refreshShizukuCard()
-            view?.postDelayed(this, 2_000)
+            val delayMs = IdlePolicy.shizukuPollDelayMs(
+                connectionReady = connectionReady,
+                cardVisible = shizukuCard?.visibility == View.VISIBLE
+            )
+            view?.postDelayed(this, delayMs)
         }
+    }
+
+    // Immediate reaction to binder death / permission result - not just the poller.
+    private val connectionListener: (ShizukuUiState) -> Unit = { uiState ->
+        renderShizukuState(uiState)
     }
 
     override fun onCreateView(
@@ -167,9 +183,39 @@ class HomeFragment : Fragment() {
         }
         btnShizuku?.setOnClickListener { onShizukuAction() }
 
+        auditViewWiring(view)
+        ShizukuShell.addConnectionListener(connectionListener)
+        refreshShizukuCard()
         renderReport(AppStore.loadLastReport())
         detectGameSpace()
         observeAll(viewLifecycleOwner)
+    }
+
+    override fun onDestroyView() {
+        ShizukuShell.removeConnectionListener(connectionListener)
+        view?.removeCallbacks(shizukuPoller)
+        super.onDestroyView()
+    }
+
+    /**
+     * Fail-loud wiring audit: a missing critical view means its listener was
+     * never attached (the classic "button does nothing" bug). Log it so it is
+     * diagnosable from the session log instead of silently dead.
+     */
+    private fun auditViewWiring(view: View) {
+        val critical = intArrayOf(
+            R.id.btn_boost, R.id.btn_restore, R.id.btn_overlay, R.id.btn_perms,
+            R.id.btn_shizuku, R.id.shizuku_card, R.id.shizuku_card_status,
+            R.id.shizuku_command_status, R.id.chips_container, R.id.thermal_guard_status
+        )
+        for (id in critical) {
+            if (view.findViewById<View>(id) == null) {
+                try {
+                    SessionLog.log(requireContext(), "ui_missing_view", "id=0x${Integer.toHexString(id)}")
+                } catch (_: Exception) {
+                }
+            }
+        }
     }
 
     override fun onResume() {
