@@ -2,6 +2,7 @@ package com.nitroboost.app.platform
 
 import android.content.Context
 import android.os.SystemClock
+import com.nitroboost.app.core.IdlePolicy
 import com.nitroboost.app.core.telemetry.BatterySnapshot
 import com.nitroboost.app.core.telemetry.CpuSnapshot
 import com.nitroboost.app.core.telemetry.FrameSnapshot
