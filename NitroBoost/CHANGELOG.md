@@ -29,9 +29,14 @@
 - Local (this workspace, no Android SDK): `tools/verify.py` (XML/resources/
   manifest/Kotlin balance), `tools/security_verify.py`, Python unittest suites,
   and the skills-system verifier `tools/verify_skills.py` — all pass.
-- CI `verify-build` runs `./gradlew test lintDebug assembleDebug` plus APK
-  badging (versionName/versionCode, targetSdk 36, minSdk 24), `apksigner
-  verify`, and SHA-256 — run link recorded in `docs/daily/2026-11-02.md`.
+- CI `verify-build` **passed** on this branch:
+  [run 41438944517](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/actions/runs/41438944517)
+  (success, 280 JVM tests 0 failures) — `./gradlew test lintDebug
+  assembleDebug` green; APK badging asserted `versionCode='31'
+  versionName='1.24.0'`, `targetSdkVersion:'36'`, `min-sdk=24`; `apksigner
+  verify` green; debug APK + `.sha256` uploaded as the `nitroboost-debug-apk`
+  artifact of that run. Full evidence and sandbox limits in
+  `docs/daily/2026-11-02.md`.
 - **Not claimed:** any FPS/performance gain (no physical-device benchmark was
   run); installation on a device was not performed in this environment.
 
