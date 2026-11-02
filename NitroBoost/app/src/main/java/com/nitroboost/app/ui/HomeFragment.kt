@@ -22,6 +22,7 @@ import com.nitroboost.app.SessionState
 import com.nitroboost.app.core.AppProfile
 import com.nitroboost.app.core.FpsDisplayCache
 import com.nitroboost.app.core.GameSpaceDetector
+import com.nitroboost.app.core.SessionHistoryStore
 import com.nitroboost.app.core.SessionReport
 import com.nitroboost.app.core.adaptive.Decision
 import com.nitroboost.app.core.performance.EvidenceDomain
