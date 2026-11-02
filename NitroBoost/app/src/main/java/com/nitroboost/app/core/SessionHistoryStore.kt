@@ -94,8 +94,10 @@ object SessionHistoryStore {
             failed = failed
         )
 
-        val withoutSameGame = parse(serialized).filterNot { it.gamePackage == pkg }
-        val perGame = (withoutSameGame + entry)
+        // Keep ALL stored entries (including previous sessions of the same
+        // game — unlike the single-value FPS baseline store); the per-game cap
+        // below is what bounds the history, not a same-game filter.
+        val perGame = (parse(serialized) + entry)
             .groupBy { it.gamePackage }
             .flatMap { (_, entries) ->
                 entries
