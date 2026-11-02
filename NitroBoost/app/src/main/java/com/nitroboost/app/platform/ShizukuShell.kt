@@ -9,11 +9,17 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.RemoteException
 import android.util.Base64
+import com.nitroboost.app.core.CommandStatus
+import com.nitroboost.app.core.IdlePolicy
+import com.nitroboost.app.core.ShizukuConnection
+import com.nitroboost.app.core.ShizukuConnectionResolver
+import com.nitroboost.app.core.ShizukuUiState
 import com.nitroboost.app.core.ShellInput
 import com.nitroboost.app.core.ShellResult
 import com.nitroboost.app.service.NitroUserService
 import com.nitroboost.app.shizuku.INitroService
 import rikka.shizuku.Shizuku
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.concurrent.Volatile
 
 /**
@@ -44,6 +50,34 @@ object ShizukuShell {
     @Volatile
     private var bound = false
 
+    // ---- v1.24.1 explicit connection state machine ----
+    /** True once we ever reached READY; distinguishes SESSION_EXPIRED from DISCONNECTED. */
+    @Volatile
+    private var everReady = false
+
+    /** Last privileged command outcome — set ONLY from the executed command's exit code. */
+    @Volatile
+    var lastCommand: CommandStatus = CommandStatus.IDLE
+        private set
+
+    @Volatile
+    var lastCommandMessage: String? = null
+        private set
+
+    /** Last permission-request result delivered by Shizuku (real grant/deny). */
+    @Volatile
+    var lastPermissionResult: Int? = null
+        private set
+
+    private val connectionListeners = CopyOnWriteArrayList<(ShizukuUiState) -> Unit>()
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    @Volatile
+    private var globalListenersRegistered = false
+
+    @Volatile
+    private var installedCache: Pair<Boolean, Long>? = null
+
     // These are rebound together by ensureBound/unbind from arbitrary
     // threads; volatile visibility prevents a torn unbind/ensureBound
     // interleave from leaking a stale registration.
@@ -54,14 +88,23 @@ object ShizukuShell {
     @Volatile
     private var appCtx: Context? = null
 
-    /** True when the Shizuku app is installed. */
+    /**
+     * True when the Shizuku app is installed. PackageManager.getPackageInfo is
+     * expensive IPC, so the answer is cached for [IdlePolicy.INSTALLED_CACHE_MS] —
+     * the UI poller used to pay this cost every 2 s while idle.
+     */
     fun isInstalled(ctx: Context): Boolean {
-        return try {
+        val now = System.currentTimeMillis()
+        val c = installedCache
+        if (c != null && now - c.second < IdlePolicy.INSTALLED_CACHE_MS) return c.first
+        val v = try {
             ctx.packageManager.getPackageInfo(SHIZUKU_PKG, 0)
             true
         } catch (e: Exception) {
             false
         }
+        installedCache = v to now
+        return v
     }
 
     /**
@@ -69,10 +112,92 @@ object ShizukuShell {
      * thread (ensureBound may bind the user service).
      */
     fun state(ctx: Context): ShizukuState {
+        registerGlobalListeners()
         if (!isInstalled(ctx)) return ShizukuState.NOT_INSTALLED
         if (!isReady()) return ShizukuState.NOT_STARTED
         if (!isPermissionGranted()) return ShizukuState.PENDING_PERMISSION
-        return if (ensureBound(ctx)) ShizukuState.READY else ShizukuState.NOT_BOUND
+        return if (ensureBound(ctx)) {
+            everReady = true
+            ShizukuState.READY
+        } else ShizukuState.NOT_BOUND
+    }
+
+    /**
+     * v1.24.1: UI-facing connection snapshot from observed facts only.
+     * Never reports "connected" for a merely-dispatched request.
+     */
+    fun connectionState(ctx: Context): ShizukuUiState {
+        registerGlobalListeners()
+        val connection = ShizukuConnectionResolver.resolve(
+            installed = isInstalled(ctx),
+            binderAlive = isReady(),
+            permissionGranted = isPermissionGranted(),
+            bound = service != null && bound,
+            everReady = everReady
+        )
+        if (connection == ShizukuConnection.CONNECTED_GRANTED) everReady = true
+        return ShizukuUiState(connection, lastCommand, lastCommandMessage)
+    }
+
+    /** Register a UI listener; it is invoked on the main thread on every change. */
+    fun addConnectionListener(listener: (ShizukuUiState) -> Unit) {
+        connectionListeners.addIfAbsent(listener)
+    }
+
+    fun removeConnectionListener(listener: (ShizukuUiState) -> Unit) {
+        connectionListeners.remove(listener)
+    }
+
+    /** Recompute and push the connection state to listeners (call from any thread). */
+    fun notifyConnectionChanged(ctx: Context) {
+        val state = try {
+            connectionState(ctx)
+        } catch (e: Exception) {
+            return
+        }
+        mainHandler.post {
+            for (l in connectionListeners) {
+                try {
+                    l(state)
+                } catch (_: Exception) {
+                }
+            }
+        }
+    }
+
+    private fun registerGlobalListeners() {
+        if (globalListenersRegistered) return
+        globalListenersRegistered = true
+        try {
+            Shizuku.addBinderDeadListener {
+                // Binder died: if we ever had a session, this is SESSION_EXPIRED.
+                // The UI is notified immediately instead of waiting for the poller.
+                unbind()
+                val c = appCtx
+                if (c != null) notifyConnectionChanged(c)
+            }
+        } catch (e: Exception) {
+        } catch (e: LinkageError) {
+        }
+        try {
+            Shizuku.addBinderReceivedListener {
+                val c = appCtx
+                if (c != null) notifyConnectionChanged(c)
+            }
+        } catch (e: Exception) {
+        } catch (e: LinkageError) {
+        }
+        try {
+            Shizuku.addRequestPermissionResultListener { requestCode, grantResult ->
+                if (requestCode == REQUEST_CODE) {
+                    lastPermissionResult = grantResult
+                    val c = appCtx
+                    if (c != null) notifyConnectionChanged(c)
+                }
+            }
+        } catch (e: Exception) {
+        } catch (e: LinkageError) {
+        }
     }
 
     /** True when the Shizuku binder is alive (the Shizuku app is running). */
@@ -197,6 +322,9 @@ object ShizukuShell {
             override fun onServiceDisconnected(name: ComponentName?) {
                 service = null
                 bound = false
+                // The service died mid-session: push the new state to the UI now.
+                val c = appCtx
+                if (c != null) notifyConnectionChanged(c)
             }
         }
         conn = connection
@@ -263,19 +391,40 @@ object ShizukuShell {
 
     fun run(cmd: String): ShellResult {
         val s = service
-        if (s == null) return ShellResult.fail("shizuku_service_not_bound")
+        if (s == null) {
+            markCommandFailed("shizuku_service_not_bound")
+            return ShellResult.fail("shizuku_service_not_bound")
+        }
         if (!isReady()) {
             unbind()
+            markCommandFailed("shizuku_not_ready")
             return ShellResult.fail("shizuku_not_ready")
         }
+        // RUNNING is only a transient "executing" marker; the terminal state
+        // below comes from the executed command's real exit code (RULE-08:
+        // "command sent" is never reported as success).
+        lastCommand = CommandStatus.RUNNING
+        lastCommandMessage = null
         return try {
-            parseRaw(s.runShell(cmd))
+            val r = parseRaw(s.runShell(cmd))
+            lastCommand = ShizukuConnectionResolver.commandResult(CommandStatus.RUNNING, r.exitCode, r.stderr)
+            lastCommandMessage = if (r.ok) null else r.stderr.ifEmpty { "exit ${r.exitCode}" }
+            r
         } catch (e: RemoteException) {
             unbind()
+            markCommandFailed(e.message ?: "remote_error")
+            val c = appCtx
+            if (c != null) notifyConnectionChanged(c)
             ShellResult.fail(e.message ?: "remote_error")
         } catch (e: Exception) {
+            markCommandFailed(e.message ?: "error")
             ShellResult.fail(e.message ?: "error")
         }
+    }
+
+    private fun markCommandFailed(message: String) {
+        lastCommand = CommandStatus.FAILED
+        lastCommandMessage = message
     }
 
     /**
@@ -321,17 +470,28 @@ object ShizukuShell {
     }
 
     /**
-     * True when a privileged command actually succeeds end-to-end.
-     * Cached for a short TTL: the check pings the binder AND the user
-     * service on every call, and the UI asks it on every refresh —
-     * without the cache the app would hammer the binder while idle.
+     * True when a privileged shell is usable. Cached for a short TTL because
+     * the UI asks on every refresh.
+     *
+     * v1.24.1: by default this does NOT execute a shell command — binder-alive
+     * plus a bound user service is enough, so idle refreshes cost no CPU and
+     * heat nothing up. The expensive end-to-end `run("true")` verification is
+     * reserved for [verifyWithCommand] callers (e.g. right before a boost).
      */
-    fun isUsable(ctx: Context): Boolean {
+    fun isUsable(ctx: Context, verifyWithCommand: Boolean = false): Boolean {
         val now = System.currentTimeMillis()
         val c = usableCache
         if (c.second + USABLE_CACHE_MS > now) return c.first
         val ok = try {
-            isReady() && ensureBound(ctx) && run("true").ok
+            if (!isReady()) {
+                false
+            } else if (!ensureBound(ctx)) {
+                false
+            } else if (verifyWithCommand) {
+                run("true").ok
+            } else {
+                IdlePolicy.usableWithoutCommand(isReady(), service != null)
+            }
         } catch (e: Exception) {
             false
         }

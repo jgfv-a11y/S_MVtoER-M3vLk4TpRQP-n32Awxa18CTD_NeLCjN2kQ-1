@@ -1,3 +1,7 @@
 # Generated distribution artifacts are published through GitHub Releases.
 dist/*.apk
 dist/*.sha256
+
+# Python caches (repo-level tools)
+__pycache__/
+*.py[cod]

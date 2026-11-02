@@ -379,6 +379,15 @@
                     android:layout_marginStart="6dp"
                     android:text="@string/btn_clear_log"
                     android:textSize="12sp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_clear_history"
+                    style="@style/Widget.Material3.Button.TonalButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:text="@string/btn_clear_history"
+                    android:textSize="12sp" />
             </LinearLayout>
 
             <TextView

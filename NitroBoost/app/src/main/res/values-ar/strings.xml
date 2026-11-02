@@ -271,6 +271,28 @@
     <string name="onboarding_incomplete_title">ما زالت هناك صلاحيات ناقصة</string>
     <string name="onboarding_incomplete_message">ما زالت هذه الصلاحيات غير مفعّلة: %1$s. لتفعيلها لاحقًا، افتح NitroBoost واضغط «الصلاحيات» في الرئيسية، ثم اختر البند وامنحه من إعدادات Android.</string>
 
+    <!-- Session history (v1.24.0) -->
+    <string name="report_history_count">الجلسات المسجّلة لهذه اللعبة: %1$d (الحد الأقصى %2$d)</string>
+    <string name="report_history_trend">متوسط FPS الحديث %1$d مقابل الجلسات السابقة %2$d (%3$s fps)</string>
+    <string name="report_history_scope">مقارنة وصفية لجلسات اللعبة نفسها فقط — ليست نتيجة A/B مضبوطة.</string>
+    <string name="btn_clear_history">مسح سجل الجلسات</string>
+    <string name="history_cleared">تم مسح سجل الجلسات</string>
+
+    <!-- Shizuku connection state machine + thermal status (v1.24.1) -->
+    <string name="shizuku_conn_disconnected">Shizuku: غير متصل</string>
+    <string name="shizuku_conn_no_permission">Shizuku متصل — بانتظار الإذن</string>
+    <string name="shizuku_conn_granted">Shizuku متصل ومصرَّح</string>
+    <string name="shizuku_conn_expired">انتهت جلسة Shizuku — اضغط «إعادة المحاولة» للاتصال</string>
+    <string name="shizuku_cmd_running">جارٍ تنفيذ الأمر…</string>
+    <string name="shizuku_cmd_ok">آخر أمر: نجح</string>
+    <string name="shizuku_cmd_failed">آخر أمر فشل: %1$s</string>
+    <string name="shizuku_action_working">جارٍ العمل…</string>
+    <string name="shizuku_perm_granted">تم منح الإذن</string>
+    <string name="shizuku_perm_denied">رُفض الإذن</string>
+    <string name="thermal_guard_active">الحماية الحرارية: مفعّلة</string>
+    <string name="thermal_guard_limiting">الحماية الحرارية: تقييد التعزيز (حالة %1$d)</string>
+    <string name="thermal_guard_unknown">الحماية الحرارية: مفعّلة (لا توجد قراءة مستشعر)</string>
+
     <!-- Common -->
     <string name="save">حفظ</string>
     <string name="cancel">إلغاء</string>

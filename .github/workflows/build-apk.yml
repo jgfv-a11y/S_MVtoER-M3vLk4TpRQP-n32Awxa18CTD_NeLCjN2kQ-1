@@ -58,6 +58,9 @@ jobs:
           python3 tools/verify.py
           python3 tools/security_verify.py
           python3 -m unittest discover -s tools -p 'test_*.py' -v
+          # Repo-level: skills-system structural verifier + its unit tests
+          python3 ../tools/verify_skills.py
+          python3 -m unittest discover -s ../tools -p 'test_*.py' -v
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0

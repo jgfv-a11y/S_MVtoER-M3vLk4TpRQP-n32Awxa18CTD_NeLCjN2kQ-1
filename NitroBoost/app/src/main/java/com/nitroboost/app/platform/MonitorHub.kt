@@ -2,6 +2,7 @@ package com.nitroboost.app.platform
 
 import android.content.Context
 import android.os.SystemClock
+import com.nitroboost.app.core.IdlePolicy
 import com.nitroboost.app.core.telemetry.BatterySnapshot
 import com.nitroboost.app.core.telemetry.CpuSnapshot
 import com.nitroboost.app.core.telemetry.FrameSnapshot
@@ -59,10 +60,22 @@ class MonitorHub(private val ctx: Context) {
     var gamePackage: () -> String? = { null }
     var targetFps: () -> Int? = { null }
 
+    // v1.24.1 idle policy inputs: the loop slows down (and skips network
+    // probing) when no session/overlay is live, cutting idle CPU and heat.
+    var uiVisible: () -> Boolean = { true }
+    var sessionActive: () -> Boolean = { false }
+    var overlayVisible: () -> Boolean = { false }
+
     fun start(listener: (MonitorSnapshot) -> Unit) {
         stop()
         job = scope.launch {
             while (isActive) {
+                val intervalMs = IdlePolicy.monitorIntervalMs(
+                    uiVisible = uiVisible(),
+                    sessionActive = sessionActive(),
+                    overlayVisible = overlayVisible()
+                ) ?: break // nothing consumes samples right now
+                val netAllowed = IdlePolicy.networkProbeAllowed(sessionActive(), overlayVisible())
                 val snap = try {
                     val now = SystemClock.elapsedRealtime()
                     val cpuReading = cpu.sample()
@@ -206,7 +219,7 @@ class MonitorHub(private val ctx: Context) {
                     null
                 }
                 if (snap == null) {
-                    delay(MONITOR_INTERVAL_MS)
+                    delay(intervalMs)
                     continue
                 }
                 try {
@@ -214,7 +227,7 @@ class MonitorHub(private val ctx: Context) {
                 } catch (_: Exception) {
                     // A removed observer must not stop sampling for other consumers.
                 }
-                delay(MONITOR_INTERVAL_MS)
+                delay(intervalMs)
             }
         }
     }

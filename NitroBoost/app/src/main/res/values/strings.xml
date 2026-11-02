@@ -271,6 +271,28 @@ The app keeps checking by itself until connected. On rooted devices, Root is use
     <string name="onboarding_incomplete_title">Permissions still missing</string>
     <string name="onboarding_incomplete_message">Still disabled: %1$s. To enable them later, open NitroBoost, tap Permissions on Home, choose an item, and grant it in Android Settings.</string>
 
+    <!-- Session history (v1.24.0) -->
+    <string name="report_history_count">Sessions recorded for this game: %1$d (max %2$d)</string>
+    <string name="report_history_trend">Recent avg FPS %1$d vs earlier sessions %2$d (%3$s fps)</string>
+    <string name="report_history_scope">Descriptive comparison of same-game sessions only — not a controlled A/B result.</string>
+    <string name="btn_clear_history">Clear history</string>
+    <string name="history_cleared">Session history cleared</string>
+
+    <!-- Shizuku connection state machine + thermal status (v1.24.1) -->
+    <string name="shizuku_conn_disconnected">Shizuku: disconnected</string>
+    <string name="shizuku_conn_no_permission">Shizuku connected — waiting for permission</string>
+    <string name="shizuku_conn_granted">Shizuku connected and granted</string>
+    <string name="shizuku_conn_expired">Shizuku session expired — tap Retry to reconnect</string>
+    <string name="shizuku_cmd_running">Running command…</string>
+    <string name="shizuku_cmd_ok">Last command: succeeded</string>
+    <string name="shizuku_cmd_failed">Last command failed: %1$s</string>
+    <string name="shizuku_action_working">Working…</string>
+    <string name="shizuku_perm_granted">Permission granted</string>
+    <string name="shizuku_perm_denied">Permission denied</string>
+    <string name="thermal_guard_active">Thermal protection: active</string>
+    <string name="thermal_guard_limiting">Thermal protection: limiting boost (status %1$d)</string>
+    <string name="thermal_guard_unknown">Thermal protection: active (no sensor reading)</string>
+
     <!-- Common -->
     <string name="save">Save</string>
     <string name="cancel">Cancel</string>

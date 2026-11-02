@@ -104,6 +104,12 @@ class SettingsFragment : Fragment() {
                 AppStore.loadLogs()
                 updateJournal()
             }
+            root.findViewById<Button>(R.id.btn_clear_history).setOnClickListener {
+                Prefs.clearSessionHistory(c)
+                android.widget.Toast.makeText(
+                    c, R.string.history_cleared, android.widget.Toast.LENGTH_SHORT
+                ).show()
+            }
 
             // System & RAM
             val rec = root.findViewById<RecyclerView>(R.id.rec_processes)
