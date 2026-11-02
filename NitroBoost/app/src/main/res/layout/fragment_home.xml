@@ -399,7 +399,7 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Shizuku / privilege card (shown only when not ready) -->
+        <!-- Shizuku / privilege card (always visible: shows true connection state) -->
         <LinearLayout
             android:id="@+id/shizuku_card"
             android:layout_width="match_parent"

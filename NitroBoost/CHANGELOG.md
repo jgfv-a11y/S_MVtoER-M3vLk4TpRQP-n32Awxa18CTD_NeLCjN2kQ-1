@@ -38,7 +38,7 @@
   check is opt-in (`verifyWithCommand`) for the moment before a boost.
 
 ### Tests
-- New JVM suites: `ShizukuConnectionTest` (full resolver matrix incl.
+- New JVM suites: `ShizukuConnectionTest` (9 tests: full resolver matrix incl.
   SESSION_EXPIRED semantics + command-result transitions) and `IdlePolicyTest`
   (monitor interval / network-probe / poller-delay / usable-without-command).
 - Local: `tools/verify.py` 0 errors (43 xml / 144 kotlin / 112 ids),
