@@ -1,4 +1,61 @@
 # Changelog
+## v1.24.1 — UI reliability & idle thermal/CPU efficiency (no device claims)
+
+### Fixed — UI reliability (common root causes, not just one button)
+- **Poller thread pile-up**: the Shizuku card poller spawned a new thread every
+  2 s, each potentially blocking in `ensureBound` and paying
+  `PackageManager.getPackageInfo` IPC — overlapping threads starved
+  PackageManager/binder and made the card flap. Now single-flight
+  (`AtomicBoolean`), adaptive delay (2 s while not-ready/card visible, 15 s as a
+  disconnect backstop via `IdlePolicy.shizukuPollDelayMs`), and the installed
+  check is cached for 30 s.
+- **Explicit Shizuku connection state machine** (`core/ShizukuConnection.kt`,
+  pure + unit-tested): `DISCONNECTED`, `CONNECTED_NO_PERMISSION`,
+  `CONNECTED_GRANTED`, `SESSION_EXPIRED` — resolved only from observed facts
+  (installed / binder alive / permission granted / service bound / ever-ready).
+  `ShizukuShell` now registers binder-dead/received and permission-result
+  listeners and pushes changes to the UI **immediately** (main thread), instead
+  of waiting for the next poll. The Shizuku card stays visible and always shows
+  the true connection state.
+- **Command outcome from the real exit code only** (RULE-08): `run()` records
+  `RUNNING → SUCCEEDED/FAILED` via the exit code and the card shows the last
+  command result / real permission grant-deny. "Sent" is never shown as success.
+- **Button tap feedback + double-tap guard**: the Shizuku action button shows
+  "Working…" and ignores re-taps while an action is in flight.
+- **Fail-loud wiring audit**: `HomeFragment.auditViewWiring` logs any critical
+  view id missing from the inflated layout to the session log (a missing view
+  means its listener was silently never attached — the classic dead-button bug).
+- **Less UI churn**: text views update only when the value changed
+  (`setTextIfChanged`); the thermal-protection state is shown explicitly on Home.
+
+### Fixed — idle CPU/thermal (code-level; no on-device measurement claimed)
+- **MonitorHub adaptive interval** (`core/IdlePolicy.kt`, unit-tested): 1 s
+  sampling only while a boost session or the overlay is live; 5 s when only the
+  UI is open; the loop stops when nothing consumes samples. Network probing
+  (TCP ping / retrans reads) is skipped entirely at idle.
+- **`ShizukuShell.isUsable()` no longer executes a shell command** to answer by
+  default (binder-alive + bound service suffices); the end-to-end `run("true")`
+  check is opt-in (`verifyWithCommand`) for the moment before a boost.
+
+### Tests
+- New JVM suites: `ShizukuConnectionTest` (full resolver matrix incl.
+  SESSION_EXPIRED semantics + command-result transitions) and `IdlePolicyTest`
+  (monitor interval / network-probe / poller-delay / usable-without-command).
+- Local: `tools/verify.py` 0 errors (43 xml / 144 kotlin / 112 ids),
+  `security_verify.py` 0 findings, skills verifier OK, Python suites 7+25 OK.
+- CI: `./gradlew test lintDebug assembleDebug` + badging (`versionCode=32`,
+  `versionName=1.24.1`, targetSdk 36, minSdk 24) + `apksigner verify` + SHA-256.
+
+### Honest limits
+- **No emulator/device testing was possible in this environment** (the artemis
+  emulator skill is not available on this platform — connector lookup returned
+  "unsupported"; no adb/emulator binaries exist here). Therefore NO fix is
+  claimed as device-verified, and no CPU/thermal numbers are claimed — the
+  idle-work reductions above are code-level facts, with JVM tests + CI as the
+  evidence. The reported Clash of Clans 60 FPS result is a user-side
+  observation; nothing in this release touches the boost engine, journal,
+  thermal guard limits, or task set, so that path is unchanged.
+
 ## v1.24.0 — per-game session history, profile-list caching, local history management
 
 ### Added

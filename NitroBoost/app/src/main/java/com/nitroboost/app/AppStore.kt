@@ -474,6 +474,11 @@ object AppStore {
         val newHub = MonitorHub(context.applicationContext)
         newHub.gamePackage = { gamePackage() }
         newHub.targetFps = { currentTargetFps.takeIf { gamePackage() != null } }
+        // v1.24.1 idle policy: 1s sampling only while a session/overlay is
+        // live; 5s while just the UI is open; the hub stops when nothing needs it.
+        newHub.uiVisible = { monitorDemand.clients().contains(MonitorClient.UI) }
+        newHub.sessionActive = { BoosterService.active }
+        newHub.overlayVisible = { com.nitroboost.app.service.FpsOverlayService.visible }
         hub = newHub
         newHub.start { sample ->
             monitor.postValue(collectSample(sample))

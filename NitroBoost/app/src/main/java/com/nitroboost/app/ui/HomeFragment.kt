@@ -1,5 +1,6 @@
 package com.nitroboost.app.ui
 
+import android.content.pm.PackageManager
 import android.graphics.Typeface
 import android.os.Bundle
 import android.os.Handler
@@ -22,8 +23,13 @@ import com.nitroboost.app.SessionState
 import com.nitroboost.app.core.AppProfile
 import com.nitroboost.app.core.FpsDisplayCache
 import com.nitroboost.app.core.GameSpaceDetector
+import com.nitroboost.app.core.CommandStatus
+import com.nitroboost.app.core.IdlePolicy
 import com.nitroboost.app.core.SessionHistoryStore
 import com.nitroboost.app.core.SessionReport
+import com.nitroboost.app.core.ShizukuConnection
+import com.nitroboost.app.core.ShizukuUiState
+import com.nitroboost.app.core.ThermalGuard
 import com.nitroboost.app.core.adaptive.Decision
 import com.nitroboost.app.core.performance.EvidenceDomain
 import com.nitroboost.app.core.performance.EvidenceScope
@@ -34,11 +40,13 @@ import com.nitroboost.app.core.performance.PerformanceState
 import com.nitroboost.app.core.performance.PerformanceStateResult
 import com.nitroboost.app.data.Prefs
 import com.nitroboost.app.data.ProfileStore
+import com.nitroboost.app.data.SessionLog
 import com.nitroboost.app.platform.MonitorSnapshot
 import com.nitroboost.app.platform.RootShell
 import com.nitroboost.app.platform.ShizukuShell
 import com.nitroboost.app.service.BoosterService
 import com.nitroboost.app.service.FpsOverlayService
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * The single main screen (v1.5 redesign): pick a game, hit the big boost
@@ -118,6 +126,8 @@ class HomeFragment : Fragment() {
         adaptiveDecisions = view.findViewById(R.id.adaptive_decisions)
         shizukuCard = view.findViewById(R.id.shizuku_card)
         shizukuStatus = view.findViewById(R.id.shizuku_card_status)
+        shizukuCommandStatus = view.findViewById(R.id.shizuku_command_status)
+        thermalGuardStatus = view.findViewById(R.id.thermal_guard_status)
         btnShizuku = view.findViewById(R.id.btn_shizuku)
         levelChips = listOf(
             view.findViewById(R.id.lv_chip_1),
@@ -251,66 +261,140 @@ class HomeFragment : Fragment() {
     // ---------------- Shizuku / root card ----------------
 
     private fun refreshShizukuCard() {
-        val card = shizukuCard ?: return
+        if (shizukuCard == null) return
+        // Single-flight: overlapping poller threads used to pile up (each can
+        // block in bind waits), starving PackageManager/binder and flapping the UI.
+        if (!shizukuPollerInFlight.compareAndSet(false, true)) return
         val c = requireContext()
         Thread {
-            val state = try {
-                ShizukuShell.state(c)
-            } catch (e: Exception) {
-                ShizukuShell.ShizukuState.NOT_STARTED
-            }
-            val root = try {
-                RootShell.isAvailable()
-            } catch (e: Exception) {
-                false
-            }
-            val ready = state == ShizukuShell.ShizukuState.READY || root
-            activity?.runOnUiThread {
-                val v = view ?: return@runOnUiThread
-                if (ready) {
-                    card.visibility = View.GONE
-                    return@runOnUiThread
+            try {
+                val legacy = try {
+                    ShizukuShell.state(c)
+                } catch (e: Exception) {
+                    ShizukuShell.ShizukuState.NOT_STARTED
                 }
-                card.visibility = View.VISIBLE
-                val (statusText, buttonLabel) = when (state) {
-                    ShizukuShell.ShizukuState.NOT_INSTALLED ->
-                        getString(R.string.shizuku_state_not_installed) to getString(R.string.btn_open_shizuku)
-                    ShizukuShell.ShizukuState.NOT_STARTED ->
-                        getString(R.string.shizuku_state_not_started) to getString(R.string.btn_open_shizuku)
-                    ShizukuShell.ShizukuState.PENDING_PERMISSION ->
-                        getString(R.string.shizuku_state_pending) to getString(R.string.btn_grant)
-                    ShizukuShell.ShizukuState.NOT_BOUND ->
-                        getString(R.string.shizuku_state_not_bound) to getString(R.string.btn_retry)
-                    ShizukuShell.ShizukuState.READY ->
-                        getString(R.string.shizuku_ready) to getString(R.string.btn_retry)
+                val uiState = try {
+                    ShizukuShell.connectionState(c)
+                } catch (e: Exception) {
+                    ShizukuUiState.IDLE
                 }
-                shizukuStatus?.text = statusText
-                btnShizuku?.text = buttonLabel
+                val root = try {
+                    RootShell.isAvailable()
+                } catch (e: Exception) {
+                    false
+                }
+                activity?.runOnUiThread {
+                    lastLegacyState = legacy
+                    renderShizukuState(uiState, rootAvailable = root)
+                }
+            } finally {
+                shizukuPollerInFlight.set(false)
             }
         }.start()
     }
 
+    /**
+     * Render the explicit connection state machine. The card stays visible:
+     * "connected" is shown only for CONNECTED_GRANTED (binder + permission +
+     * bound service), never for a merely-dispatched request.
+     */
+    private fun renderShizukuState(ui: ShizukuUiState, rootAvailable: Boolean = false) {
+        if (view == null) return
+        val card = shizukuCard ?: return
+        connectionReady = ui.connection == ShizukuConnection.CONNECTED_GRANTED || rootAvailable
+        card.visibility = View.VISIBLE
+        val connText = when (ui.connection) {
+            ShizukuConnection.DISCONNECTED -> getString(R.string.shizuku_conn_disconnected)
+            ShizukuConnection.CONNECTED_NO_PERMISSION -> getString(R.string.shizuku_conn_no_permission)
+            ShizukuConnection.CONNECTED_GRANTED -> getString(R.string.shizuku_conn_granted)
+            ShizukuConnection.SESSION_EXPIRED -> getString(R.string.shizuku_conn_expired)
+        }
+        val rootNote =
+            if (rootAvailable && ui.connection != ShizukuConnection.CONNECTED_GRANTED) {
+                " · " + getString(R.string.shizuku_via_root)
+            } else ""
+        shizukuStatus?.setTextIfChanged(connText + rootNote)
+        val buttonLabel = when (lastLegacyState) {
+            ShizukuShell.ShizukuState.NOT_INSTALLED,
+            ShizukuShell.ShizukuState.NOT_STARTED -> getString(R.string.btn_open_shizuku)
+            ShizukuShell.ShizukuState.PENDING_PERMISSION -> getString(R.string.btn_grant)
+            ShizukuShell.ShizukuState.NOT_BOUND,
+            ShizukuShell.ShizukuState.READY -> getString(R.string.btn_retry)
+        }
+        btnShizuku?.setTextIfChanged(buttonLabel)
+
+        // Command outcome — terminal state comes from the executed exit code only.
+        val cmdView = shizukuCommandStatus
+        if (cmdView != null) {
+            when (ui.command) {
+                CommandStatus.RUNNING -> {
+                    cmdView.visibility = View.VISIBLE
+                    cmdView.setTextIfChanged(getString(R.string.shizuku_cmd_running))
+                }
+                CommandStatus.SUCCEEDED -> {
+                    cmdView.visibility = View.VISIBLE
+                    cmdView.setTextIfChanged(getString(R.string.shizuku_cmd_ok))
+                }
+                CommandStatus.FAILED -> {
+                    cmdView.visibility = View.VISIBLE
+                    cmdView.setTextIfChanged(
+                        getString(R.string.shizuku_cmd_failed, ui.commandMessage ?: "-")
+                    )
+                }
+                CommandStatus.IDLE -> {
+                    val perm = ShizukuShell.lastPermissionResult
+                    if (perm != null) {
+                        cmdView.visibility = View.VISIBLE
+                        cmdView.setTextIfChanged(
+                            getString(
+                                if (perm == PackageManager.PERMISSION_GRANTED) {
+                                    R.string.shizuku_perm_granted
+                                } else R.string.shizuku_perm_denied
+                            )
+                        )
+                    } else {
+                        cmdView.visibility = View.GONE
+                    }
+                }
+            }
+        }
+    }
+
+    private val shizukuActionInFlight = AtomicBoolean(false)
+
     private fun onShizukuAction() {
+        // Ignore double taps while a (possibly blocking) action is running, and
+        // say so on the button instead of appearing dead.
+        if (!shizukuActionInFlight.compareAndSet(false, true)) return
         val c = requireContext()
-        val act = activity ?: return
+        val act = activity
+        btnShizuku?.setTextIfChanged(getString(R.string.shizuku_action_working))
         Thread {
-            val state = try {
-                ShizukuShell.state(c)
-            } catch (e: Exception) {
-                ShizukuShell.ShizukuState.NOT_STARTED
-            }
-            when (state) {
-                ShizukuShell.ShizukuState.NOT_INSTALLED,
-                ShizukuShell.ShizukuState.NOT_STARTED ->
-                    ShizukuShell.openShizukuApp(c)
-                ShizukuShell.ShizukuState.PENDING_PERMISSION ->
-                    ShizukuShell.requestPermission()
-                else -> ShizukuShell.ensureBound(c)
-            }
-            act.runOnUiThread {
-                if (isResumed) refreshShizukuCard()
+            try {
+                val state = try {
+                    ShizukuShell.state(c)
+                } catch (e: Exception) {
+                    ShizukuShell.ShizukuState.NOT_STARTED
+                }
+                when (state) {
+                    ShizukuShell.ShizukuState.NOT_INSTALLED,
+                    ShizukuShell.ShizukuState.NOT_STARTED ->
+                        ShizukuShell.openShizukuApp(c)
+                    ShizukuShell.ShizukuState.PENDING_PERMISSION ->
+                        ShizukuShell.requestPermission()
+                    else -> ShizukuShell.ensureBound(c)
+                }
+            } finally {
+                shizukuActionInFlight.set(false)
+                act?.runOnUiThread {
+                    if (isResumed) refreshShizukuCard()
+                }
             }
         }.start()
+    }
+
+    private fun TextView.setTextIfChanged(t: CharSequence) {
+        if (text != t) text = t
     }
 
     // ---------------- Game-space hint ----------------
@@ -607,32 +691,42 @@ class HomeFragment : Fragment() {
         })
         AppStore.monitor.observe(owner, Observer { s ->
             val snap = s ?: MonitorSnapshot.EMPTY
-            statCpu?.text = if (snap.cpuSampleAvailable) "${snap.cpuPct}%" else "--"
-            statRam?.text = if (snap.ramSampleAvailable) "${snap.ramUsedMb / 1024}GB" else "--"
-            statTemp?.text = snap.tempC?.let { "${Math.round(it)}\u00B0" } ?: "--"
-            statFps?.text = fpsDisplayCache.value(
-                snap.fps, snap.gamePackage, android.os.SystemClock.elapsedRealtime()
-            )?.toString() ?: "--"
-            statPing?.text = snap.pingMs?.let { "${it}ms" } ?: "--"
+            // setTextIfChanged avoids re-layout churn when nothing changed.
+            statCpu?.setTextIfChanged(if (snap.cpuSampleAvailable) "${snap.cpuPct}%" else "--")
+            statRam?.setTextIfChanged(if (snap.ramSampleAvailable) "${snap.ramUsedMb / 1024}GB" else "--")
+            statTemp?.setTextIfChanged(snap.tempC?.let { "${Math.round(it)}\u00B0" } ?: "--")
+            statFps?.setTextIfChanged(
+                fpsDisplayCache.value(
+                    snap.fps, snap.gamePackage, android.os.SystemClock.elapsedRealtime()
+                )?.toString() ?: "--"
+            )
+            statPing?.setTextIfChanged(snap.pingMs?.let { "${it}ms" } ?: "--")
+            // Thermal protection is never disabled; show its live state explicitly.
+            thermalGuardStatus?.setTextIfChanged(
+                when {
+                    !snap.thermalSampleAvailable -> getString(R.string.thermal_guard_unknown)
+                    snap.thermalStatus >= ThermalGuard.STATUS_MODERATE ->
+                        getString(R.string.thermal_guard_limiting, snap.thermalStatus)
+                    else -> getString(R.string.thermal_guard_active)
+                }
+            )
         })
         AppStore.session.observe(owner, Observer { st ->
             when (st) {
                 is SessionState.Idle -> {
-                    sessionChip?.text = getString(R.string.session_idle)
-                    sessionDetail?.text = ""
-                    btnBoost?.text = getString(R.string.btn_boost_start)
+                    sessionChip?.setTextIfChanged(getString(R.string.session_idle))
+                    sessionDetail?.setTextIfChanged("")
+                    btnBoost?.setTextIfChanged(getString(R.string.btn_boost_start))
                 }
                 is SessionState.Boosting -> {
-                    sessionChip?.text = getString(R.string.session_boosting)
-                    sessionDetail?.text = st.profileName
-                    btnBoost?.text = getString(R.string.btn_boost_running)
-                    btnBoost?.isEnabled = false
+                    sessionChip?.setTextIfChanged(getString(R.string.session_boosting))
+                    sessionDetail?.setTextIfChanged(st.profileName)
+                    btnBoost?.setTextIfChanged(getString(R.string.btn_boost_running))
                 }
                 is SessionState.Boosted -> {
-                    sessionChip?.text = getString(R.string.session_active)
-                    sessionDetail?.text = st.profileName
-                    btnBoost?.text = getString(R.string.btn_boost_stop)
-                    btnBoost?.isEnabled = true
+                    sessionChip?.setTextIfChanged(getString(R.string.session_active))
+                    sessionDetail?.setTextIfChanged(st.profileName)
+                    btnBoost?.setTextIfChanged(getString(R.string.btn_boost_stop))
                 }
             }
             btnBoost?.isEnabled = st !is SessionState.Boosting
