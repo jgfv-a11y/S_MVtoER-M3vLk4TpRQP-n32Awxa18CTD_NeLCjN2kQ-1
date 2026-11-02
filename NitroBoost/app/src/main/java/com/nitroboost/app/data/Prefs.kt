@@ -4,6 +4,9 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.nitroboost.app.core.ProfileValidation
 import com.nitroboost.app.core.SessionFpsBaselineStore
+import com.nitroboost.app.core.SessionHistoryEntry
+import com.nitroboost.app.core.SessionHistoryStore
+import com.nitroboost.app.core.SessionReport
 import com.nitroboost.app.core.ShellInput
 
 /** Central preferences. All keys live here — no stringly-typed sprinkling. */
@@ -29,6 +32,7 @@ object Prefs {
     @Deprecated("Use KEY_PREV_FPS_BY_GAME; unscoped historical values are ambiguous")
     const val KEY_PREV_FPS = "prev_session_avg_fps"
     const val KEY_PREV_FPS_BY_GAME = "prev_session_avg_fps_by_game" // bounded JSON array
+    const val KEY_SESSION_HISTORY = "session_history" // bounded JSON array of per-game summaries
     const val KEY_ADAPTIVE_ON = "adaptive_engine_on"
     const val KEY_ONBOARDING_DONE = "onboarding_shown"
     const val KEY_BOOST_LEVEL = "boost_level"

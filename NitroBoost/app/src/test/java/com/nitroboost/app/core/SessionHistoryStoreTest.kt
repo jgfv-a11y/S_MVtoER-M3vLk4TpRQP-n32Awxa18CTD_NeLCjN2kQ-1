@@ -47,9 +47,9 @@ class SessionHistoryStoreTest {
         assertNotNull(s)
         assertNull(recordOne(s, pkg = "not a package; rm -rf", endedAt = 2L))
         assertNull(recordOne(s, pkg = "", endedAt = 2L))
-        assertNull(SessionHistoryStore.record(s, "com.example.game", endedAt = -5L, 10, 60, null, null, 1, 0))
-        assertNull(SessionHistoryStore.record(s, "com.example.game", endedAt = 5L, -1, 60, null, null, 1, 0))
-        assertNull(SessionHistoryStore.record(s, "com.example.game", endedAt = 5L, 10, 60, null, null, -1, 0))
+        assertNull(SessionHistoryStore.record(s, "com.example.game", -5L, 10, 60, null, null, 1, 0))
+        assertNull(SessionHistoryStore.record(s, "com.example.game", 5L, -1, 60, null, null, 1, 0))
+        assertNull(SessionHistoryStore.record(s, "com.example.game", 5L, 10, 60, null, null, -1, 0))
     }
 
     @Test
