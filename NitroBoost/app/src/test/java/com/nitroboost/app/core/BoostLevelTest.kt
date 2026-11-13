@@ -53,7 +53,9 @@ class BoostLevelTest {
         assertEquals(3, t["touch_boost"]!!.boostLevel)
         assertEquals(3, t["ram_trim"]!!.boostLevel)
         assertEquals(3, t["ram_kill"]!!.boostLevel)
-        assertEquals(3, t["thermal_override"]!!.boostLevel)
+        // Thermal protection is always owned by ThermalGuard; the unsafe
+        // thermal override is intentionally absent from the boost roster.
+        assertTrue("thermal override must not be exposed", "thermal_override" !in t)
         assertEquals(3, t["peak_brightness"]!!.boostLevel)
         // Level 2 — the standard default
         assertEquals(2, t["cpu_online"]!!.boostLevel)
