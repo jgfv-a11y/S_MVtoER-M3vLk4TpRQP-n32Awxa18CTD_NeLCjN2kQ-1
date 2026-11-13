@@ -89,12 +89,6 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/mod_gpu" />
-
-            <CheckBox
-                android:id="@+id/chk_thermal"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/mod_thermal" />
         </LinearLayout>
 
         <com.google.android.material.materialswitch.MaterialSwitch
@@ -115,12 +109,6 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/opt_ram_kill" />
-
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/sw_thermal"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/opt_thermal" />
 
         <LinearLayout
             android:layout_width="match_parent"

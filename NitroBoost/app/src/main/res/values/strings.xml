@@ -182,7 +182,7 @@ The app keeps checking by itself until connected. On rooted devices, Root is use
     <string name="restore">Restore</string>
     <string name="clear_log">Clear log</string>
     <string name="about_title">About NitroBoost</string>
-    <string name="about_text">Version 1.10.0 — a journal-based game booster with paired adaptive trials, measured-only metrics, and local confidence-aware decisions. Every system change is recorded and reversible. Thermal safety outranks performance; failed restores stay journaled and are retried.</string>
+    <string name="about_text">A journal-based game booster with paired adaptive trials, measured-only metrics, and local confidence-aware decisions. Every system change is recorded and reversible. Thermal safety outranks performance; failed restores stay journaled and are retried.</string>
 
     <!-- Session report -->
     <string name="report_title">Last session report</string>

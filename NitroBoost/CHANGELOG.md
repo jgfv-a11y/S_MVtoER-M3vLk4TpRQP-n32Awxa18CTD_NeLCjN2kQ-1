@@ -1,4 +1,11 @@
 # Changelog
+## v1.25.0 — profile UI consistency and release cleanup
+
+### Fixed
+- Removed the obsolete thermal module checkbox and aggressive thermal switch from profile editing. ThermalGuard is always active and the old setting could be saved without applying any task.
+- Normalized edited legacy profiles by clearing the retired thermal override flag while preserving its JSON field for backward compatibility.
+- Removed stale hard-coded v1.10.0 text from English and Arabic About screens; the displayed version now comes from `BuildConfig.VERSION_NAME`.
+
 ## v1.24.0 — safe adaptive thermal protection
 
 ### Fixed

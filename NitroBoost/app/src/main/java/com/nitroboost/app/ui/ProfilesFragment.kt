@@ -164,8 +164,7 @@ class ProfilesFragment : Fragment() {
             Module.POWER to view.findViewById(R.id.chk_power),
             Module.NETWORK to view.findViewById(R.id.chk_network),
             Module.TWEAKS to view.findViewById(R.id.chk_tweaks),
-            Module.GPU to view.findViewById(R.id.chk_gpu),
-            Module.THERMAL to view.findViewById(R.id.chk_thermal)
+            Module.GPU to view.findViewById(R.id.chk_gpu)
         )
         for ((m, cb) in moduleChecks) {
             cb.isChecked = m in profile.enabledModules
@@ -173,11 +172,9 @@ class ProfilesFragment : Fragment() {
         val swDnd = view.findViewById<MaterialSwitch>(R.id.sw_dnd)
         val swAnim = view.findViewById<MaterialSwitch>(R.id.sw_anim)
         val swRamKill = view.findViewById<MaterialSwitch>(R.id.sw_ram_kill)
-        val swThermal = view.findViewById<MaterialSwitch>(R.id.sw_thermal)
         swDnd.isChecked = profile.dnd
         swAnim.isChecked = profile.killAnimations
         swRamKill.isChecked = profile.aggressiveRamClean
-        swThermal.isChecked = profile.thermalOverride
 
         val editDpi = view.findViewById<EditText>(R.id.edit_dpi)
         val editRefresh = view.findViewById<EditText>(R.id.edit_refresh)
@@ -211,7 +208,9 @@ class ProfilesFragment : Fragment() {
             profile.dnd = swDnd.isChecked
             profile.killAnimations = swAnim.isChecked
             profile.aggressiveRamClean = swRamKill.isChecked
-            profile.thermalOverride = swThermal.isChecked
+            // Kept in JSON only for backwards compatibility; thermal safety
+            // is always owned by ThermalGuard and is never user-disabled.
+            profile.thermalOverride = false
             profile.dpi = dpi!!
             profile.refreshRate = refresh!!
             profile.gameMode = gameMode!!
