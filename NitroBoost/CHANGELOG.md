@@ -1,4 +1,11 @@
 # Changelog
+## v1.24.0 — safe adaptive thermal protection
+
+### Fixed
+- Removed the unsafe `cmd thermalservice override-status 0` path. Android does not expose a public command for setting a safe temperature threshold; the old command disabled the OS thermal governor instead.
+- Kept legacy thermal profile/journal data readable while making the task fail closed. The always-on `ThermalGuard` remains responsible for raw-temperature, trend, and automatic de-escalation checks.
+- Preserved the Android Game Manager performance mode and per-game render downscale features from v1.23.0.
+
 ## v1.23.0 — correctness hardening: journal ownership, io_scheduler durability, Android 7 process handling
 Engineering-update release: every fix below was verified against the current v1.22.0 source before being applied.
 

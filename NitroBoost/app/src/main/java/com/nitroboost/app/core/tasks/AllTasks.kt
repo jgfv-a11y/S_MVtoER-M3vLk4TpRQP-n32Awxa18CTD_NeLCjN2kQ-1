@@ -25,7 +25,9 @@ object AllTasks {
         NetworkTask(),
         WaltSchedulerTask(),
         TouchBoostTask(),
-        ThermalOverrideTask(),
+        // ThermalGuard is always active. Never expose
+        // cmd thermalservice override-status: it disables the OS governor
+        // and cannot set a safe temperature threshold.
         // v1.5 Turbo Kit
         PeakBrightnessTask(),
         IoSchedulerTask(),
