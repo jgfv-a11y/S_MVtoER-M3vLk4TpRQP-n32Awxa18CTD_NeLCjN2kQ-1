@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.RemoteException
 import android.util.Base64
 import androidx.annotation.Keep
+import com.nitroboost.app.core.PrivilegedShellPolicy
 import com.nitroboost.app.core.ShellInput
 import com.nitroboost.app.platform.ShellOutputReader
 import com.nitroboost.app.shizuku.INitroService
@@ -35,6 +36,13 @@ class NitroUserService constructor() : INitroService.Stub() {
     }
 
     override fun runShell(cmd: String): String {
+        // Server-side allowlist: this process holds the Shizuku identity
+        // (shell uid, or root), so it must not execute arbitrary strings on
+        // the app process's say-so. Only commands the shared policy knows —
+        // with every interpolated value re-validated — may run.
+        if (!PrivilegedShellPolicy.isAllowed(cmd)) {
+            return encodeResult(-1, "", "command_not_allowed")
+        }
         return try {
             val process = Runtime.getRuntime().exec(arrayOf("/system/bin/sh", "-c", cmd))
             val outFuture = readAsync(process.inputStream, ShellOutputReader.MAX_STDOUT_BYTES)

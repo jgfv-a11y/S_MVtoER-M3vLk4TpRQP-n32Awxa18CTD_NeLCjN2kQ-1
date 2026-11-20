@@ -63,9 +63,12 @@ class GameModeTask : BoostTask {
                         taskId = id,
                         kind = JournalEntry.Kind.SECURE_SETTING,
                         key = "game_mode",
-                        oldValue = if (cur < 0) "0" else cur.toString(),
+                        // Unreadable/unset (cur < 0) means the key was absent:
+                        // null oldValue makes restore delete it rather than
+                        // inventing an explicit "0" the device never had.
+                        oldValue = if (cur < 0) null else cur.toString(),
                         newValue = target.toString(),
-                        revertCmd = "settings put secure game_mode ${if (cur < 0) 0 else cur}"
+                        revertCmd = if (cur < 0) null else "settings put secure game_mode $cur"
                     )
                 )
             )

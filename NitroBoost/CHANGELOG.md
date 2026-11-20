@@ -1,4 +1,26 @@
 # Changelog
+## v1.26.0 — shell-policy, journaling and release-integrity hardening
+
+### Security / correctness
+- **Documentation/version sync (review #1).** READMEs now advertise the build's actual release, stale pre-v1.24 download links (which shipped the removed unsafe thermal-override path) are gone, and `tools/verify.py` fails CI when README versions, download tags, or the changelog top entry drift from `app/build.gradle.kts`.
+- **Fail-closed journaled shell (review #2).** `JournaledSystemExecutor.shell()` no longer falls through to the delegate for unclassified commands. New shared `PrivilegedShellPolicy` classifies every privileged command as READ_ONLY / MUTATING / ONE_WAY / UNKNOWN; the journaled executor admits only classified read-only commands and task-owned one-way commands (`pm trim-caches` for `ram_trim`, `am force-stop` for `ram_kill`).
+- **Server-side shell allowlist (review #3).** `NitroUserService.runShell` and `RootShell.run` now reject any command `PrivilegedShellPolicy` does not allow, so the privileged processes no longer execute arbitrary strings on the app process's say-so.
+- **No main-thread restore in service teardown (review #4).** `BoosterService.onDestroy()` no longer runs a blocking journal restore (runBlocking + up-to-10s shell calls) on the main thread; leftover entries are recovered by the existing IO stale-journal guard within ~10s.
+- **Lifecycle lock no longer held across boost I/O (review #5).** `AppStore.boost()` claims its generation under `sessionLifecycleLock` briefly, performs task I/O unlocked (engine/journal synchronization still serializes mutations), and rolls back if a stop fenced the request mid-boost.
+- **Single-writer io_scheduler journaling (review #7).** `JournaledSystemExecutor.writeSysWithJournalOverride` records the caller's validated old value (the active scheduler token) with caller-supplied read-back verification, replacing the fragile pre-seed/first-wins dedupe ordering. `PowerTask`/`NetworkTask`/`GameModeTask`/`AnimationsTask` no longer fabricate `oldValue = "0"/"1.0"` for previously-unset keys; restore now deletes the key, returning to the true pre-session state.
+
+### Tests (review #6)
+- `FakeExecutor` fails closed on unhandled commands instead of returning success for anything, with explicit handlers for the real command surface (settings delete, trim-caches, force-stop, deviceidle whitelist state, CPU policy enumeration, thermal restore).
+- New JVM tests: `PrivilegedShellPolicyTest`, `JournaledShellClassificationTest`, `RevertCommandContractTest`, `GpuWaltTouchTasksTest`, `SettingsTasksTest`, `ThermalOverrideTaskTest`, `PowerSaveWhitelistTaskTest`.
+
+### Performance (review #8)
+- `BoostEngine.states()` caches per-task support probes (30s TTL, keyed by privilege state) instead of re-running privileged shell enumeration on every refresh, and `AppStore.refreshTaskStates()` coalesces duplicate in-flight refreshes with a short freshness window for UI callers.
+
+### Build / CI (reviews #9–#11)
+- Release builds now run R8 (`isMinifyEnabled = true`; resource shrinking remains off) and lint is a real gate (`abortOnError = true`, `checkReleaseBuilds = true`).
+- The release workflow refuses to re-publish an existing release tag (a version bump is required) and serializes workflow runs with a `concurrency` group.
+- The Gradle wrapper (`gradlew`, `gradlew.bat`, `gradle-wrapper.jar` for Gradle 8.14.3, from the official gradle/gradle v8.14.3 tag) is now committed, so a fresh clone builds without a system Gradle.
+
 ## v1.25.0 — profile UI consistency and release cleanup
 
 ### Fixed

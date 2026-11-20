@@ -37,6 +37,10 @@ class PowerTask : BoostTask {
         val r = ctx.executor.shell("settings put global low_power 0")
         val now = current(ctx)
         return if (r.ok && now == "0") {
+            // A previously-unset key has oldValue = null so restore deletes
+            // the key (true pre-session state) instead of forcing an
+            // explicit "0" the device never had.
+            val previous: String? = cur.takeUnless { it.isEmpty() || it == "null" }
             TaskResult(
                 id,
                 TaskStatus.Applied,
@@ -45,9 +49,9 @@ class PowerTask : BoostTask {
                         taskId = id,
                         kind = JournalEntry.Kind.GLOBAL_SETTING,
                         key = "low_power",
-                        oldValue = if (cur.isEmpty() || cur == "null") "0" else cur,
+                        oldValue = previous,
                         newValue = "0",
-                        revertCmd = "settings put global low_power ${if (cur.isEmpty() || cur == "null") 0 else cur}"
+                        revertCmd = previous?.let { "settings put global low_power $it" }
                     )
                 )
             )

@@ -118,6 +118,11 @@ object RootShell {
      * command survives the extra shell layer.
      */
     fun run(cmd: String): ShellResult {
+        // Same server-side allowlist as the Shizuku user service: root must
+        // never execute a string the shared policy does not recognize.
+        if (!com.nitroboost.app.core.PrivilegedShellPolicy.isAllowed(cmd)) {
+            return ShellResult.fail("command_not_allowed")
+        }
         if (!isAvailable()) return ShellResult.fail("root_unavailable")
         val escaped = cmd.replace("'", "'\\''")
         return try {

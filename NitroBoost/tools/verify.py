@@ -283,6 +283,48 @@ def main():
             if not is_valid_path(data):
                 err(f"{os.path.relpath(xf, ROOT)}: invalid pathData: {data[:60]}")
 
+    # ---------- 7. documentation / version sync ----------
+    # The READMEs must advertise the same release the build produces, and
+    # every releases/download link must point at that release. This guards
+    # against distributing a stale APK (v1.23.0 kept being linked after the
+    # unsafe thermal-override path was removed in v1.24.0).
+    repo_root = os.path.dirname(ROOT)
+    build_text = open(
+        os.path.join(ROOT, "app", "build.gradle.kts"), encoding="utf-8"
+    ).read()
+    name_m = re.search(r'versionName\s*=\s*"([^"]+)"', build_text)
+    code_m = re.search(r"versionCode\s*=\s*(\d+)", build_text)
+    if not name_m or not code_m:
+        err("app/build.gradle.kts: versionName/versionCode not found")
+    else:
+        vname, vcode = name_m.group(1), code_m.group(1)
+        expected_banner = f"v{vname} (versionCode {vcode})"
+        for readme in (
+            os.path.join(repo_root, "README.md"),
+            os.path.join(ROOT, "README.md"),
+        ):
+            rel = os.path.relpath(readme, ROOT)
+            try:
+                text = open(readme, encoding="utf-8").read()
+            except OSError as e:
+                err(f"{rel}: cannot read: {e}")
+                continue
+            if expected_banner not in text:
+                err(f"{rel}: does not advertise current release {expected_banner}")
+            for tag in re.findall(r"releases/download/nitroboost-v([0-9][0-9A-Za-z.-]*)", text):
+                if tag != vname:
+                    err(
+                        f"{rel}: download link points at nitroboost-v{tag}, "
+                        f"current release is v{vname}"
+                    )
+        changelog = os.path.join(ROOT, "CHANGELOG.md")
+        try:
+            changelog_head = open(changelog, encoding="utf-8").read(4096)
+            if not re.search(rf"^## v{re.escape(vname)}\b", changelog_head, re.M):
+                err(f"CHANGELOG.md: top entry is not v{vname}")
+        except OSError as e:
+            err(f"CHANGELOG.md: cannot read: {e}")
+
     # ---------- report ----------
     for w in warnings:
         print(f"WARN  {w}")
