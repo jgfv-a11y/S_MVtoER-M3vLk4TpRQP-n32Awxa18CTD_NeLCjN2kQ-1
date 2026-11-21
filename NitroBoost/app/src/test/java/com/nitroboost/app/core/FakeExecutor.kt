@@ -3,6 +3,10 @@ package com.nitroboost.app.core
 /**
  * In-memory SystemExecutor for JVM unit tests.
  * Records every write so tests can assert exactly what happened.
+ *
+ * Fail-closed: a shell command with no explicit handler below returns
+ * failure instead of success. A typo'd or renamed command in production
+ * code must fail its test, not silently "work" against the fake.
  */
 class FakeExecutor : SystemExecutor {
 
@@ -12,6 +16,8 @@ class FakeExecutor : SystemExecutor {
     val sysfs = HashMap<String, String>()
     val written: MutableList<String> = mutableListOf()
     val shellLog: MutableList<String> = mutableListOf()
+    /** Packages currently on the simulated deviceidle whitelist. */
+    val dozeWhitelist: MutableSet<String> = mutableSetOf()
 
     var dndFilter = DndFilters.ALL
     var failDnd = false
@@ -45,6 +51,21 @@ class FakeExecutor : SystemExecutor {
             return ShellResult(true, 0, "", "")
         }
 
+        // Simulate the cpufreq policy enumeration loop (cpu_floor task)
+        if (cmd.startsWith("for d in /sys/devices/system/cpu/cpufreq/policy*")) {
+            val dirs = sysfs.keys
+                .map { it.substringBefore("/cpuinfo_").substringBefore("/scaling_") }
+                .filter { it.contains("/cpufreq/policy") }
+                .distinct()
+                .sorted()
+            val out = dirs.mapNotNull { dir ->
+                val max = sysfs["$dir/cpuinfo_max_freq"] ?: return@mapNotNull null
+                val min = sysfs["$dir/scaling_min_freq"] ?: return@mapNotNull null
+                "$dir $max $min"
+            }.joinToString("\n")
+            return ShellResult(true, 0, out, "")
+        }
+
         // Simulate the governor listing loop
         if (cmd.startsWith("for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor")) {
             val out = sysfs.filterKeys { it.endsWith("scaling_governor") }
@@ -70,10 +91,44 @@ class FakeExecutor : SystemExecutor {
                 "deviceidle commands:\n whitelist <pkg>\n whitelist-remove <pkg>", ""
             )
         }
+        if (cmd == "cmd deviceidle whitelist") {
+            return ShellResult(true, 0, dozeWhitelist.joinToString("\n"), "")
+        }
+        if (cmd == "dumpsys deviceidle whitelist") {
+            val out = dozeWhitelist.joinToString("\n") { "Whitelist user app: $it" }
+            return ShellResult(true, 0, out, "")
+        }
         if (cmd.startsWith("cmd deviceidle whitelist")) {
-            val remove = cmd.contains("whitelist-remove")
+            val remove = cmd.contains("whitelist-remove") ||
+                Regex("whitelist\\s+-").containsMatchIn(cmd)
+            val pkg = cmd.removePrefix("cmd deviceidle whitelist")
+                .removePrefix("-remove")
+                .trim()
+                .removeSuffix("2>&1")
+                .removeSuffix("2>/dev/null")
+                .trim()
+                .trimStart('+', '-')
+                .trim()
+            if (remove) dozeWhitelist.remove(pkg) else if (pkg.isNotEmpty()) dozeWhitelist.add(pkg)
             written.add("deviceidle:${if (remove) "rm:" else "add:"}$cmd")
             return ShellResult(true, 0, "", "")
+        }
+        if (cmd == "cmd thermalservice override-status -1" ||
+            cmd == "cmd thermalservice override-status 0"
+        ) {
+            written.add("thermal:$cmd")
+            return ShellResult(true, 0, "", "")
+        }
+        if (cmd == "pm trim-caches 9223372036854775807") {
+            written.add("trim-caches")
+            return ShellResult(true, 0, "", "")
+        }
+        Regex("am force-stop \"([^\"]+)\"").matchEntire(cmd)?.let { m ->
+            written.add("force-stop:${m.groupValues[1]}")
+            return ShellResult(true, 0, "", "")
+        }
+        if (cmd == "ps -A -o PID,RSS,NAME") {
+            return ShellResult(true, 0, "PID RSS NAME\n", "")
         }
 
         // v1.5: Game Manager performance mode
@@ -126,7 +181,19 @@ class FakeExecutor : SystemExecutor {
             written.add("settings:${m.groupValues[1]}:${m.groupValues[2]}")
             return ShellResult(true, 0, "", "")
         }
-        return ShellResult(true, 0, "", "")
+        val deletePattern = Regex("settings delete (system|secure|global) (\\S+)")
+        deletePattern.matchEntire(cmd)?.let { m ->
+            val table = when (m.groupValues[1]) {
+                "system" -> sys
+                "secure" -> secure
+                else -> global
+            }
+            table.remove(m.groupValues[2])
+            written.add("settings-delete:${m.groupValues[1]}:${m.groupValues[2]}")
+            return ShellResult(true, 0, "", "")
+        }
+        // Fail closed: unhandled commands are test bugs or production drift.
+        return ShellResult(false, -1, "", "fake_unhandled_command: $cmd")
     }
 
     override fun readSys(path: String): String? = sysfs[path]

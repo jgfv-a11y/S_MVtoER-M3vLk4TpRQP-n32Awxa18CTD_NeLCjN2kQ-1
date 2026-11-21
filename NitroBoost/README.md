@@ -1,7 +1,7 @@
 # 🚀 NitroBoost — Game Booster
 
 
-**أحدث إصدار: v1.23.0 (versionCode 30)**؛ يدعم Android 7.0 / API 24 فأحدث ويستهدف Android 16 / API 36. راجع [GitHub Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) لتنزيل APK والتحقق من بصمة SHA-256.
+**أحدث إصدار: v1.26.0 (versionCode 33)**؛ يدعم Android 7.0 / API 24 فأحدث ويستهدف Android 16 / API 36. راجع [GitHub Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) لتنزيل APK والتحقق من بصمة SHA-256.
 تطبيق معزّز ألعاب Android احترافي، عربي + إنجليزي، مبني بـ **Kotlin** و**Material 3**
 (بدون Compose) على Shizuku API 13.1.5.
 
@@ -105,18 +105,18 @@ Frame times are read only from `dumpsys gfxinfo ... framestats` when exposed by 
 
 ### من الطرفية (اختياري)
 
-المشروع لا يحوي `gradle-wrapper.jar` (ملف ثنائي). مرّة واحدة فقط:
+يُشحن المشروع مع Gradle Wrapper كامل (`gradlew` + `gradle/wrapper/gradle-wrapper.jar`،
+Gradle 8.14.3) — لا حاجة لتثبيت Gradle منفصلًا:
 
 ```bash
 cd NitroBoost
-gradle wrapper --gradle-version 8.14.3   # إذا كان Gradle مثبتًا
 ./gradlew assembleDebug
 ./gradlew test                        # اختبارات JVM للنواة (المحرك، السجل، الملفات)
 ```
 
 APK الناتج في `app/build/outputs/apk/debug/`.
 
-> 📲 **APK منشورة (v1.23.0)**: [تنزيل nitroboost-debug.apk](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases/download/nitroboost-v1.23.0/nitroboost-debug.apk) — نسخة debug للاختبار؛ استخدم ملف `.sha256` المرفق للتحقق من التنزيل. تُرفق APK release موقّعة فقط عند تهيئة أسرار توقيع المشروع.
+> 📲 **APK منشورة (v1.26.0)**: [تنزيل nitroboost-debug.apk](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases/download/nitroboost-v1.26.0/nitroboost-debug.apk) — نسخة debug للاختبار؛ استخدم ملف `.sha256` المرفق للتحقق من التنزيل. تُرفق APK release موقّعة فقط عند تهيئة أسرار توقيع المشروع.
 > (أو من صفحة [Releases](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases) —
 > يُعاد بناؤه تلقائيًا عبر GitHub Actions عند كل تغيير).
 

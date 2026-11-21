@@ -80,6 +80,7 @@ sealed class SessionState {
 object AppStore {
 
     private const val MAX_PROCESS_RSS_KB = 1_048_576L // cap malformed output at 1 GiB/process
+    private const val TASK_STATES_FRESH_MS = 10_000L
 
     @Volatile
     private var app: Context? = null
@@ -190,14 +191,22 @@ object AppStore {
      * measurements leave the device. App version/capabilities invalidate old
      * task results when behavior or platform support may have changed.
      */
+    /** API-31 SoC model; isolated so lint's NewApi check sees the version gate. */
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
+    private fun socModel(): String = Build.SOC_MODEL
+
+    /** API-28 long version code; same lint-visible gating as [socModel]. */
+    @androidx.annotation.RequiresApi(28)
+    private fun longVersionCode(info: android.content.pm.PackageInfo): Long = info.longVersionCode
+
     private fun makeTrialContext(bctx: BoostContext, thermalTier: Int): TrialContext {
         val sdk = Build.VERSION.SDK_INT
         val staticKeys = cachedHardwareKeys ?: synchronized(adaptiveContextLock) {
             cachedHardwareKeys ?: run {
-                val soc = if (sdk >= Build.VERSION_CODES.S) Build.SOC_MODEL else Build.HARDWARE
+                val soc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) socModel() else Build.HARDWARE
                 val appVersionCode = try {
                     val info = ctx().packageManager.getPackageInfo(ctx().packageName, 0)
-                    if (sdk >= 28) info.longVersionCode else {
+                    if (Build.VERSION.SDK_INT >= 28) longVersionCode(info) else {
                         @Suppress("DEPRECATION")
                         val legacyCode = info.versionCode
                         legacyCode.toLong()
@@ -762,10 +771,22 @@ object AppStore {
         val profile = ProfileStore(c).resolve(profilePkg ?: Prefs.activeProfile(c))
         val requestGeneration = sessionLifecycleGeneration.get()
         scope.launch(Dispatchers.IO) {
-            synchronized(sessionLifecycleLock) {
-            if (requestGeneration != sessionLifecycleGeneration.get() || BoosterService.isEnding() ||
-                !sessionLifecycleGeneration.compareAndSet(requestGeneration, requestGeneration + 1L)
-            ) return@synchronized
+            // Claim this request under the lifecycle lock, then release it.
+            // The lock must never be held across privileged shell I/O: a
+            // stop/restore would otherwise queue behind every task timeout.
+            // Mutation safety does not depend on this lock (BoostEngine
+            // methods and Journal are internally synchronized); the
+            // generation fence further down rolls this request back if a
+            // stop lands while its tasks are applying.
+            val claimedGeneration = synchronized(sessionLifecycleLock) {
+                if (requestGeneration != sessionLifecycleGeneration.get() || BoosterService.isEnding() ||
+                    !sessionLifecycleGeneration.compareAndSet(requestGeneration, requestGeneration + 1L)
+                ) {
+                    null
+                } else {
+                    requestGeneration + 1L
+                }
+            } ?: return@launch
             val previousSessionState = session.value ?: SessionState.Idle
             session.postValue(SessionState.Boosting(profile.name))
             var activeJournal: Journal? = null
@@ -810,6 +831,25 @@ object AppStore {
                 if (thermalFloor >= ThermalGuard.STATUS_MODERATE) {
                     engine.deescalate(bctx, ThermalGuard.modulesToDrop(thermalFloor))
                 }
+                if (sessionLifecycleGeneration.get() != claimedGeneration) {
+                    // A stop (or a newer boost) fenced this request while
+                    // its tasks were applying: undo what it applied and do
+                    // not publish a Boosted state for a dead request.
+                    try {
+                        adaptiveLoop?.stopAndJoinBlocking()
+                    } catch (_: Exception) {
+                    }
+                    val rollback = engine.restoreAll(bctx)
+                    if (rollback.failedCount == 0 && journal.isEmpty()) {
+                        setGamePackage(null)
+                        finishSessionMeasurement()
+                        session.postValue(SessionState.Idle)
+                    } else {
+                        appendLog("boost fence rollback incomplete; journal retained for retry")
+                        session.postValue(previousSessionState)
+                    }
+                    return@launch
+                }
                 synchronized(sessionStateLock) {
                     sessApplied = report.appliedCount + report.noChangeCount
                     sessFailed = report.failedCount
@@ -824,7 +864,7 @@ object AppStore {
                 if (Prefs.getBool(c, Prefs.KEY_ADAPTIVE_ON, true)) {
                     adaptiveLoop?.start()
                 }
-                refreshTaskStates()
+                refreshTaskStates(force = true)
                 val s = postScore(profile)
                 if (BoosterService.active) BoosterService.pushScore(c, s)
                 session.postValue(
@@ -888,7 +928,7 @@ object AppStore {
                 if (rollbackComplete) {
                     setGamePackage(null)
                     if (measurementStarted) runCatching { finishSessionMeasurement() }
-                    refreshTaskStates()
+                    refreshTaskStates(force = true)
                     session.postValue(SessionState.Idle)
                     appendLog("boost failure rolled back; session returned to idle")
                 } else {
@@ -899,7 +939,6 @@ object AppStore {
                 // whose initial/re-profile boost failed; it will retry restore
                 // before releasing ownership of any retained journal entries.
                 if (BoosterService.active) BoosterService.stop(c)
-            }
             }
         }
     }
@@ -1009,9 +1048,12 @@ object AppStore {
     /** Synchronous service-stop path; waits for adaptive cleanup before restoring the full journal. */
     fun stopSessionBlocking(): BoostEngine.Report? = stopSessionBlockingInternal()
 
-    private fun stopSessionBlockingInternal(): BoostEngine.Report? = synchronized(sessionLifecycleLock) {
+    private fun stopSessionBlockingInternal(): BoostEngine.Report? {
+        // Fence any in-flight boost first, then work unlocked: the
+        // lifecycle lock is never held across adaptive joins or journal
+        // shell I/O (BoostEngine/Journal provide their own exclusion).
         sessionLifecycleGeneration.incrementAndGet()
-        try {
+        return try {
             adaptiveLoop?.stopAndJoinBlocking()
             val c = ctx()
             val profile = ProfileStore(c).resolve(Prefs.activeProfile(c))
@@ -1020,11 +1062,11 @@ object AppStore {
             val restore = engine.restoreAll(bctx)
             if (restore.failedCount > 0 || !activeJournal.isEmpty()) {
                 appendLog("session restore incomplete: ${restore.failedCount} change(s) failed; journal retained")
-                return@synchronized restore
+                return restore
             }
             setGamePackage(null)
             finishSessionMeasurement()
-            refreshTaskStates()
+            refreshTaskStates(force = true)
             val restoredScore = postScore(profile)
             if (BoosterService.active) BoosterService.pushScore(c, restoredScore)
             session.postValue(SessionState.Idle)
@@ -1042,14 +1084,15 @@ object AppStore {
     fun restoreAll() = stopSession()
 
     /**
-     * Synchronous restore for process/service teardown. [stopSession] is
-     * async (IO dispatcher) and would lose the race against a dying
-     * process — this path runs on the caller's thread so `onDestroy`
-     * actually reverts leftover tweaks.
+     * Synchronous restore for explicit callers that can afford to block
+     * (never the main thread and never a service `onDestroy` — process
+     * teardown recovery is the stale-journal guard's job). Runs unlocked:
+     * the generation fence is claimed atomically, and BoostEngine/Journal
+     * synchronization excludes concurrent mutations.
      */
-    fun restoreAllBlocking(): BoostEngine.Report? = synchronized(sessionLifecycleLock) {
+    fun restoreAllBlocking(): BoostEngine.Report? {
         sessionLifecycleGeneration.incrementAndGet()
-        try {
+        return try {
             adaptiveLoop?.stopAndJoinBlocking()
             val c = ctx()
             val activeJournal = journal()
@@ -1060,7 +1103,7 @@ object AppStore {
             val restore = engine.restoreAll(bctx)
             if (restore.failedCount > 0 || !activeJournal.isEmpty()) {
                 appendLog("blocking restore incomplete: ${restore.failedCount} change(s) failed; journal retained")
-                return@synchronized restore
+                return restore
             }
             setGamePackage(null)
             session.postValue(SessionState.Idle)
@@ -1074,7 +1117,30 @@ object AppStore {
         }
     }
 
-    fun refreshTaskStates() {
+    /** Last completed task-state refresh (elapsedRealtime), for coalescing. */
+    @Volatile
+    private var lastTaskStatesAtMs = 0L
+    private val taskStatesRefreshInFlight = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val taskStatesRefreshPending = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    /**
+     * Refresh the per-task UI states. UI callers (every onResume) are
+     * coalesced: a refresh already in flight is not duplicated, and a
+     * result younger than [TASK_STATES_FRESH_MS] is reused. Session
+     * transitions pass [force] to get immediate post-boost/stop truth.
+     */
+    fun refreshTaskStates(force: Boolean = false) {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (!force && tasks.value?.isNotEmpty() == true &&
+            now - lastTaskStatesAtMs in 0 until TASK_STATES_FRESH_MS
+        ) {
+            return
+        }
+        if (!taskStatesRefreshInFlight.compareAndSet(false, true)) {
+            // A forced refresh must not be lost behind an in-flight UI one.
+            if (force) taskStatesRefreshPending.set(true)
+            return
+        }
         scope.launch(Dispatchers.IO) {
             try {
                 val c = ctx()
@@ -1083,8 +1149,14 @@ object AppStore {
                     BoostContext(profile, AndroidExecutor(c), journal())
                 )
                 tasks.postValue(states)
+                lastTaskStatesAtMs = android.os.SystemClock.elapsedRealtime()
             } catch (e: Exception) {
                 tasks.postValue(emptyList())
+            } finally {
+                taskStatesRefreshInFlight.set(false)
+                if (taskStatesRefreshPending.getAndSet(false)) {
+                    refreshTaskStates(force = true)
+                }
             }
         }
     }

@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.RemoteException
 import android.util.Base64
 import androidx.annotation.Keep
+import com.nitroboost.app.core.PrivilegedShellPolicy
+import com.nitroboost.app.core.awaitExit
 import com.nitroboost.app.core.ShellInput
 import com.nitroboost.app.platform.ShellOutputReader
 import com.nitroboost.app.shizuku.INitroService
@@ -35,16 +37,18 @@ class NitroUserService constructor() : INitroService.Stub() {
     }
 
     override fun runShell(cmd: String): String {
+        // Server-side allowlist: this process holds the Shizuku identity
+        // (shell uid, or root), so it must not execute arbitrary strings on
+        // the app process's say-so. Only commands the shared policy knows —
+        // with every interpolated value re-validated — may run.
+        if (!PrivilegedShellPolicy.isAllowed(cmd)) {
+            return encodeResult(-1, "", "command_not_allowed")
+        }
         return try {
             val process = Runtime.getRuntime().exec(arrayOf("/system/bin/sh", "-c", cmd))
             val outFuture = readAsync(process.inputStream, ShellOutputReader.MAX_STDOUT_BYTES)
             val errFuture = readAsync(process.errorStream, ShellOutputReader.MAX_STDERR_BYTES)
-            val finished = try {
-                process.waitFor(SHELL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-            } catch (e: InterruptedException) {
-                Thread.currentThread().interrupt()
-                false
-            }
+            val finished = process.awaitExit(SHELL_TIMEOUT_MS)
             if (!finished) {
                 terminate(process)
                 outFuture.cancel(true)
@@ -83,7 +87,7 @@ class NitroUserService constructor() : INitroService.Stub() {
         // Shizuku user-service process. Escalate via the guarded path below.
         try {
             process.destroy()
-            if (!process.waitFor(500, TimeUnit.MILLISECONDS) &&
+            if (!process.awaitExit(500) &&
                 android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O
             ) {
                 process.destroyForcibly()

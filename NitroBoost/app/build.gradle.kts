@@ -11,8 +11,8 @@ android {
         applicationId = "com.nitroboost.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 32
-        versionName = "1.25.0"
+        versionCode = 33
+        versionName = "1.26.0"
     }
 
     // Optional release signing for store distribution.
@@ -32,7 +32,13 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 is enabled for the distributed release build. The keep rules
+            // in proguard-rules.pro cover the reflectively-instantiated
+            // Shizuku user service, the AIDL stubs and the core model types.
+            // Resource shrinking stays off: layouts are referenced from
+            // RemoteViews/widget code paths that shrink analysis can miss.
+            isMinifyEnabled = true
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -58,7 +64,10 @@ android {
     }
 
     lint {
-        abortOnError = false
+        // Lint is a real CI gate: error-level findings must fail the build
+        // instead of passing silently behind the release-notes claim.
+        abortOnError = true
+        checkReleaseBuilds = true
     }
 }
 

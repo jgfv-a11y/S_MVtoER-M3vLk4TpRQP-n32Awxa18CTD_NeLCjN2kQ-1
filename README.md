@@ -1,6 +1,6 @@
 # 🚀 NitroBoost — معزّز ألعاب احترافي
 
-**الإصدار الحالي: v1.23.0 (versionCode 30)** — يدعم التثبيت من Android 7.0 / API 24 مع الاستمرار في استهداف Android 16 / API 36. يتضمن تقوية الاستعادة والـJournal، معالجة آمنة لانتهاء مهلة العمليات على Android 7، وإصلاحات للرصد والسطوع والويدجت؛ كما يقارن FPS بآخر جلسة للعبة نفسها فقط، ويعرضها كمقارنة وصفية لا كاختبار A/B.
+**الإصدار الحالي: v1.26.0 (versionCode 33)** — يدعم التثبيت من Android 7.0 / API 24 مع الاستمرار في استهداف Android 16 / API 36. يتضمن تقوية الاستعادة والـJournal، معالجة آمنة لانتهاء مهلة العمليات على Android 7، وإصلاحات للرصد والسطوع والويدجت؛ كما يقارن FPS بآخر جلسة للعبة نفسها فقط، ويعرضها كمقارنة وصفية لا كاختبار A/B.
 
 **NitroBoost** تطبيق Android أصلي (Kotlin + Material 3) مبني من الصفر مع
 خيارات ضبط قابلة للتخصيص، **سجلّ تغييرات (Journal)** و**استعادة تلقائية**
@@ -30,7 +30,7 @@
 افتح مجلد `NitroBoost/` في **Android Studio** (Koala أو أحدث) → انتظر المزامنة →
 `Run`. التفاصيل الكاملة وتثبيت Shizuku في [NitroBoost/README.md](NitroBoost/README.md).
 
-> 📲 [تنزيل APK v1.23.0](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases/download/nitroboost-v1.23.0/nitroboost-debug.apk) — نسخة debug للاختبار، مع ملف SHA-256 مرفق في الإصدار.
+> 📲 [تنزيل APK v1.26.0](https://github.com/jgfv-a11y/S_MVtoER-M3vLk4TpRQP-n32Awxa18CTD_NeLCjN2kQ-1/releases/download/nitroboost-v1.26.0/nitroboost-debug.apk) — نسخة debug للاختبار، مع ملف SHA-256 مرفق في الإصدار. لا تنزّل إصدارات أقدم من v1.24.0: كانت تحوي مسار تجاوز حراري غير آمن أُزيل لاحقًا.
 
 ## هيكل المستودع
 

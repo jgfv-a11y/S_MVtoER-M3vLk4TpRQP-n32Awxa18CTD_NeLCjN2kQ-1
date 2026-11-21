@@ -30,10 +30,15 @@ If all four are absent, CI publishes only the debug-signed APK. A partially popu
 
 ```bash
 cd NitroBoost
-gradle wrapper --gradle-version 8.14.3   # once, if gradlew is missing
+# The Gradle wrapper (Gradle 8.14.3) is committed; no system Gradle needed.
 ./gradlew test lintDebug assembleDebug
 # APK: app/build/outputs/apk/debug/app-debug.apk
 ```
+
+Releases are immutable: `publish-release` refuses to publish a tag that
+already exists, so every release requires a `versionName`/`versionCode`
+bump in `NitroBoost/app/build.gradle.kts` (README/CHANGELOG sync is
+enforced by `tools/verify.py`).
 
 ## Troubleshooting
 
