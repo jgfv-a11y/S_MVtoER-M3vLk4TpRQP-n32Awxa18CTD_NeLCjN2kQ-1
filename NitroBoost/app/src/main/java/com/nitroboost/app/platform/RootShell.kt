@@ -2,6 +2,7 @@ package com.nitroboost.app.platform
 
 import android.os.Build
 import com.nitroboost.app.core.ShellResult
+import com.nitroboost.app.core.awaitExit
 import java.io.InputStream
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
