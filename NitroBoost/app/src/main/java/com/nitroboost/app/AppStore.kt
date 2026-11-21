@@ -206,7 +206,7 @@ object AppStore {
                 val soc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) socModel() else Build.HARDWARE
                 val appVersionCode = try {
                     val info = ctx().packageManager.getPackageInfo(ctx().packageName, 0)
-                    if (sdk >= 28) info.longVersionCode else {
+                    if (Build.VERSION.SDK_INT >= 28) longVersionCode(info) else {
                         @Suppress("DEPRECATION")
                         val legacyCode = info.versionCode
                         legacyCode.toLong()
