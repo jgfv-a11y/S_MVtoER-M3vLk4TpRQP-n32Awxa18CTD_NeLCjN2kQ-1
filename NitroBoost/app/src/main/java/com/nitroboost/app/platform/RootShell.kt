@@ -91,7 +91,7 @@ object RootShell {
     internal fun terminate(p: Process) {
         try {
             p.destroy()
-            if (!p.waitFor(500, TimeUnit.MILLISECONDS) &&
+            if (!p.awaitExit(500) &&
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
             ) {
                 p.destroyForcibly()

@@ -47,12 +47,7 @@ class NitroUserService constructor() : INitroService.Stub() {
             val process = Runtime.getRuntime().exec(arrayOf("/system/bin/sh", "-c", cmd))
             val outFuture = readAsync(process.inputStream, ShellOutputReader.MAX_STDOUT_BYTES)
             val errFuture = readAsync(process.errorStream, ShellOutputReader.MAX_STDERR_BYTES)
-            val finished = try {
-                process.waitFor(SHELL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-            } catch (e: InterruptedException) {
-                Thread.currentThread().interrupt()
-                false
-            }
+            val finished = process.awaitExit(SHELL_TIMEOUT_MS)
             if (!finished) {
                 terminate(process)
                 outFuture.cancel(true)
@@ -91,7 +86,7 @@ class NitroUserService constructor() : INitroService.Stub() {
         // Shizuku user-service process. Escalate via the guarded path below.
         try {
             process.destroy()
-            if (!process.waitFor(500, TimeUnit.MILLISECONDS) &&
+            if (!process.awaitExit(500) &&
                 android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O
             ) {
                 process.destroyForcibly()
