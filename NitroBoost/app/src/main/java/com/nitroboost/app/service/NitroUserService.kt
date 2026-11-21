@@ -5,6 +5,7 @@ import android.os.RemoteException
 import android.util.Base64
 import androidx.annotation.Keep
 import com.nitroboost.app.core.PrivilegedShellPolicy
+import com.nitroboost.app.core.awaitExit
 import com.nitroboost.app.core.ShellInput
 import com.nitroboost.app.platform.ShellOutputReader
 import com.nitroboost.app.shizuku.INitroService
