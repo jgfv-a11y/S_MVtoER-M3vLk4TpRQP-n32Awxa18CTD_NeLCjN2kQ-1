@@ -191,11 +191,19 @@ object AppStore {
      * measurements leave the device. App version/capabilities invalidate old
      * task results when behavior or platform support may have changed.
      */
+    /** API-31 SoC model; isolated so lint's NewApi check sees the version gate. */
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
+    private fun socModel(): String = Build.SOC_MODEL
+
+    /** API-28 long version code; same lint-visible gating as [socModel]. */
+    @androidx.annotation.RequiresApi(28)
+    private fun longVersionCode(info: android.content.pm.PackageInfo): Long = info.longVersionCode
+
     private fun makeTrialContext(bctx: BoostContext, thermalTier: Int): TrialContext {
         val sdk = Build.VERSION.SDK_INT
         val staticKeys = cachedHardwareKeys ?: synchronized(adaptiveContextLock) {
             cachedHardwareKeys ?: run {
-                val soc = if (sdk >= Build.VERSION_CODES.S) Build.SOC_MODEL else Build.HARDWARE
+                val soc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) socModel() else Build.HARDWARE
                 val appVersionCode = try {
                     val info = ctx().packageManager.getPackageInfo(ctx().packageName, 0)
                     if (sdk >= 28) info.longVersionCode else {
