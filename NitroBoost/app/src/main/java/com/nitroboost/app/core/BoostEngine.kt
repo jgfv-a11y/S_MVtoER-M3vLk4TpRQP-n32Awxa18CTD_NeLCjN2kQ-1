@@ -12,9 +12,52 @@ import java.util.concurrent.ConcurrentHashMap
  *  - restore replays the journal in reverse order;
  *  - the journal is only cleared when every entry was restored.
  */
-class BoostEngine(private val tasks: List<BoostTask>) {
+class BoostEngine(
+    private val tasks: List<BoostTask>,
+    private val supportProbeTtlMs: Long = SUPPORT_PROBE_TTL_MS,
+    private val clockMs: () -> Long = { System.currentTimeMillis() }
+) {
 
     private val taskMutationLocks = ConcurrentHashMap<String, Any>()
+
+    /**
+     * Cached `isSupported` results. Support probes are privileged shell
+     * round-trips (governor enumeration, `cmd game help`, …) and [states]
+     * runs on every UI resume; re-probing all tasks each time thrashes the
+     * Shizuku/root channel. A result is reused for [supportProbeTtlMs],
+     * keyed by privilege state so a Shizuku (dis)connect re-probes at once.
+     * Applied state is never cached — it stays live.
+     */
+    private data class SupportProbe(val supported: Boolean, val probedAtMs: Long, val privileged: Boolean)
+
+    private val supportProbes = ConcurrentHashMap<String, SupportProbe>()
+
+    /** Drop cached support probes (e.g. after a privilege-channel change). */
+    fun invalidateSupportProbes() {
+        supportProbes.clear()
+    }
+
+    private fun supportedCached(task: BoostTask, ctx: BoostContext): Boolean {
+        val privileged = try {
+            ctx.executor.privileged
+        } catch (e: Exception) {
+            false
+        }
+        val now = clockMs()
+        val cached = supportProbes[task.id]
+        if (cached != null && cached.privileged == privileged &&
+            now - cached.probedAtMs in 0 until supportProbeTtlMs
+        ) {
+            return cached.supported
+        }
+        val supported = try {
+            task.isSupported(ctx)
+        } catch (e: Exception) {
+            false
+        }
+        supportProbes[task.id] = SupportProbe(supported, now, privileged)
+        return supported
+    }
 
     /** Serialize a task's apply/restore across normal boost and adaptive paths. */
     fun <T> withTaskLock(taskId: String, block: () -> T): T {
@@ -182,11 +225,7 @@ class BoostEngine(private val tasks: List<BoostTask>) {
             } catch (e: Exception) {
                 false
             }
-            val supported = try {
-                t.isSupported(ctx)
-            } catch (e: Exception) {
-                false
-            }
+            val supported = supportedCached(t, ctx)
             TaskState(
                 id = t.id,
                 titleAr = t.titleAr,
@@ -223,5 +262,10 @@ class BoostEngine(private val tasks: List<BoostTask>) {
         TaskStatus.NoChange -> "ok"
         TaskStatus.Skipped -> "skipped"
         is TaskStatus.Failed -> "failed"
+    }
+
+    companion object {
+        /** How long a task support probe may be reused by [states]. */
+        const val SUPPORT_PROBE_TTL_MS = 30_000L
     }
 }

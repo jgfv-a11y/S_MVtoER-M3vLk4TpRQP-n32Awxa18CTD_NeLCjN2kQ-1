@@ -81,13 +81,14 @@ class IoSchedulerTask : BoostTask {
             return TaskResult(id, TaskStatus.Skipped, "device offers a single scheduler (${node.active})")
         }
         val p = path(node.dev)
-        // Pre-seed the journal with the ACTIVE scheduler token as oldValue.
-        // JournaledSystemExecutor.writeSys would otherwise record the raw
-        // kernel display list ("[mq-deadline] kyber none"), which
-        // ShellInput.isSysValue can never write back — leaving a journal
-        // entry that fails restore forever. Journal.add dedupes per
-        // taskId+kind+key and keeps the FIRST entry, so this accurate
-        // entry wins over the wrapper's raw read.
+        // The journal must record the ACTIVE scheduler token as oldValue —
+        // never the raw kernel display list ("[mq-deadline] kyber none"),
+        // which ShellInput.isSysValue can never write back (that mismatch
+        // once made every io_scheduler entry permanently unrestorable).
+        // Through the journaled executor this is a single-writer operation:
+        // the wrapper records the token write-ahead and verifies with the
+        // caller's predicate. Only direct (non-engine) callers keep the
+        // legacy pre-seed path below.
         val seeded = JournalEntry(
             taskId = id,
             kind = JournalEntry.Kind.SYSFS,
@@ -95,6 +96,22 @@ class IoSchedulerTask : BoostTask {
             oldValue = node.active,
             newValue = TARGET
         )
+        val journaled = ctx.executor as? com.nitroboost.app.core.JournaledSystemExecutor
+        if (journaled != null) {
+            val ok = journaled.writeSysWithJournalOverride(p, TARGET, node.active) { raw ->
+                raw?.let { active(it) == TARGET } == true
+            }
+            return if (ok) {
+                TaskResult(
+                    id,
+                    TaskStatus.Applied,
+                    "${node.dev}: ${node.active} -> $TARGET",
+                    listOf(seeded)
+                )
+            } else {
+                TaskResult(id, TaskStatus.Skipped, "ROM locks the scheduler on ${node.dev}")
+            }
+        }
         val preRecorded = ctx.journal.containsTaskKey(id, p)
         if (!preRecorded && !ctx.journal.add(listOf(seeded))) {
             return TaskResult(id, TaskStatus.Failed("journal persistence failed; write refused"))

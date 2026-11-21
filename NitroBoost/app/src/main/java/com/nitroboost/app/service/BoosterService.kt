@@ -414,15 +414,23 @@ class BoosterService : Service() {
     }
 
     override fun onDestroy() {
-        // If the process/service is torn down without ACTION_STOP, still
-        // revert leftover journal entries so a killed session cannot leave
-        // governors / DND / DPI applied.
-        try {
-            if (active) {
-                active = false
-                AppStore.restoreAllBlocking()
+        // Never restore here: onDestroy runs on the main thread, and a
+        // blocking restore (runBlocking + privileged shell calls with
+        // multi-second timeouts) can ANR or be killed mid-restore — leaving
+        // governors / DND / DPI applied, the exact failure it tried to
+        // prevent. Leftover journal entries are durable on disk and the
+        // AppStore stale-journal guard (IO dispatcher, retries every ~10s,
+        // started from AppStore.init) reverts them as soon as it observes
+        // that no session is active.
+        if (active) {
+            active = false
+            try {
+                SessionLog.log(
+                    this, "session_interrupted",
+                    "service destroyed without stop; stale-journal guard will restore"
+                )
+            } catch (_: Exception) {
             }
-        } catch (_: Exception) {
         }
         AppStore.setMonitorClient(MonitorClient.SESSION, false)
         scope?.cancel()

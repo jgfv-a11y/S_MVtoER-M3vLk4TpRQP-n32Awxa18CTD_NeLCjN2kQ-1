@@ -2,6 +2,7 @@ package com.nitroboost.app.platform
 
 import android.os.Build
 import com.nitroboost.app.core.ShellResult
+import com.nitroboost.app.core.awaitExit
 import java.io.InputStream
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
@@ -57,7 +58,7 @@ object RootShell {
         var p: Process? = null
         return try {
             p = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
-            if (!p.waitFor(PROBE_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+            if (!p.awaitExit(PROBE_TIMEOUT_MS)) {
                 terminate(p)
                 available = false
                 return false
@@ -91,7 +92,7 @@ object RootShell {
     internal fun terminate(p: Process) {
         try {
             p.destroy()
-            if (!p.waitFor(500, TimeUnit.MILLISECONDS) &&
+            if (!p.awaitExit(500) &&
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
             ) {
                 p.destroyForcibly()
@@ -118,18 +119,18 @@ object RootShell {
      * command survives the extra shell layer.
      */
     fun run(cmd: String): ShellResult {
+        // Same server-side allowlist as the Shizuku user service: root must
+        // never execute a string the shared policy does not recognize.
+        if (!com.nitroboost.app.core.PrivilegedShellPolicy.isAllowed(cmd)) {
+            return ShellResult.fail("command_not_allowed")
+        }
         if (!isAvailable()) return ShellResult.fail("root_unavailable")
         val escaped = cmd.replace("'", "'\\''")
         return try {
             val p = Runtime.getRuntime().exec(arrayOf("su", "-c", escaped))
             val outFuture = readAsync(p.inputStream, ShellOutputReader.MAX_STDOUT_BYTES)
             val errFuture = readAsync(p.errorStream, ShellOutputReader.MAX_STDERR_BYTES)
-            val done = try {
-                p.waitFor(COMMAND_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-            } catch (e: InterruptedException) {
-                Thread.currentThread().interrupt()
-                false
-            }
+            val done = p.awaitExit(COMMAND_TIMEOUT_MS)
             if (!done) {
                 terminate(p)
                 closeQuietly(p.inputStream)

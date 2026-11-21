@@ -14,6 +14,12 @@ on:
 permissions:
   contents: read
 
+# Serialize runs per ref so two main pushes can never race on the same
+# release tag; queued runs still execute (never cancelled mid-publish).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   verify-build:
     runs-on: ubuntu-latest
@@ -323,6 +329,21 @@ jobs:
       contents: write
       actions: read
     steps:
+      - name: Refuse to re-publish an existing release tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs['verify-build'].outputs.tag }}
+        run: |
+          # Release tags are immutable: shipping a different commit under an
+          # existing tag would replace the APK behind its published SHA-256.
+          # Bump versionName/versionCode in NitroBoost/app/build.gradle.kts
+          # (and the READMEs/CHANGELOG — tools/verify.py enforces the sync).
+          if gh api "repos/${{ github.repository }}/releases/tags/${TAG}" > /dev/null 2>&1; then
+            echo "::error title=Release tag already exists::${TAG} is already published. Bump versionName/versionCode instead of re-publishing it."
+            exit 1
+          fi
+          echo "Release tag ${TAG} is unpublished; proceeding."
+
       - name: Download verified debug APK
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -358,7 +379,7 @@ jobs:
           body: |
             NitroBoost v${{ needs['verify-build'].outputs.name }} (versionCode ${{ needs['verify-build'].outputs.code }}).
 
-            Highlights: Android 7.0 / API 24 minimum support while retaining Android 16 / API 36 targeting; API-gated notification channels and special-use foreground services; and per-game session FPS comparisons labeled as observational, not controlled A/B results.
+            Highlights: fail-closed privileged-shell policy shared by the journaled executor and the Shizuku/root services; single-writer io_scheduler journaling with true pre-session restore for unset settings keys; no main-thread restore during service teardown; support-probe caching for task-state refreshes; R8-enabled release builds with lint as a failing gate; the Gradle wrapper is now shipped in the repository. Android 7.0 / API 24 minimum support while retaining Android 16 / API 36 targeting is unchanged.
 
             This release passed the repository's configured static/security checks, Python and JVM tests, Android lint, APK metadata/signature verification, and debug/release assembly. Android 7–16 physical-device coverage and gameplay performance have not been independently benchmarked here; no universal FPS gain is claimed.
 

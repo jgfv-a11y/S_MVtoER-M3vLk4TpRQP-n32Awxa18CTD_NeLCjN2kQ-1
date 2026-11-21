@@ -46,7 +46,9 @@ class AnimationsTask : BoostTask {
                         taskId = id,
                         kind = JournalEntry.Kind.SYS_SETTING,
                         key = key,
-                        oldValue = current ?: "1.0",
+                        // Keep null for a previously-unset key: restore then
+                        // deletes it instead of forcing a fabricated "1.0".
+                        oldValue = current,
                         newValue = "0.0"
                     )
                 )

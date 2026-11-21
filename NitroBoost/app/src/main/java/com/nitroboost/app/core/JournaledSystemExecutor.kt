@@ -83,10 +83,68 @@ class JournaledSystemExecutor(
                 ), cmd
             )
         }
-        return delegate.shell(cmd)
+        // Fail closed: anything that reaches here was not recognized as a
+        // journaled mutation above. Only classified read-only commands and
+        // this task's own one-way commands may fall through; an unhandled
+        // mutation or an unknown string must never reach the platform
+        // unjournaled (that would silently void the restore guarantee).
+        return when (PrivilegedShellPolicy.classify(cmd)) {
+            PrivilegedShellPolicy.Disposition.READ_ONLY -> delegate.shell(cmd)
+            PrivilegedShellPolicy.Disposition.ONE_WAY -> when {
+                PrivilegedShellPolicy.isTrimCaches(cmd) && taskId == "ram_trim" ->
+                    delegate.shell(cmd)
+                PrivilegedShellPolicy.forceStopPackage(cmd) != null && taskId == "ram_kill" ->
+                    delegate.shell(cmd)
+                else -> ShellResult.fail("unowned_one_way_command")
+            }
+            PrivilegedShellPolicy.Disposition.MUTATING ->
+                ShellResult.fail("unhandled_shell_mutation")
+            PrivilegedShellPolicy.Disposition.UNKNOWN ->
+                ShellResult.fail("unclassified_shell_command")
+        }
     }
 
     override fun readSys(path: String): String? = delegate.readSys(path)
+
+    /**
+     * writeSys for nodes whose kernel read-back is not the written token
+     * (e.g. the I/O scheduler list `"[mq-deadline] kyber none"`): the caller
+     * supplies the validated [recordedOldValue] to journal — never the raw
+     * display string, which could never be written back — and a [verify]
+     * predicate over the raw post-write read-back. This is the single
+     * journal writer for such nodes; callers must not pre-seed entries and
+     * rely on dedupe ordering to win over the wrapper's own record.
+     */
+    fun writeSysWithJournalOverride(
+        path: String,
+        value: String,
+        recordedOldValue: String,
+        verify: (String?) -> Boolean
+    ): Boolean {
+        if (!ShellInput.isSysPath(path) || !ShellInput.isSysValue(value) ||
+            !ShellInput.isSysValue(recordedOldValue)
+        ) return false
+        val currentRaw = delegate.readSys(path) ?: return false
+        if (verify(currentRaw)) return true
+        val entry = JournalEntry(taskId, JournalEntry.Kind.SYSFS, path, recordedOldValue, value)
+        val existedBefore = journal.containsTaskKey(entry.taskId, entry.key)
+        if (!prepare(entry, existedBefore)) return false
+        val written = try {
+            delegate.writeSys(path, value)
+        } catch (e: Exception) {
+            if (!existedBefore) journal.remove(listOf(entry))
+            throw e
+        }
+        val after = delegate.readSys(path)
+        return if (written && verify(after)) {
+            true
+        } else {
+            // The change did not stick: drop the entry we just recorded so
+            // the journal never claims a change that was not applied.
+            if (!existedBefore && !verify(after)) journal.remove(listOf(entry))
+            false
+        }
+    }
 
     override fun writeSys(path: String, value: String): Boolean {
         if (!ShellInput.isSysPath(path) || !ShellInput.isSysValue(value)) return false
