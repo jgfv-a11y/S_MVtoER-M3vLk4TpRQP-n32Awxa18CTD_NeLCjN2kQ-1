@@ -57,7 +57,7 @@ object RootShell {
         var p: Process? = null
         return try {
             p = Runtime.getRuntime().exec(arrayOf("su", "-c", "id"))
-            if (!p.waitFor(PROBE_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+            if (!p.awaitExit(PROBE_TIMEOUT_MS)) {
                 terminate(p)
                 available = false
                 return false
@@ -129,12 +129,7 @@ object RootShell {
             val p = Runtime.getRuntime().exec(arrayOf("su", "-c", escaped))
             val outFuture = readAsync(p.inputStream, ShellOutputReader.MAX_STDOUT_BYTES)
             val errFuture = readAsync(p.errorStream, ShellOutputReader.MAX_STDERR_BYTES)
-            val done = try {
-                p.waitFor(COMMAND_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-            } catch (e: InterruptedException) {
-                Thread.currentThread().interrupt()
-                false
-            }
+            val done = p.awaitExit(COMMAND_TIMEOUT_MS)
             if (!done) {
                 terminate(p)
                 closeQuietly(p.inputStream)
